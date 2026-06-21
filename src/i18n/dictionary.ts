@@ -386,6 +386,10 @@ export const dict: Dict = {
   'subs.startCta': { en: 'Start a monthly box', ar: 'ابدأ علبة شهرية' },
   'subs.everyMonth': { en: 'Every month', ar: 'كل شهر' },
   'subs.everyQuarter': { en: 'Every quarter', ar: 'كل ربع' },
+  'subs.activeLabel': { en: 'active', ar: 'نشط' },
+  'subs.perMonth': { en: 'month', ar: 'شهر' },
+  'subs.perQuarter': { en: 'quarter', ar: 'ربع' },
+  'subs.pausedNote': { en: 'Resume to schedule your next box', ar: 'استأنف لجدولة علبتك القادمة' },
 
   // gift cards
   'giftcard.title': { en: 'Gift cards', ar: 'بطاقات الهدايا' },
