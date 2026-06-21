@@ -16,7 +16,7 @@ type PayMethod = 'mada' | 'card' | 'applepay' | 'tabby' | 'tamara' | 'bank_trans
 
 export function CheckoutPage() {
   const { t, pick, money } = useLocale()
-  const { channel, setChannel } = useChannel()
+  const { channel, persona, org } = useChannel()
   const { totalMinor, lines, clear } = useCart()
   const [placed, setPlaced] = useState(false)
   const [method, setMethod] = useState<PayMethod>('mada')
@@ -48,8 +48,22 @@ export function CheckoutPage() {
         <h1 className="font-serif text-display-lg text-ink">{t('checkout.title')}</h1>
       </div>
 
-      {/* channel switch */}
-      <ChannelSwitch channel={channel} onChange={setChannel} />
+      {/* buying context — derived from the active persona (switch via /roles) */}
+      <div className="inline-flex flex-col gap-xs">
+        <span className="label">{t('checkout.channel')}</span>
+        <div className="inline-flex items-center gap-sm rounded-md bg-surface-2 border border-hairline ps-2 pe-3 py-2">
+          <span className="grid place-items-center w-8 h-8 rounded-md bg-primary/10 text-primary-hover shrink-0">
+            {channel === 'b2b' ? <Building2 size={16} /> : <User size={16} />}
+          </span>
+          <div className="flex flex-col">
+            <span className="font-sans text-data text-ink leading-tight">{channel === 'b2b' ? t('checkout.b2b') : t('checkout.b2c')}</span>
+            <span className="font-sans text-caption text-ink-subtle leading-tight">{channel === 'b2b' ? pick(org.legalName) : pick(persona.name)}</span>
+          </div>
+          <Link to="/roles" className="ms-sm font-sans text-caption uppercase tracking-[0.08em] text-primary-hover hover:text-ink transition-colors">
+            {t('role.switch')}
+          </Link>
+        </div>
+      </div>
 
       <div className="grid lg:grid-cols-[1.6fr_1fr] gap-xl items-start mt-lg">
         {/* form */}
@@ -78,35 +92,6 @@ export function CheckoutPage() {
         </div>
       </div>
     </section>
-  )
-}
-
-/* ─────────────── channel switch ─────────────── */
-function ChannelSwitch({ channel, onChange }: { channel: Channel; onChange: (c: Channel) => void }) {
-  const { t } = useLocale()
-  const opts: { value: Channel; label: string; icon: typeof User }[] = [
-    { value: 'b2c', label: t('checkout.b2c'), icon: User },
-    { value: 'b2b', label: t('checkout.b2b'), icon: Building2 },
-  ]
-  return (
-    <div className="inline-flex flex-col gap-xs">
-      <span className="label">{t('checkout.channel')}</span>
-      <div className="inline-flex p-1 rounded-md bg-surface-2 border border-hairline">
-        {opts.map((o) => (
-          <button
-            key={o.value}
-            onClick={() => onChange(o.value)}
-            className={cn(
-              'inline-flex items-center gap-xs px-4 py-2 rounded-sm font-sans text-button uppercase transition-all',
-              channel === o.value ? 'bg-ink text-ink-on-dark shadow-lift' : 'text-ink-muted hover:text-ink',
-            )}
-          >
-            <o.icon size={15} />
-            {o.label}
-          </button>
-        ))}
-      </div>
-    </div>
   )
 }
 
