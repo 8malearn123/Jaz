@@ -741,6 +741,14 @@ export const dict: Dict = {
   'approver.overBy': { en: 'Over by', ar: 'يتجاوز بـ' },
   'approver.notePlaceholder': { en: 'Add a note (optional)', ar: 'أضف ملاحظة (اختياري)' },
   'approver.approveOrder': { en: 'Approve order', ar: 'اعتماد الطلب' },
+  'approver.authority': { en: 'Your authority', ar: 'صلاحيتك' },
+  'approver.withinAuthority': { en: 'Within your approval authority', ar: 'ضمن صلاحية اعتمادك' },
+  'approver.exceedsAuthority': { en: 'Exceeds your authority — escalate to an admin', ar: 'يتجاوز صلاحيتك — صعّد إلى مدير' },
+  'approver.escalate': { en: 'Escalate to admin', ar: 'تصعيد للمدير' },
+  'approver.reviewItems': { en: 'Review items', ar: 'مراجعة الأصناف' },
+  'approver.creditImpact': { en: 'Credit impact', ar: 'أثر الائتمان' },
+  'approver.exceedsCredit': { en: 'This order exceeds the org’s available credit', ar: 'يتجاوز هذا الطلب ائتمان المنشأة المتاح' },
+  'approver.rejectReason': { en: 'Add a reason before rejecting', ar: 'أضف سببًا قبل الرفض' },
 
   // ── B2B Org admin ──────────────────────────────────────
   'orgadmin.title': { en: 'Organization admin', ar: 'إدارة المنشأة' },
