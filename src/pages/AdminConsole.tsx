@@ -1,17 +1,16 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  LayoutGrid, Wallet, FileText, Building2, Headset, PenTool, ScrollText, Users,
-  CheckCircle2, X, Check, RefreshCw, QrCode, Lock, Mail, MessageCircle,
-  MessagesSquare, ArrowRight, ShieldCheck, ShieldAlert,
+  LayoutGrid, Wallet, FileText, Building2, Headset, PenTool, ScrollText, Users, Workflow,
+  CheckCircle2, X, Check, RefreshCw, QrCode, Lock, ArrowRight, ShieldCheck, ShieldAlert,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useChannel } from '@/state/ChannelContext'
 import { personaList, type RoleId } from '@/data/roles'
 import { roleIcons } from '@/components/roles/roleIcons'
 import {
-  creditApplications, invoices, tickets, articles, auditEvents, consentLedger, platformKpis, orgDirectory,
-  type CreditApplication, type Invoice, type SupportTicket, type AuditEvent,
+  creditApplications, invoices, articles, auditEvents, consentLedger, platformKpis, orgDirectory,
+  type CreditApplication, type Invoice, type AuditEvent,
 } from '@/data/staff'
 import { products } from '@/data/products'
 import { AccountShell, type TabDef } from '@/components/account/AccountShell'
@@ -20,14 +19,17 @@ import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
 import { useTab } from '@/lib/useTab'
 import { cn } from '@/lib/cn'
+import { SupportDesk } from './admin/SupportDesk'
+import { SalesPipeline } from './admin/SalesPipeline'
 
-type Section = 'overview' | 'credit' | 'invoicing' | 'accounts' | 'support' | 'catalogue' | 'audit' | 'users'
+type Section = 'overview' | 'credit' | 'invoicing' | 'accounts' | 'pipeline' | 'support' | 'catalogue' | 'audit' | 'users'
 
 const SECTION_META: Record<Section, { key: string; icon: TabDef['icon'] }> = {
   overview: { key: 'admin.section.overview', icon: LayoutGrid },
   credit: { key: 'admin.section.credit', icon: Wallet },
   invoicing: { key: 'admin.section.invoicing', icon: FileText },
   accounts: { key: 'admin.section.accounts', icon: Building2 },
+  pipeline: { key: 'admin.section.pipeline', icon: Workflow },
   support: { key: 'admin.section.support', icon: Headset },
   catalogue: { key: 'admin.section.catalogue', icon: PenTool },
   audit: { key: 'admin.section.audit', icon: ScrollText },
@@ -35,9 +37,9 @@ const SECTION_META: Record<Section, { key: string; icon: TabDef['icon'] }> = {
 }
 
 const ACCESS: Record<RoleId, Section[]> = {
-  admin: ['overview', 'credit', 'invoicing', 'accounts', 'support', 'catalogue', 'audit', 'users'],
+  admin: ['overview', 'credit', 'invoicing', 'accounts', 'pipeline', 'support', 'catalogue', 'audit', 'users'],
   finance: ['overview', 'credit', 'invoicing'],
-  sales_agent: ['overview', 'accounts'],
+  sales_agent: ['overview', 'pipeline', 'accounts'],
   support_agent: ['overview', 'support'],
   content_editor: ['overview', 'catalogue'],
   auditor: ['overview', 'audit'],
@@ -78,7 +80,8 @@ export function AdminConsole() {
         {active === 'credit' && <CreditPanel />}
         {active === 'invoicing' && <InvoicingPanel />}
         {active === 'accounts' && <AccountsPanel />}
-        {active === 'support' && <SupportPanel />}
+        {active === 'pipeline' && <SalesPipeline />}
+        {active === 'support' && <SupportDesk />}
         {active === 'catalogue' && <CataloguePanel />}
         {active === 'audit' && <AuditPanel />}
         {active === 'users' && <UsersPanel />}
@@ -319,61 +322,6 @@ function AccountsPanel() {
                 <button onClick={() => setRaised((p) => ({ ...p, [o.id]: true }))} className={buttonClass('secondary', 'sm', 'self-start mt-xs')}>
                   {t('accts.raise')}
                 </button>
-              )}
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-/* ───────────── Support (support agent) ───────────── */
-function SupportPanel() {
-  const { t, pick, locale } = useLocale()
-  const [list, setList] = useState(tickets)
-  const setStatus = (id: string, status: SupportTicket['status']) =>
-    setList((prev) => prev.map((x) => (x.id === id ? { ...x, status } : x)))
-
-  const chIcon = { chat: MessagesSquare, email: Mail, whatsapp: MessageCircle }
-  const stVariant = { open: 'danger', pending: 'gold', resolved: 'success' } as const
-  const prVariant = { high: 'danger', normal: 'gold', low: 'neutral' } as const
-
-  return (
-    <div className="flex flex-col gap-lg">
-      <h2 className="font-serif text-headline text-ink">{t('sup.title')}</h2>
-      <div className="flex flex-col gap-md">
-        {list.map((ti) => {
-          const Ch = chIcon[ti.channel]
-          return (
-            <div key={ti.id} className="card p-lg flex flex-col gap-sm">
-              <div className="flex flex-wrap items-start justify-between gap-sm">
-                <div className="flex items-start gap-sm min-w-0">
-                  <span className="grid place-items-center w-9 h-9 rounded-md bg-surface-2 border border-hairline text-ink-muted shrink-0">
-                    <Ch size={16} />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="font-serif text-card-title text-ink">{pick(ti.subject)}</p>
-                    <p className="font-sans text-caption text-ink-subtle">
-                      {pick(ti.requester)} · {t(`sup.channel.${ti.channel}`)} · {new Date(ti.createdAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-GB', { day: 'numeric', month: 'short' })}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-xs shrink-0">
-                  {ti.aiHandled && <StatusBadge variant="gold">{t('sup.ai')}</StatusBadge>}
-                  <StatusBadge variant={prVariant[ti.priority]}>{t(`sup.priority.${ti.priority}`)}</StatusBadge>
-                  <StatusBadge variant={stVariant[ti.status]}>{t(`sup.status.${ti.status}`)}</StatusBadge>
-                </div>
-              </div>
-              {ti.status !== 'resolved' && (
-                <div className="flex items-center gap-xs pt-sm border-t border-hairline">
-                  <button onClick={() => setStatus(ti.id, 'pending')} className={buttonClass('ghost', 'sm')}>
-                    <ArrowRight size={14} className="rtl:rotate-180" /> {t('sup.escalate')}
-                  </button>
-                  <button onClick={() => setStatus(ti.id, 'resolved')} className={buttonClass('secondary', 'sm')}>
-                    <Check size={14} /> {t('sup.resolve')}
-                  </button>
-                </div>
               )}
             </div>
           )

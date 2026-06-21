@@ -89,7 +89,7 @@ export const personas: Record<RoleId, Persona> = {
     scope: 'platform',
     channel: 'b2b',
     requiresMFA: false,
-    home: '/admin?section=accounts',
+    home: '/admin?section=pipeline',
     accent: '#8a6b3f',
     onAccent: '#f3eee5',
   },

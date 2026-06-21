@@ -92,6 +92,86 @@ export const tickets: SupportTicket[] = [
   { id: 't-4', subject: { en: 'Change delivery address for gift batch', ar: 'تغيير عنوان توصيل دفعة الإهداء' }, requester: { en: 'Sara Al-Dosari', ar: 'سارة الدوسري' }, channel: 'whatsapp', status: 'open', priority: 'normal', aiHandled: false, createdAt: '2026-06-19' },
 ]
 
+// ── Concierge conversation threads (sender customer / ai / agent) ──
+export interface ChatMessage {
+  id: string
+  sender: 'customer' | 'ai' | 'agent'
+  body: Bilingual
+  at: string
+  citations?: Bilingual[]
+}
+
+export interface AiSuggestion {
+  reply: Bilingual
+  confidence: number
+  citations: Bilingual[]
+  routeTo?: Bilingual // B2B escalation target (account manager)
+}
+
+export const ticketThreads: Record<string, ChatMessage[]> = {
+  't-1': [
+    { id: 'm1', sender: 'customer', at: '2026-06-19T08:10', body: { en: 'My order arrived warm and two bars had melted. Very disappointed.', ar: 'وصل طلبي دافئًا وذاب لوحان. خيبة أمل كبيرة.' } },
+    { id: 'm2', sender: 'ai', at: '2026-06-19T08:10', citations: [{ en: 'Returns policy — melted / damaged', ar: 'سياسة الإرجاع — ذائب / تالف' }, { en: 'Cold-chain carrier SLA', ar: 'اتفاقية مستوى خدمة سلسلة التبريد' }], body: { en: "I'm so sorry. JAZ ships heat-sensitive bars in temperature-controlled packaging. I can arrange a free cold-chain replacement — shall I proceed?", ar: 'آسفة جدًا. تُشحن ألواح جاز الحساسة للحرارة بتغليف مبرّد. يمكنني ترتيب استبدال مجاني بسلسلة تبريد — هل أتابع؟' } },
+    { id: 'm3', sender: 'customer', at: '2026-06-19T08:14', body: { en: 'Yes please, and make sure it stays cold this time.', ar: 'نعم من فضلك، وتأكدي أن تبقى باردة هذه المرة.' } },
+  ],
+  't-2': [
+    { id: 'm1', sender: 'customer', at: '2026-06-18T13:02', body: { en: 'When will the Damascena Rose bar be back in stock?', ar: 'متى يعود لوح الورد الدمشقي للتوفّر؟' } },
+    { id: 'm2', sender: 'ai', at: '2026-06-18T13:02', citations: [{ en: 'Product — Damascena Rose', ar: 'منتج — الورد الدمشقي' }, { en: 'Restock calendar', ar: 'تقويم إعادة التوريد' }], body: { en: 'The Rose is a limited run; the next batch lands 28 June 2026. Want a WhatsApp alert when it is live?', ar: 'الورد إصدار محدود؛ الدفعة القادمة في ٢٨ يونيو ٢٠٢٦. أرسل تنبيه واتساب عند توفّره؟' } },
+    { id: 'm3', sender: 'customer', at: '2026-06-18T13:05', body: { en: 'Yes, notify me.', ar: 'نعم، أبلغيني.' } },
+    { id: 'm4', sender: 'ai', at: '2026-06-18T13:05', body: { en: "Done — you're on the list. 🌹", ar: 'تم — أنتِ على القائمة. 🌹' } },
+  ],
+  't-3': [
+    { id: 'm1', sender: 'customer', at: '2026-06-17T10:30', body: { en: 'We need a copy of the ZATCA invoice for order JAZ-2026-001140.', ar: 'نحتاج نسخة فاتورة هيئة الزكاة للطلب JAZ-2026-001140.' } },
+    { id: 'm2', sender: 'ai', at: '2026-06-17T10:30', citations: [{ en: 'ZATCA standard invoicing', ar: 'فوترة هيئة الزكاة المعيارية' }, { en: 'Invoice JAZ-2026-001140', ar: 'فاتورة JAZ-2026-001140' }], body: { en: 'Standard B2B invoices are cleared with ZATCA as a bilingual PDF with QR. I can email it — confirm the finance address?', ar: 'الفواتير المعيارية تُجاز مع الهيئة كملف PDF بلغتين مع QR. يمكنني إرسالها — أكّد بريد المالية؟' } },
+  ],
+  't-4': [
+    { id: 'm1', sender: 'customer', at: '2026-06-19T09:00', body: { en: 'Can we change the delivery address for the Eid gift batch to our Jeddah branch?', ar: 'هل يمكن تغيير عنوان توصيل دفعة هدايا العيد إلى فرع جدة؟' } },
+    { id: 'm2', sender: 'ai', at: '2026-06-19T09:01', citations: [{ en: 'Gift batch — Eid Al-Fitr', ar: 'دفعة إهداء — عيد الفطر' }, { en: 'Saudi National Address (SPL)', ar: 'العنوان الوطني السعودي' }], body: { en: 'I can update the shipping address to a verified national address. Please share the short address (e.g., HMRA1180).', ar: 'يمكنني تحديث عنوان الشحن لعنوان وطني موثّق. شاركيني العنوان المختصر (مثل HMRA1180).' } },
+  ],
+}
+
+export const aiSuggestions: Record<string, AiSuggestion> = {
+  't-1': {
+    reply: { en: "Hi Layla — I've approved a complimentary cold-chain replacement with a gel-pack upgrade, arriving within 2 business days. A WhatsApp tracking link is on the way. Apologies again.", ar: 'مرحبًا ليلى — اعتمدت استبدالًا مجانيًا بسلسلة تبريد مع تحسين عبوة التبريد، يصل خلال يومي عمل. رابط تتبّع واتساب في الطريق. آسفة مجددًا.' },
+    confidence: 0.92,
+    citations: [{ en: 'Returns policy — melted', ar: 'سياسة الإرجاع — ذائب' }, { en: 'Cold-chain SLA', ar: 'اتفاقية سلسلة التبريد' }],
+  },
+  't-3': {
+    reply: { en: 'Attached is the ZATCA-cleared bilingual invoice (PDF + QR) for JAZ-2026-001140. I have CC’d your account manager Majed Al-Shehri. Let me know if you also need the credit note.', ar: 'مرفق الفاتورة المعتمدة من الهيئة بلغتين (PDF + QR) للطلب JAZ-2026-001140. أضفت مدير حسابك ماجد الشهري نسخةً. أخبرني إن احتجت الإشعار الدائن.' },
+    confidence: 0.88,
+    citations: [{ en: 'ZATCA invoice — JAZ-2026-001140', ar: 'فاتورة الهيئة — JAZ-2026-001140' }],
+    routeTo: { en: 'Majed Al-Shehri (account manager)', ar: 'ماجد الشهري (مدير الحساب)' },
+  },
+  't-4': {
+    reply: { en: 'Updated the Eid batch shipping to your Jeddah branch (HMRA1180). Recipients in that batch now route there; tracking links refresh within an hour.', ar: 'حدّثت شحن دفعة العيد إلى فرع جدة (HMRA1180). يتوجّه المستفيدون في الدفعة إلى هناك؛ تتحدث روابط التتبّع خلال ساعة.' },
+    confidence: 0.85,
+    citations: [{ en: 'SPL national address', ar: 'العنوان الوطني SPL' }, { en: 'Gift batch gb-2', ar: 'دفعة الإهداء gb-2' }],
+    routeTo: { en: 'Sara Al-Dosari (org approver)', ar: 'سارة الدوسري (معتمِدة المنشأة)' },
+  },
+}
+
+// ── Sales quote pipeline (sales agent) ──
+export interface PipelineQuote {
+  id: string
+  ref: string
+  account: Bilingual
+  stage: 'draft' | 'sent' | 'accepted' | 'won' | 'lost'
+  valueMinor: number
+  validUntil: string
+  note: Bilingual
+}
+
+export const salesPipeline: PipelineQuote[] = [
+  { id: 'pq-4', ref: 'RFQ-2026-0192', account: { en: 'Jeddah Grand Hotel', ar: 'فندق جدة الكبير' }, stage: 'draft', valueMinor: 6300000, validUntil: '2026-07-20', note: { en: 'Platinum amenity programme', ar: 'برنامج ضيافة بلاتيني' } },
+  { id: 'pq-1', ref: 'RFQ-2026-0188', account: { en: 'Najd Hospitality', ar: 'نجد للضيافة' }, stage: 'sent', valueMinor: 4820000, validUntil: '2026-07-10', note: { en: 'Ramadan gifting — 400 boxes', ar: 'إهداء رمضان — ٤٠٠ علبة' } },
+  { id: 'pq-5', ref: 'RFQ-2026-0190', account: { en: 'Rawabi Catering', ar: 'روابي للتموين' }, stage: 'sent', valueMinor: 1560000, validUntil: '2026-07-05', note: { en: 'Reseller starter order', ar: 'طلب موزّع مبدئي' } },
+  { id: 'pq-2', ref: 'RFQ-2026-0171', account: { en: 'Najd Hospitality', ar: 'نجد للضيافة' }, stage: 'accepted', valueMinor: 2140000, validUntil: '2026-06-30', note: { en: 'Hotel amenity bars — monthly', ar: 'ألواح ضيافة الفندق — شهريًا' } },
+  { id: 'pq-6', ref: 'RFQ-2026-0185', account: { en: 'Aseer Events', ar: 'عسير للفعاليات' }, stage: 'accepted', valueMinor: 1200000, validUntil: '2026-07-02', note: { en: 'National Day campaign', ar: 'حملة اليوم الوطني' } },
+  { id: 'pq-7', ref: 'RFQ-2026-0179', account: { en: 'Najd Hospitality', ar: 'نجد للضيافة' }, stage: 'won', valueMinor: 3180000, validUntil: '2026-06-09', note: { en: 'Amenity bars — converted', ar: 'ألواح ضيافة — محوّلة' } },
+  { id: 'pq-8', ref: 'RFQ-2026-0168', account: { en: 'Jeddah Grand Hotel', ar: 'فندق جدة الكبير' }, stage: 'won', valueMinor: 2750000, validUntil: '2026-05-28', note: { en: 'Eid corporate gifting', ar: 'إهداء العيد المؤسسي' } },
+  { id: 'pq-3', ref: 'RFQ-2026-0150', account: { en: 'Aseer Events', ar: 'عسير للفعاليات' }, stage: 'lost', valueMinor: 980000, validUntil: '2026-05-20', note: { en: 'Conference welcome gifts', ar: 'هدايا ترحيب المؤتمر' } },
+]
+
 // ── Catalogue & CMS (content editor) ──
 export interface CmsArticle {
   id: string
