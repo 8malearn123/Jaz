@@ -2,22 +2,25 @@ import { useState } from 'react'
 import {
   LayoutGrid, Users, Landmark, Package, FileText, Gift, Settings,
   ShieldCheck, TrendingUp, Download, ArrowUpRight, ArrowDownRight,
-  MapPin, Plus, Check, Pencil, Building2, BadgeCheck,
+  MapPin, Plus, Check, Pencil, Building2, BadgeCheck, Trash2,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { organization, availableCreditMinor } from '@/data/organization'
 import type { CreditLedgerEntry } from '@/data/types'
 import {
-  members as memberData, accountOrders, quotes as quoteData, giftBatches, orgAddresses, orgVerification,
-  type OrgMember, type AccountOrder,
+  members as memberData, accountOrders, quotes as quoteData, giftBatches as batchData, orgAddresses as addressData, orgVerification,
+  type OrgMember, type AccountOrder, type OrgAddress, type GiftBatch,
 } from '@/data/business'
 import { AccountShell, type TabDef } from '@/components/account/AccountShell'
+import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
 import { useTab } from '@/lib/useTab'
 import { cn } from '@/lib/cn'
 
 const org = organization
+const ROLES: OrgMember['role'][] = ['b2b_admin', 'approver', 'buyer', 'viewer']
+const roleVariant: Record<string, 'gold' | 'success' | 'neutral'> = { b2b_admin: 'gold', approver: 'success', buyer: 'neutral', viewer: 'neutral' }
 
 const orderVariant: Record<AccountOrder['status'], 'gold' | 'success' | 'danger' | 'neutral'> = {
   awaiting_approval: 'danger', confirmed: 'gold', processing: 'gold', shipped: 'gold', delivered: 'success', rejected: 'neutral',
@@ -68,7 +71,6 @@ function Overview({ onTab }: { onTab: (id: string) => void }) {
 
   return (
     <div className="flex flex-col gap-lg">
-      {/* org identity */}
       <div className="rounded-xl bg-canvas-dark text-ink-on-dark p-xl flex flex-wrap items-center gap-md justify-between">
         <div className="flex items-center gap-md">
           <span className="grid place-items-center w-14 h-14 rounded-lg bg-surface-dark-1 border border-hairline-dark text-primary-bright shrink-0">
@@ -122,29 +124,26 @@ function Overview({ onTab }: { onTab: (id: string) => void }) {
   )
 }
 
-/* ── Team (manage members & per-order limits) ── */
+/* ── Team ── */
 function Team() {
   const { t, pick, money } = useLocale()
   const [members, setMembers] = useState<OrgMember[]>(memberData)
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  const [inviteOpen, setInviteOpen] = useState(false)
+  const [removeId, setRemoveId] = useState<string | null>(null)
 
-  const roleVariant: Record<string, 'gold' | 'success' | 'neutral'> = { b2b_admin: 'gold', approver: 'success', buyer: 'neutral', viewer: 'neutral' }
-
-  const startEdit = (m: OrgMember) => {
-    setEditing(m.id)
-    setDraft(m.perOrderLimitMinor ? String(Math.round(m.perOrderLimitMinor / 100)) : '')
-  }
-  const save = (id: string) => {
-    setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, perOrderLimitMinor: draft ? Number(draft) * 100 : null } : m)))
-    setEditing(null)
-  }
+  const startEdit = (m: OrgMember) => { setEditing(m.id); setDraft(m.perOrderLimitMinor ? String(Math.round(m.perOrderLimitMinor / 100)) : '') }
+  const save = (id: string) => { setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, perOrderLimitMinor: draft ? Number(draft) * 100 : null } : m))); setEditing(null) }
+  const changeRole = (id: string, role: OrgMember['role']) => setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, role } : m)))
+  const removeMember = (id: string) => setMembers((prev) => prev.filter((m) => m.id !== id))
+  const removing = members.find((m) => m.id === removeId)
 
   return (
     <div className="flex flex-col gap-lg">
       <div className="flex items-center justify-between gap-md">
         <h2 className="font-serif text-headline text-ink">{t('team.title')}</h2>
-        <button className={buttonClass('primary', 'sm')}><Plus size={15} /> {t('team.invite')}</button>
+        <button onClick={() => setInviteOpen(true)} className={buttonClass('primary', 'sm')}><Plus size={15} /> {t('team.invite')}</button>
       </div>
       <p className="font-sans text-data text-ink-muted">{t('orgadmin.teamNote')}</p>
       <div className="card overflow-hidden">
@@ -159,7 +158,7 @@ function Team() {
                 <p className="font-sans text-caption text-ink-subtle truncate">{m.email} · {m.costCenter}</p>
               </div>
               <div className="flex items-center gap-md">
-                <div className="text-end hidden sm:block min-w-[120px]">
+                <div className="text-end hidden sm:block min-w-[116px]">
                   <span className="block font-sans text-caption text-ink-subtle uppercase tracking-wide">{t('team.perOrderLimit')}</span>
                   {editing === m.id ? (
                     <span className="inline-flex items-center gap-xs">
@@ -173,18 +172,83 @@ function Team() {
                     </button>
                   )}
                 </div>
-                <StatusBadge variant={roleVariant[m.role]}>{t(`team.role.${m.role}`)}</StatusBadge>
+                <select
+                  value={m.role}
+                  onChange={(e) => changeRole(m.id, e.target.value as OrgMember['role'])}
+                  className={cn('rounded-md border border-hairline-strong bg-surface-1 font-sans text-caption uppercase tracking-[0.06em] py-1.5 ps-2 pe-7 cursor-pointer', `text-${roleVariant[m.role] === 'gold' ? 'primary-hover' : 'ink'}`)}
+                  aria-label={t('team.roleField')}
+                >
+                  {ROLES.map((r) => <option key={r} value={r}>{t(`team.role.${r}`)}</option>)}
+                </select>
                 <StatusBadge variant={m.status === 'active' ? 'success' : 'neutral'}>{t(`team.status.${m.status}`)}</StatusBadge>
+                <button
+                  onClick={() => setRemoveId(m.id)}
+                  disabled={m.role === 'b2b_admin'}
+                  className="grid place-items-center w-8 h-8 rounded-md text-ink-subtle hover:text-danger hover:bg-danger/5 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                  aria-label={t('team.remove')}
+                >
+                  <Trash2 size={15} />
+                </button>
               </div>
             </li>
           ))}
         </ul>
       </div>
+
+      <InviteMemberModal open={inviteOpen} onClose={() => setInviteOpen(false)} onAdd={(m) => setMembers((prev) => [...prev, m])} />
+      <Confirm
+        open={!!removeId}
+        onClose={() => setRemoveId(null)}
+        title={t('team.remove')}
+        body={removing ? `${t('team.removeBody')} — ${pick(removing.name)}` : ''}
+        onConfirm={() => { if (removeId) removeMember(removeId); setRemoveId(null) }}
+      />
     </div>
   )
 }
 
-/* ── Credit (account overview) ── */
+function InviteMemberModal({ open, onClose, onAdd }: { open: boolean; onClose: () => void; onAdd: (m: OrgMember) => void }) {
+  const { t } = useLocale()
+  const [form, setForm] = useState({ name: '', email: '', role: 'buyer' as OrgMember['role'], limit: '', costCenter: '' })
+  const valid = form.name.trim() && /.+@.+\..+/.test(form.email)
+  const submit = () => {
+    onAdd({
+      id: `m-${Date.now()}`,
+      name: { en: form.name, ar: form.name },
+      email: form.email,
+      role: form.role,
+      perOrderLimitMinor: form.limit ? Number(form.limit) * 100 : null,
+      costCenter: form.costCenter || '—',
+      status: 'invited',
+    })
+    setForm({ name: '', email: '', role: 'buyer', limit: '', costCenter: '' })
+    onClose()
+  }
+  return (
+    <Modal open={open} onClose={onClose} size="md" eyebrow={t('business.tab.team')} title={t('team.inviteTitle')}
+      footer={<>
+        <button onClick={onClose} className={buttonClass('ghost', 'sm')}>{t('common.cancel')}</button>
+        <button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}>{t('team.send')}</button>
+      </>}>
+      <div className="flex flex-col gap-md">
+        <Field label={t('team.name')} value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} />
+        <Field label={t('team.email')} value={form.email} onChange={(v) => setForm((f) => ({ ...f, email: v }))} type="email" placeholder="name@company.sa" />
+        <div className="flex flex-col sm:flex-row gap-md">
+          <label className="flex flex-col gap-xs flex-1">
+            <span className="label">{t('team.roleField')}</span>
+            <select value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as OrgMember['role'] }))} className="input cursor-pointer">
+              {ROLES.map((r) => <option key={r} value={r}>{t(`team.role.${r}`)}</option>)}
+            </select>
+          </label>
+          <Field label={t('team.costCenter')} value={form.costCenter} onChange={(v) => setForm((f) => ({ ...f, costCenter: v }))} />
+        </div>
+        <Field label={`${t('team.perOrderLimit')} (SAR)`} value={form.limit} onChange={(v) => setForm((f) => ({ ...f, limit: v.replace(/\D/g, '') }))} placeholder="15000" />
+      </div>
+    </Modal>
+  )
+}
+
+/* ── Credit ── */
 function Credit() {
   const { t, pick, money, locale } = useLocale()
   const available = availableCreditMinor(org)
@@ -192,6 +256,12 @@ function Credit() {
     net_15: { en: 'Net 15', ar: 'صافي ١٥' }, net_30: { en: 'Net 30', ar: 'صافي ٣٠' }, net_60: { en: 'Net 60', ar: 'صافي ٦٠' }, prepaid: { en: 'Prepaid', ar: 'مسبق' },
   }
   const pct = (n: number) => `${Math.min(100, (n / org.credit.limitMinor) * 100)}%`
+  const downloadStatement = (id: string) => {
+    const s = org.statements.find((x) => x.id === id)!
+    const doc = { period: s.period.en, opening_minor: s.openingMinor, charges_minor: s.chargesMinor, payments_minor: s.paymentsMinor, closing_minor: s.closingMinor, currency: 'SAR' }
+    const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `statement-${s.id}.json`; a.click(); URL.revokeObjectURL(url)
+  }
   return (
     <div className="flex flex-col gap-lg">
       <div className="grid gap-md md:grid-cols-4">
@@ -228,7 +298,7 @@ function Credit() {
                   <span className="font-serif text-body text-ink">{pick(s.period)}</span>
                   <span className="font-sans text-caption text-ink-subtle tabular-nums">{pick({ en: 'Closing', ar: 'الختامي' })} {money(s.closingMinor)}</span>
                 </div>
-                <button className="inline-flex items-center gap-xs font-sans text-caption uppercase tracking-[0.08em] text-primary-hover hover:text-ink"><Download size={15} /> PDF</button>
+                <button onClick={() => downloadStatement(s.id)} className="inline-flex items-center gap-xs font-sans text-caption uppercase tracking-[0.08em] text-primary-hover hover:text-ink"><Download size={15} /> PDF</button>
               </li>
             ))}
           </ul>
@@ -255,9 +325,7 @@ function Orders() {
               <p className="font-sans text-caption text-ink-subtle mt-xxs">
                 {t('border.buyer')}: {pick(o.buyer)} · {pick(o.summary)} · {new Date(o.placedAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-GB', { day: 'numeric', month: 'short' })}
               </p>
-              {o.status === 'awaiting_approval' && (
-                <p className="font-sans text-caption text-danger mt-xxs">{t('orgadmin.withApprover')}</p>
-              )}
+              {o.status === 'awaiting_approval' && <p className="font-sans text-caption text-danger mt-xxs">{t('orgadmin.withApprover')}</p>}
             </div>
             <span className="font-serif text-card-title text-ink tabular-nums">{money(o.totalMinor)}</span>
           </div>
@@ -296,16 +364,18 @@ function Quotes() {
 /* ── Gifting ── */
 function Gifting() {
   const { t, pick, locale } = useLocale()
+  const [batches, setBatches] = useState<GiftBatch[]>(batchData)
+  const [open, setOpen] = useState(false)
   const variant: Record<string, 'gold' | 'success' | 'neutral'> = { draft: 'neutral', processing: 'gold', shipped: 'gold', delivered: 'success' }
   return (
     <div className="flex flex-col gap-lg">
       <div className="flex items-center justify-between gap-md">
         <h2 className="font-serif text-headline text-ink">{t('gift.batches')}</h2>
-        <button className={buttonClass('primary', 'sm')}><Plus size={15} /> {t('gift.newBatch')}</button>
+        <button onClick={() => setOpen(true)} className={buttonClass('primary', 'sm')}><Plus size={15} /> {t('gift.newBatch')}</button>
       </div>
       <div className="grid sm:grid-cols-2 gap-md">
-        {giftBatches.map((b) => (
-          <div key={b.id} className="card p-lg flex flex-col gap-sm">
+        {batches.map((b) => (
+          <div key={b.id} className="card p-lg flex flex-col gap-sm animate-fade-up">
             <div className="flex items-center justify-between">
               <h3 className="font-serif text-card-title text-ink">{pick(b.occasion)}</h3>
               <StatusBadge variant={variant[b.status]}>{t(`gift.batchStatus.${b.status}`)}</StatusBadge>
@@ -315,13 +385,42 @@ function Gifting() {
           </div>
         ))}
       </div>
+      <NewBatchModal open={open} onClose={() => setOpen(false)} onAdd={(b) => setBatches((prev) => [b, ...prev])} />
     </div>
   )
 }
 
-/* ── Settings: profile + addresses + verification ── */
+function NewBatchModal({ open, onClose, onAdd }: { open: boolean; onClose: () => void; onAdd: (b: GiftBatch) => void }) {
+  const { t } = useLocale()
+  const [occasion, setOccasion] = useState('')
+  const [count, setCount] = useState('100')
+  const valid = occasion.trim() && Number(count) > 0
+  const submit = () => {
+    onAdd({ id: `gb-${Date.now()}`, occasion: { en: occasion, ar: occasion }, recipientCount: Number(count) || 0, status: 'draft', createdAt: '2026-06-21' })
+    setOccasion(''); setCount('100'); onClose()
+  }
+  return (
+    <Modal open={open} onClose={onClose} size="md" eyebrow={t('business.tab.gifting')} title={t('gift.newBatchTitle')}
+      footer={<>
+        <button onClick={onClose} className={buttonClass('ghost', 'sm')}>{t('common.cancel')}</button>
+        <button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}>{t('gift.create')}</button>
+      </>}>
+      <div className="flex flex-col gap-md">
+        <Field label={t('gift.occasion')} value={occasion} onChange={setOccasion} placeholder="Eid Al-Adha" />
+        <Field label={t('gift.recipientCount')} value={count} onChange={(v) => setCount(v.replace(/\D/g, ''))} placeholder="240" />
+        <div className="rounded-md bg-surface-2 border border-hairline border-dashed p-md text-center">
+          <p className="font-sans text-caption text-ink-subtle">{t('gift.uploadRecipients')}</p>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+/* ── Settings ── */
 function SettingsPanel() {
   const { t, pick, locale } = useLocale()
+  const [addresses, setAddresses] = useState<OrgAddress[]>(addressData)
+  const [addOpen, setAddOpen] = useState(false)
   const sourceLabel: Record<string, string> = { wathq: 'Wathq', zatca: 'ZATCA', nafath: 'Nafath' }
   const checkLabel: Record<string, { en: string; ar: string }> = {
     commercial_registration: { en: 'Commercial Registration', ar: 'السجل التجاري' },
@@ -330,7 +429,6 @@ function SettingsPanel() {
   }
   return (
     <div className="flex flex-col gap-lg">
-      {/* verification */}
       <div className="card overflow-hidden">
         <div className="px-lg py-md bg-surface-2 border-b border-hairline flex items-center gap-sm">
           <ShieldCheck size={17} className="text-success" />
@@ -350,30 +448,95 @@ function SettingsPanel() {
         </ul>
       </div>
 
-      {/* addresses */}
       <div className="flex items-center justify-between gap-md">
         <h3 className="font-serif text-card-title text-ink">{t('orgadmin.addresses')}</h3>
-        <button className={buttonClass('secondary', 'sm')}><Plus size={15} /> {t('addr.add')}</button>
+        <button onClick={() => setAddOpen(true)} className={buttonClass('secondary', 'sm')}><Plus size={15} /> {t('addr.add')}</button>
       </div>
       <div className="grid sm:grid-cols-2 gap-md">
-        {orgAddresses.map((a) => (
+        {addresses.map((a) => (
           <div key={a.id} className={cn('card p-lg flex flex-col gap-sm', a.isDefault && 'ring-1 ring-primary/30')}>
             <div className="flex items-center justify-between">
               <span className="inline-flex items-center gap-xs font-serif text-card-title text-ink">
                 <MapPin size={16} className="text-primary-hover" /> {pick(a.label)}
               </span>
-              <StatusBadge variant="neutral">{a.type === 'billing' ? pick({ en: 'Billing', ar: 'الفوترة' }) : pick({ en: 'Shipping', ar: 'الشحن' })}</StatusBadge>
+              <StatusBadge variant="neutral">{a.type === 'billing' ? t('addr.billing') : t('addr.shipping')}</StatusBadge>
             </div>
             <p className="font-sans text-data text-ink-muted">{pick(a.district)}, {pick(a.city)} · {a.shortAddress}</p>
             {a.isDefault && <StatusBadge variant="gold" className="self-start">{t('addr.default')}</StatusBadge>}
           </div>
         ))}
       </div>
+
+      <AddAddressModal open={addOpen} onClose={() => setAddOpen(false)} onAdd={(a) => setAddresses((prev) => [...prev, a])} />
     </div>
   )
 }
 
+function AddAddressModal({ open, onClose, onAdd }: { open: boolean; onClose: () => void; onAdd: (a: OrgAddress) => void }) {
+  const { t } = useLocale()
+  const [form, setForm] = useState({ type: 'shipping' as OrgAddress['type'], label: '', city: '', district: '', shortAddress: '', isDefault: false })
+  const valid = form.label.trim() && form.city.trim() && form.shortAddress.trim()
+  const submit = () => {
+    onAdd({
+      id: `oa-${Date.now()}`, type: form.type,
+      label: { en: form.label, ar: form.label }, city: { en: form.city, ar: form.city }, district: { en: form.district, ar: form.district },
+      shortAddress: form.shortAddress.toUpperCase(), isDefault: form.isDefault,
+    })
+    setForm({ type: 'shipping', label: '', city: '', district: '', shortAddress: '', isDefault: false })
+    onClose()
+  }
+  return (
+    <Modal open={open} onClose={onClose} size="md" eyebrow={t('checkout.nationalAddress')} title={t('addr.addTitle')}
+      footer={<>
+        <button onClick={onClose} className={buttonClass('ghost', 'sm')}>{t('common.cancel')}</button>
+        <button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}>{t('addr.save')}</button>
+      </>}>
+      <div className="flex flex-col gap-md">
+        <label className="flex flex-col gap-xs">
+          <span className="label">{t('addr.type')}</span>
+          <select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as OrgAddress['type'] }))} className="input cursor-pointer">
+            <option value="shipping">{t('addr.shipping')}</option>
+            <option value="billing">{t('addr.billing')}</option>
+          </select>
+        </label>
+        <Field label={t('addr.label')} value={form.label} onChange={(v) => setForm((f) => ({ ...f, label: v }))} placeholder="Central warehouse" />
+        <div className="flex flex-col sm:flex-row gap-md">
+          <Field label={t('checkout.city')} value={form.city} onChange={(v) => setForm((f) => ({ ...f, city: v }))} />
+          <Field label={t('checkout.district')} value={form.district} onChange={(v) => setForm((f) => ({ ...f, district: v }))} />
+        </div>
+        <Field label={t('checkout.shortAddress')} value={form.shortAddress} onChange={(v) => setForm((f) => ({ ...f, shortAddress: v }))} placeholder="RWAB1234" />
+        <label className="flex items-center gap-sm cursor-pointer">
+          <input type="checkbox" checked={form.isDefault} onChange={(e) => setForm((f) => ({ ...f, isDefault: e.target.checked }))} className="w-4 h-4 accent-primary" />
+          <span className="font-sans text-data text-ink-muted">{t('addr.setDefault')}</span>
+        </label>
+      </div>
+    </Modal>
+  )
+}
+
 /* ── shared ── */
+function Confirm({ open, onClose, title, body, onConfirm }: { open: boolean; onClose: () => void; title: string; body: string; onConfirm: () => void }) {
+  const { t } = useLocale()
+  return (
+    <Modal open={open} onClose={onClose} size="sm" title={title}
+      footer={<>
+        <button onClick={onClose} className={buttonClass('ghost', 'sm')}>{t('common.cancel')}</button>
+        <button onClick={onConfirm} className="btn btn-sm bg-danger text-on-danger hover:bg-danger/90">{t('common.confirm')}</button>
+      </>}>
+      <p className="font-sans text-body text-ink-muted leading-relaxed">{body}</p>
+    </Modal>
+  )
+}
+
+function Field({ label, value, onChange, placeholder, type }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
+  return (
+    <label className="flex flex-col gap-xs flex-1">
+      <span className="label">{label}</span>
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} type={type} className="input" />
+    </label>
+  )
+}
+
 function Stat({ label, value, tone = 'ink' }: { label: string; value: string; tone?: 'ink' | 'gold' | 'danger' }) {
   const color = tone === 'gold' ? 'text-primary-hover' : tone === 'danger' ? 'text-danger' : 'text-ink'
   return (

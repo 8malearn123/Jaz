@@ -477,6 +477,13 @@ export const dict: Dict = {
   'team.status.active': { en: 'Active', ar: 'نشط' },
   'team.status.invited': { en: 'Invited', ar: 'مدعو' },
   'team.noLimit': { en: 'No limit', ar: 'بلا حد' },
+  'team.inviteTitle': { en: 'Invite a team member', ar: 'دعوة عضو إلى الفريق' },
+  'team.name': { en: 'Full name', ar: 'الاسم الكامل' },
+  'team.email': { en: 'Work email', ar: 'البريد المهني' },
+  'team.roleField': { en: 'Role', ar: 'الدور' },
+  'team.send': { en: 'Send invite', ar: 'إرسال الدعوة' },
+  'team.remove': { en: 'Remove member', ar: 'إزالة العضو' },
+  'team.removeBody': { en: 'They will lose access to this organization immediately. Open orders are unaffected.', ar: 'سيفقد العضو صلاحية الوصول إلى المنشأة فورًا. لا تتأثر الطلبات القائمة.' },
 
   // corporate gifting batches
   'gift.batches': { en: 'Corporate gift batches', ar: 'دفعات إهداء الشركات' },
@@ -489,6 +496,9 @@ export const dict: Dict = {
   'gift.batchStatus.delivered': { en: 'Delivered', ar: 'تم التوصيل' },
   'gift.batchEmpty': { en: 'No gift batches yet', ar: 'لا دفعات إهداء بعد' },
   'gift.uploadRecipients': { en: 'Upload recipient list', ar: 'رفع قائمة المستفيدين' },
+  'gift.newBatchTitle': { en: 'New corporate gift batch', ar: 'دفعة إهداء جديدة للشركات' },
+  'gift.recipientCount': { en: 'Number of recipients', ar: 'عدد المستفيدين' },
+  'gift.create': { en: 'Create batch', ar: 'إنشاء الدفعة' },
 
   // ── Role / persona picker ──────────────────────────────
   'picker.welcome': { en: 'Welcome to JAZ', ar: 'مرحباً بك في جاز' },
@@ -597,6 +607,9 @@ export const dict: Dict = {
   'addr.setDefault': { en: 'Set as default', ar: 'تعيين كافتراضي' },
   'addr.save': { en: 'Save address', ar: 'حفظ العنوان' },
   'addr.removed': { en: 'Removed', ar: 'أُزيل' },
+  'addr.type': { en: 'Address type', ar: 'نوع العنوان' },
+  'addr.billing': { en: 'Billing', ar: 'الفوترة' },
+  'addr.shipping': { en: 'Shipping', ar: 'الشحن' },
   'privacy.exportTitle': { en: 'Export your data', ar: 'تصدير بياناتك' },
   'privacy.exportBody': { en: 'We will package your profile, orders and consents as a portable JSON file (PDPL data portability).', ar: 'سنجمع ملفك وطلباتك وموافقاتك في ملف JSON قابل للنقل (قابلية نقل البيانات).' },
   'privacy.eraseTitle': { en: 'Request account erasure', ar: 'طلب حذف الحساب' },
