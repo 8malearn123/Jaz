@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   LayoutGrid, Package, FileText, ShoppingBag, AlertTriangle, Repeat, Check, ArrowRight,
-  Wallet, ClipboardList, Plus, Eye, Download, CheckCircle2, Trash2, Building2, Bookmark,
+  Wallet, ClipboardList, Plus, Eye, Download, CheckCircle2, Trash2, Building2, Bookmark, Pencil,
   ClipboardCheck, Cog, Truck, PackageCheck, Clock, ShoppingCart,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
@@ -427,11 +427,12 @@ function Lists() {
   const { t, pick, money } = useLocale()
   const { add } = useCart()
   const [lists, setLists] = useState<SavedList[]>(savedListsSeed.filter((l) => l.ownerId === BUYER_ID))
-  const [newOpen, setNewOpen] = useState(false)
+  const [editor, setEditor] = useState<{ list: SavedList | null } | null>(null)
   const [addedId, setAddedId] = useState<string | null>(null)
 
   const listTotal = (l: SavedList) => l.items.reduce((s, it) => { const v = variantById(it.variantId); return v ? s + v.variant.b2bPriceMinor * it.qty : s }, 0)
   const addAll = (l: SavedList) => { l.items.forEach((it) => add(it.variantId, it.qty)); setAddedId(l.id); setTimeout(() => setAddedId(null), 1500) }
+  const upsert = (saved: SavedList) => setLists((prev) => (prev.some((x) => x.id === saved.id) ? prev.map((x) => (x.id === saved.id ? saved : x)) : [saved, ...prev]))
 
   return (
     <div className="flex flex-col gap-lg">
@@ -440,7 +441,7 @@ function Lists() {
           <h2 className="font-serif text-headline text-ink">{t('buyer.lists.title')}</h2>
           <p className="font-sans text-data text-ink-muted mt-xxs">{t('buyer.lists.subtitle')}</p>
         </div>
-        <button onClick={() => setNewOpen(true)} className={buttonClass('primary', 'sm', 'shrink-0')}><Plus size={15} /> {t('buyer.lists.new')}</button>
+        <button onClick={() => setEditor({ list: null })} className={buttonClass('primary', 'sm', 'shrink-0')}><Plus size={15} /> {t('buyer.lists.new')}</button>
       </div>
 
       <div className="grid sm:grid-cols-2 gap-md">
@@ -456,7 +457,10 @@ function Lists() {
                     <p className="font-sans text-caption text-ink-subtle">{l.items.length} {t('buyer.lists.items')} · {money(listTotal(l))}</p>
                   </div>
                 </div>
-                <button onClick={() => setLists((prev) => prev.filter((x) => x.id !== l.id))} className="grid place-items-center w-8 h-8 rounded-md text-ink-subtle hover:text-danger hover:bg-danger/5" aria-label={t('buyer.lists.delete')}><Trash2 size={15} /></button>
+                <div className="flex items-center gap-xxs shrink-0">
+                  <button onClick={() => setEditor({ list: l })} className="grid place-items-center w-8 h-8 rounded-md text-ink-subtle hover:text-primary-hover hover:bg-primary/5" aria-label={t('buyer.lists.edit')}><Pencil size={15} /></button>
+                  <button onClick={() => setLists((prev) => prev.filter((x) => x.id !== l.id))} className="grid place-items-center w-8 h-8 rounded-md text-ink-subtle hover:text-danger hover:bg-danger/5" aria-label={t('buyer.lists.delete')}><Trash2 size={15} /></button>
+                </div>
               </div>
 
               <ul className="flex flex-col gap-xs">
@@ -483,30 +487,42 @@ function Lists() {
         )}
       </div>
 
-      <NewListModal open={newOpen} onClose={() => setNewOpen(false)} onCreate={(l) => setLists((prev) => [l, ...prev])} />
+      {editor && (
+        <ListEditorModal
+          key={editor.list?.id ?? 'new'}
+          list={editor.list}
+          onClose={() => setEditor(null)}
+          onSave={(l) => { upsert(l); setEditor(null) }}
+        />
+      )}
     </div>
   )
 }
 
-function NewListModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (l: SavedList) => void }) {
-  const { t, money } = useLocale()
-  const [name, setName] = useState('')
-  const [lines, setLines] = useState<{ productId: string; qty: number }[]>([{ productId: '', qty: 24 }])
+function ListEditorModal({ list, onClose, onSave }: { list: SavedList | null; onClose: () => void; onSave: (l: SavedList) => void }) {
+  const { t, pick, locale, money } = useLocale()
+  const editing = !!list
+  const [name, setName] = useState(list ? pick(list.name) : '')
+  const [lines, setLines] = useState<{ productId: string; qty: number }[]>(
+    list && list.items.length
+      ? list.items.map((it) => ({ productId: variantById(it.variantId)?.product.id ?? '', qty: it.qty }))
+      : [{ productId: '', qty: 24 }],
+  )
   const valid = name.trim() && lines.some((l) => l.productId && l.qty > 0)
   const setLine = (i: number, patch: Partial<{ productId: string; qty: number }>) => setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
   const removeLine = (i: number) => setLines((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev))
 
   const submit = () => {
     const items = lines.filter((l) => l.productId && l.qty > 0).map((l) => ({ variantId: products.find((p) => p.id === l.productId)!.variants[0].id, qty: l.qty }))
-    onCreate({ id: `sl-${Date.now()}`, name: { en: name, ar: name }, ownerId: BUYER_ID, items })
-    setName(''); setLines([{ productId: '', qty: 24 }]); onClose()
+    const nm = list ? { ...list.name, [locale]: name } : { en: name, ar: name }
+    onSave({ id: list?.id ?? `sl-${Date.now()}`, name: nm, ownerId: BUYER_ID, items })
   }
 
   return (
-    <Modal open={open} onClose={onClose} size="md" eyebrow={t('buyer.tab.lists')} title={t('buyer.lists.newTitle')}
+    <Modal open onClose={onClose} size="md" eyebrow={t('buyer.tab.lists')} title={editing ? t('buyer.lists.editTitle') : t('buyer.lists.newTitle')}
       footer={<>
         <button onClick={onClose} className={buttonClass('ghost', 'sm')}>{t('common.cancel')}</button>
-        <button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}>{t('buyer.lists.create')}</button>
+        <button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}>{editing ? t('buyer.lists.save') : t('buyer.lists.create')}</button>
       </>}>
       <div className="flex flex-col gap-md">
         <label className="flex flex-col gap-xs">
