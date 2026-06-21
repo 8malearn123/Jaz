@@ -7,6 +7,7 @@ export interface OrgMember {
   role: 'b2b_admin' | 'buyer' | 'approver' | 'viewer'
   perOrderLimitMinor: number | null
   costCenter: string
+  costCenterId?: string
   status: 'active' | 'invited'
 }
 
@@ -50,6 +51,7 @@ export const members: OrgMember[] = [
     role: 'b2b_admin',
     perOrderLimitMinor: null,
     costCenter: 'HQ',
+    costCenterId: 'cc-hq',
     status: 'active',
   },
   {
@@ -59,6 +61,7 @@ export const members: OrgMember[] = [
     role: 'approver',
     perOrderLimitMinor: 5000000, // SAR 50,000
     costCenter: 'Procurement',
+    costCenterId: 'cc-proc',
     status: 'active',
   },
   {
@@ -68,6 +71,7 @@ export const members: OrgMember[] = [
     role: 'buyer',
     perOrderLimitMinor: 1500000, // SAR 15,000
     costCenter: 'Events',
+    costCenterId: 'cc-events',
     status: 'active',
   },
   {
@@ -77,6 +81,7 @@ export const members: OrgMember[] = [
     role: 'viewer',
     perOrderLimitMinor: null,
     costCenter: 'Finance',
+    costCenterId: 'cc-fin',
     status: 'invited',
   },
 ]
@@ -135,6 +140,17 @@ export const accountOrders: AccountOrder[] = [
     summary: { en: '60 × Corporate Crescent', ar: '٦٠ × هلال الشركات' },
   },
   {
+    orderNo: 'JAZ-2026-001195',
+    placedAt: '2026-06-20',
+    status: 'awaiting_approval',
+    totalMinor: 6400000,
+    buyer: { en: 'Faisal Al-Harbi', ar: 'فيصل الحربي' },
+    buyerId: 'm-3',
+    poNumber: 'PO-2026-0448',
+    requiresApproval: true,
+    summary: { en: '240 × Founding Day hampers', ar: '٢٤٠ × سلة يوم التأسيس' },
+  },
+  {
     orderNo: 'JAZ-2026-001140',
     placedAt: '2026-06-09',
     status: 'processing',
@@ -173,6 +189,7 @@ export const accountOrders: AccountOrder[] = [
 export const accountOrderItems: Record<string, { variantId: string; qty: number }[]> = {
   'JAZ-2026-001188': [{ variantId: 'v-rose-180', qty: 60 }, { variantId: 'v-jas-90', qty: 60 }],
   'JAZ-2026-001190': [{ variantId: 'v-milk-case', qty: 8 }, { variantId: 'v-cof-case', qty: 6 }],
+  'JAZ-2026-001195': [{ variantId: 'v-rose-180', qty: 120 }, { variantId: 'v-jas-90', qty: 120 }, { variantId: 'v-dark-90', qty: 120 }],
   'JAZ-2026-001140': [{ variantId: 'v-milk-case', qty: 20 }, { variantId: 'v-dark-90', qty: 100 }],
   'JAZ-2026-001065': [{ variantId: 'v-milk-90', qty: 24 }, { variantId: 'v-lav-90', qty: 24 }],
   'JAZ-2026-000981': [{ variantId: 'v-milk-case', qty: 40 }],
@@ -254,6 +271,10 @@ export const costCenters: CostCenter[] = [
   { id: 'cc-events', code: 'EVT', name: { en: 'Events & hospitality', ar: 'الفعاليات والضيافة' }, ownerId: 'm-3', budgetMinor: 8000000, consumedMinor: 7840000 },
   { id: 'cc-fin', code: 'FIN', name: { en: 'Finance', ar: 'المالية' }, ownerId: 'm-4', budgetMinor: 3000000, consumedMinor: 480000 },
 ]
+
+export function costCenterById(id: string | undefined): CostCenter | undefined {
+  return id ? costCenters.find((c) => c.id === id) : undefined
+}
 
 // The spend policy the admin sets — what flows straight through, what needs eyes.
 export interface OrgPolicy {
