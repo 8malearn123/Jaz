@@ -276,6 +276,20 @@ export function costCenterById(id: string | undefined): CostCenter | undefined {
   return id ? costCenters.find((c) => c.id === id) : undefined
 }
 
+// Saved shopping lists — a B2B buyer's reusable baskets for one-tap reordering.
+export interface SavedList {
+  id: string
+  name: Bilingual
+  ownerId: string
+  items: { variantId: string; qty: number }[]
+}
+
+export const savedLists: SavedList[] = [
+  { id: 'sl-1', name: { en: 'Weekly hotel amenities', ar: 'ضيافة الفندق الأسبوعية' }, ownerId: 'm-3', items: [{ variantId: 'v-milk-90', qty: 60 }, { variantId: 'v-dark-90', qty: 40 }] },
+  { id: 'sl-2', name: { en: 'Eid gifting set', ar: 'طقم إهداء العيد' }, ownerId: 'm-3', items: [{ variantId: 'v-rose-180', qty: 80 }, { variantId: 'v-jas-90', qty: 80 }, { variantId: 'v-cof-case', qty: 10 }] },
+  { id: 'sl-3', name: { en: 'Conference welcome', ar: 'ترحيب المؤتمر' }, ownerId: 'm-3', items: [{ variantId: 'v-lav-90', qty: 120 }] },
+]
+
 // The spend policy the admin sets — what flows straight through, what needs eyes.
 export interface OrgPolicy {
   autoApproveBelowMinor: number
