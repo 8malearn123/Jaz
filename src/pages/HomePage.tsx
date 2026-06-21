@@ -321,7 +321,7 @@ function CorporateBand() {
               {t('home.corporate.cta')}
               <ArrowRight size={16} className="rtl:rotate-180" />
             </Link>
-            <Link to="/account" className="btn bg-transparent text-ink-on-dark border border-hairline-dark hover:border-primary/60 hover:text-primary-bright">
+            <Link to="/business" className="btn bg-transparent text-ink-on-dark border border-hairline-dark hover:border-primary/60 hover:text-primary-bright">
               {t('nav.business')}
             </Link>
           </Reveal>

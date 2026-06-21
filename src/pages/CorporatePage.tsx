@@ -25,7 +25,7 @@ export function CorporatePage() {
 
   const enterBusiness = () => {
     setChannel('b2b')
-    navigate('/account')
+    navigate('/business')
   }
 
   return (
@@ -179,7 +179,7 @@ function ApplicationForm() {
             ar: 'سنتحقق من سجلك التجاري ورقمك الضريبي ونتواصل خلال يومي عمل، عادةً عبر واتساب.',
           })}
         </p>
-        <Link to="/account" className={buttonClass('secondary', 'md', 'mt-xs')}>
+        <Link to="/business" className={buttonClass('secondary', 'md', 'mt-xs')}>
           {pick({ en: 'Preview the portal', ar: 'استعرض البوابة' })}
         </Link>
       </div>

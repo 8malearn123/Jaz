@@ -9,6 +9,8 @@ import { HeritagePage } from '@/pages/HeritagePage'
 import { CartPage } from '@/pages/CartPage'
 import { CheckoutPage } from '@/pages/CheckoutPage'
 import { AccountPage } from '@/pages/AccountPage'
+import { BusinessPage } from '@/pages/BusinessPage'
+import { SignInPage } from '@/pages/SignInPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
 export default function App() {
@@ -24,6 +26,8 @@ export default function App() {
         <Route path="cart" element={<CartPage />} />
         <Route path="checkout" element={<CheckoutPage />} />
         <Route path="account" element={<AccountPage />} />
+        <Route path="business" element={<BusinessPage />} />
+        <Route path="signin" element={<SignInPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

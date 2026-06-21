@@ -27,9 +27,9 @@ const columns = [
     head: 'footer.business',
     links: [
       { key: 'footer.corporateGifting', to: '/corporate' },
-      { key: 'footer.creditAccounts', to: '/account' },
+      { key: 'footer.creditAccounts', to: '/business' },
       { key: 'footer.becomeReseller', to: '/corporate' },
-      { key: 'nav.business', to: '/account' },
+      { key: 'nav.business', to: '/business' },
     ],
   },
   {

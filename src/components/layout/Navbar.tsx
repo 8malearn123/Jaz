@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
-import { ShoppingBag, Search, User, Menu, X, Globe } from 'lucide-react'
+import { ShoppingBag, Search, Menu, X, Globe } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useCart } from '@/state/CartContext'
-import { useChannel } from '@/state/ChannelContext'
 import { cn } from '@/lib/cn'
 import { Wordmark } from '@/components/brand/Wordmark'
 import { buttonClass } from '@/components/ui/Button'
+import { RoleSwitcher } from './RoleSwitcher'
+import { AccountMenu } from './AccountMenu'
 
 const navItems = [
   { to: '/shop', key: 'nav.shop' },
@@ -18,7 +19,6 @@ const navItems = [
 export function Navbar() {
   const { t, toggleLocale, locale } = useLocale()
   const { count } = useCart()
-  const { isBusiness } = useChannel()
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
   const location = useLocation()
@@ -43,14 +43,20 @@ export function Navbar() {
 
   return (
     <header className="sticky top-0 z-50">
-      {/* slim announcement strip */}
+      {/* slim announcement strip + role switch */}
       <div className="bg-chocolate text-ink-on-dark-muted">
-        <div className="container-jaz flex items-center justify-center h-9 overflow-hidden">
-          <p className="font-sans text-caption tracking-[0.1em] uppercase truncate">
+        <div className="container-jaz flex items-center justify-between gap-md h-10 overflow-hidden">
+          <p className="hidden sm:block font-sans text-caption tracking-[0.1em] uppercase truncate">
             {locale === 'ar'
               ? 'توصيل بسلسلة تبريد في كل المملكة · فاتورة معتمدة من هيئة الزكاة'
               : 'Cold-chain delivery Kingdom-wide · ZATCA-compliant invoicing'}
           </p>
+          <div className="flex items-center gap-sm ms-auto">
+            <span className="hidden md:inline font-sans text-caption uppercase tracking-[0.1em] text-ink-on-dark-muted/70">
+              {t('role.shoppingAs')}
+            </span>
+            <RoleSwitcher tone="dark" size="sm" />
+          </div>
         </div>
       </div>
 
@@ -107,17 +113,7 @@ export function Navbar() {
             <button className="grid place-items-center w-10 h-10 text-ink-muted hover:text-ink transition-colors" aria-label={t('nav.search')}>
               <Search size={19} />
             </button>
-            <Link
-              to="/account"
-              className={cn(
-                'relative grid place-items-center w-10 h-10 transition-colors',
-                isBusiness ? 'text-primary-hover' : 'text-ink-muted hover:text-ink',
-              )}
-              aria-label={t('nav.account')}
-            >
-              <User size={19} />
-              {isBusiness && <span className="absolute top-1.5 w-1.5 h-1.5 rounded-pill bg-primary" style={{ insetInlineEnd: 6 }} />}
-            </Link>
+            <AccountMenu />
             <Link to="/cart" className="relative grid place-items-center w-10 h-10 text-ink hover:text-primary-hover transition-colors" aria-label={t('nav.cart')}>
               <ShoppingBag size={20} />
               {count > 0 && (
@@ -160,7 +156,12 @@ function MobileSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
             <X size={22} />
           </button>
         </div>
-        <nav className="flex flex-col p-lg gap-xs flex-1">
+        {/* role switch */}
+        <div className="px-lg pt-lg flex flex-col gap-xs">
+          <span className="font-sans text-caption uppercase tracking-[0.1em] text-ink-subtle">{t('role.shoppingAs')}</span>
+          <RoleSwitcher full />
+        </div>
+        <nav className="flex flex-col p-lg gap-xs flex-1 overflow-y-auto">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
@@ -176,7 +177,10 @@ function MobileSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
             </NavLink>
           ))}
           <Link to="/account" className="font-serif text-headline py-2 border-b border-hairline/60 text-ink hover:text-primary-hover">
-            {t('nav.business')}
+            {t('role.myAccount')}
+          </Link>
+          <Link to="/business" className="font-serif text-headline py-2 border-b border-hairline/60 text-ink hover:text-primary-hover">
+            {t('role.businessPortal')}
           </Link>
         </nav>
         <div className="p-lg flex flex-col gap-sm border-t border-hairline">
