@@ -1,38 +1,61 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { organization } from '@/data/organization'
 import type { Organization } from '@/data/types'
+import { personas, PRIVILEGED_ROLES, type Persona, type RoleId } from '@/data/roles'
 
 export type Channel = 'b2c' | 'b2b'
 
 interface ChannelContextValue {
+  /** Active persona/role (one of the ten architecture roles). */
+  role: RoleId
+  persona: Persona
+  setRole: (r: RoleId) => void
+  /** Pricing channel, derived from the persona. */
   channel: Channel
   setChannel: (c: Channel) => void
-  /** The signed-in B2B account (mock). Present regardless of channel for the portal. */
-  org: Organization
-  /** Whether the user is "signed in" to the business portal (mock auth). */
   isBusiness: boolean
+  isStaff: boolean
+  isPrivileged: boolean
+  org: Organization
 }
 
 const ChannelContext = createContext<ChannelContextValue | null>(null)
 
-const STORAGE_KEY = 'jaz.channel'
+const STORAGE_KEY = 'jaz.role'
 
 export function ChannelProvider({ children }: { children: ReactNode }) {
-  const [channel, setChannelState] = useState<Channel>(() => {
-    if (typeof window === 'undefined') return 'b2c'
-    const stored = window.localStorage.getItem(STORAGE_KEY) as Channel | null
-    return stored === 'b2b' ? 'b2b' : 'b2c'
+  const [role, setRoleState] = useState<RoleId>(() => {
+    if (typeof window === 'undefined') return 'customer'
+    const stored = window.localStorage.getItem(STORAGE_KEY) as RoleId | null
+    return stored && personas[stored] ? stored : 'customer'
   })
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, channel)
-  }, [channel])
+    window.localStorage.setItem(STORAGE_KEY, role)
+  }, [role])
 
-  const setChannel = useCallback((c: Channel) => setChannelState(c), [])
+  const persona = personas[role]
+  const channel: Channel = persona.channel
+  const isStaff = persona.group === 'staff'
+  const isPrivileged = PRIVILEGED_ROLES.includes(role)
+
+  const setRole = useCallback((r: RoleId) => setRoleState(r), [])
+  // Backward-compatible quick toggle: maps to the matching shopper/business persona.
+  const setChannel = useCallback((c: Channel) => setRoleState(c === 'b2b' ? 'b2b_buyer' : 'customer'), [])
 
   const value = useMemo<ChannelContextValue>(
-    () => ({ channel, setChannel, org: organization, isBusiness: channel === 'b2b' }),
-    [channel, setChannel],
+    () => ({
+      role,
+      persona,
+      setRole,
+      channel,
+      setChannel,
+      isBusiness: channel === 'b2b',
+      isStaff,
+      isPrivileged,
+      org: organization,
+    }),
+    [role, persona, setRole, channel, setChannel, isStaff, isPrivileged],
   )
 
   return <ChannelContext.Provider value={value}>{children}</ChannelContext.Provider>

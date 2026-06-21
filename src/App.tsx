@@ -10,12 +10,16 @@ import { CartPage } from '@/pages/CartPage'
 import { CheckoutPage } from '@/pages/CheckoutPage'
 import { AccountPage } from '@/pages/AccountPage'
 import { BusinessPage } from '@/pages/BusinessPage'
+import { AdminConsole } from '@/pages/AdminConsole'
+import { RolePicker } from '@/pages/RolePicker'
 import { SignInPage } from '@/pages/SignInPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
 export default function App() {
   return (
     <Routes>
+      {/* Standalone launcher — no storefront chrome */}
+      <Route path="roles" element={<RolePicker />} />
       <Route element={<Layout />}>
         <Route index element={<HomePage />} />
         <Route path="shop" element={<ShopPage />} />
@@ -27,6 +31,7 @@ export default function App() {
         <Route path="checkout" element={<CheckoutPage />} />
         <Route path="account" element={<AccountPage />} />
         <Route path="business" element={<BusinessPage />} />
+        <Route path="admin" element={<AdminConsole />} />
         <Route path="signin" element={<SignInPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

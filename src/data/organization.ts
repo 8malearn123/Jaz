@@ -8,7 +8,7 @@ export const organization: Organization = {
   crNumber: '1010256744',
   vatNumber: '300012345600003',
   tier: 'gold',
-  salesRep: { en: 'Khalid Al-Otaibi', ar: 'خالد العتيبي' },
+  salesRep: { en: 'Majed Al-Shehri', ar: 'ماجد الشهري' },
   credit: {
     limitMinor: 15000000, // SAR 150,000
     reservedMinor: 2840000, // SAR 28,400

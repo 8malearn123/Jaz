@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { User, Building2, LogIn, LogOut, ChevronRight } from 'lucide-react'
+import { User, Building2, ShieldCheck, LogIn, LogOut, ChevronRight, ArrowLeftRight, Lock } from 'lucide-react'
 import { useChannel } from '@/state/ChannelContext'
 import { useLocale } from '@/i18n/LocaleContext'
-import { customer } from '@/data/account'
+import { roleIcons } from '@/components/roles/roleIcons'
+import { buttonClass } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
-import { RoleSwitcher } from './RoleSwitcher'
 
 export function AccountMenu() {
-  const { channel, isBusiness, org } = useChannel()
+  const { persona, isBusiness, isStaff, isPrivileged } = useChannel()
   const { t, pick } = useLocale()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const PersonaIcon = roleIcons[persona.id]
 
   useEffect(() => {
     if (!open) return
@@ -27,16 +28,18 @@ export function AccountMenu() {
     }
   }, [open])
 
+  const accent = isStaff ? 'text-primary-hover' : isBusiness ? 'text-primary-hover' : 'text-ink-muted hover:text-ink'
+
   return (
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className={cn('relative grid place-items-center w-10 h-10 transition-colors', isBusiness ? 'text-primary-hover' : 'text-ink-muted hover:text-ink')}
+        className={cn('relative grid place-items-center w-10 h-10 transition-colors', accent)}
         aria-label={t('nav.account')}
         aria-expanded={open}
       >
         <User size={19} />
-        {isBusiness && <span className="absolute top-1.5 w-1.5 h-1.5 rounded-pill bg-primary" style={{ insetInlineEnd: 6 }} />}
+        {(isBusiness || isStaff) && <span className="absolute top-1.5 w-1.5 h-1.5 rounded-pill bg-primary" style={{ insetInlineEnd: 6 }} />}
       </button>
 
       {open && (
@@ -45,24 +48,32 @@ export function AccountMenu() {
           style={{ insetInlineEnd: 0 }}
         >
           {/* identity */}
-          <div className="p-lg bg-surface-2 border-b border-hairline">
-            <p className="font-sans text-caption uppercase tracking-[0.1em] text-ink-subtle">{t('account.greeting')}</p>
-            <p className="font-serif text-card-title text-ink truncate">{isBusiness ? pick(org.legalName) : pick(customer.name)}</p>
+          <div className="p-lg bg-surface-2 border-b border-hairline flex items-center gap-sm">
+            <span className="grid place-items-center w-10 h-10 rounded-md shrink-0" style={{ backgroundColor: persona.accent, color: persona.onAccent }}>
+              <PersonaIcon size={18} />
+            </span>
+            <div className="min-w-0">
+              <p className="font-serif text-card-title text-ink truncate">{pick(persona.name)}</p>
+              <p className="font-sans text-caption text-ink-subtle truncate flex items-center gap-xxs">
+                {pick(persona.roleLabel)}
+                {isPrivileged && <Lock size={11} />}
+              </p>
+            </div>
           </div>
 
-          {/* role switch */}
-          <div className="p-lg flex flex-col gap-sm border-b border-hairline">
-            <span className="font-sans text-caption uppercase tracking-[0.1em] text-ink-subtle">{t('role.shoppingAs')}</span>
-            <RoleSwitcher full />
-            <p className="font-sans text-caption text-ink-muted leading-relaxed">
-              {channel === 'b2b' ? t('role.businessDesc') : t('role.individualDesc')}
-            </p>
+          {/* switch role */}
+          <div className="p-lg border-b border-hairline">
+            <Link to="/roles" onClick={() => setOpen(false)} className={buttonClass('primary', 'sm', 'w-full')}>
+              <ArrowLeftRight size={15} />
+              {t('role.switch')}
+            </Link>
           </div>
 
           {/* destinations */}
           <div className="p-xs">
-            <MenuLink to="/account" icon={User} label={t('role.myAccount')} active={!isBusiness} onClick={() => setOpen(false)} />
-            <MenuLink to="/business" icon={Building2} label={t('role.businessPortal')} active={isBusiness} onClick={() => setOpen(false)} />
+            <MenuLink to="/account" icon={User} label={t('role.myAccount')} active={persona.group === 'shopper'} onClick={() => setOpen(false)} />
+            <MenuLink to="/business" icon={Building2} label={t('role.businessPortal')} active={persona.group === 'business'} onClick={() => setOpen(false)} />
+            <MenuLink to="/admin" icon={ShieldCheck} label={t('role.adminConsole')} active={isStaff} onClick={() => setOpen(false)} />
           </div>
           <div className="p-xs border-t border-hairline">
             <MenuLink to="/signin" icon={LogIn} label={t('nav.signin')} onClick={() => setOpen(false)} />

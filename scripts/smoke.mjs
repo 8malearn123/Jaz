@@ -27,6 +27,8 @@ const routes = [
   '/business?tab=team',
   '/business?tab=gifting',
   '/signin',
+  '/roles',
+  '/admin',
   '/this-route-does-not-exist',
 ]
 
