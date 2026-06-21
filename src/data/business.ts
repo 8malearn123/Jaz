@@ -236,3 +236,78 @@ export const giftBatches: GiftBatch[] = [
     createdAt: '2026-06-15',
   },
 ]
+
+// ── Spend governance (org admin) ───────────────────────────
+// A cost centre is a budget bucket an admin allocates and watches burn down.
+export interface CostCenter {
+  id: string
+  code: string
+  name: Bilingual
+  ownerId: string
+  budgetMinor: number
+  consumedMinor: number
+}
+
+export const costCenters: CostCenter[] = [
+  { id: 'cc-hq', code: 'HQ', name: { en: 'Head office', ar: 'المقر الرئيسي' }, ownerId: 'm-1', budgetMinor: 6000000, consumedMinor: 2400000 },
+  { id: 'cc-proc', code: 'PROC', name: { en: 'Procurement', ar: 'المشتريات' }, ownerId: 'm-2', budgetMinor: 12000000, consumedMinor: 9800000 },
+  { id: 'cc-events', code: 'EVT', name: { en: 'Events & hospitality', ar: 'الفعاليات والضيافة' }, ownerId: 'm-3', budgetMinor: 8000000, consumedMinor: 7840000 },
+  { id: 'cc-fin', code: 'FIN', name: { en: 'Finance', ar: 'المالية' }, ownerId: 'm-4', budgetMinor: 3000000, consumedMinor: 480000 },
+]
+
+// The spend policy the admin sets — what flows straight through, what needs eyes.
+export interface OrgPolicy {
+  autoApproveBelowMinor: number
+  dualControlAboveMinor: number
+  requirePOAboveMinor: number
+  restrictToCatalogue: boolean
+  newMemberDefaultLimitMinor: number
+}
+
+export const orgPolicy: OrgPolicy = {
+  autoApproveBelowMinor: 1500000, // ≤ SAR 15,000 flows straight through
+  dualControlAboveMinor: 10000000, // ≥ SAR 100,000 needs admin + finance
+  requirePOAboveMinor: 500000, // PO required above SAR 5,000
+  restrictToCatalogue: true,
+  newMemberDefaultLimitMinor: 1000000, // SAR 10,000
+}
+
+// 8-month spend trend for the overview chart (minor units).
+export interface SpendPoint { month: Bilingual; amountMinor: number }
+export const spendByMonth: SpendPoint[] = [
+  { month: { en: 'Nov', ar: 'نوف' }, amountMinor: 3900000 },
+  { month: { en: 'Dec', ar: 'ديس' }, amountMinor: 5200000 },
+  { month: { en: 'Jan', ar: 'ينا' }, amountMinor: 4100000 },
+  { month: { en: 'Feb', ar: 'فبر' }, amountMinor: 6800000 },
+  { month: { en: 'Mar', ar: 'مار' }, amountMinor: 9400000 },
+  { month: { en: 'Apr', ar: 'أبر' }, amountMinor: 5600000 },
+  { month: { en: 'May', ar: 'ماي' }, amountMinor: 7300000 },
+  { month: { en: 'Jun', ar: 'يون' }, amountMinor: 4720000 },
+]
+
+// YTD spend split by product category for the analytics ranked bars.
+export interface CategorySpend { name: Bilingual; amountMinor: number }
+export const spendByCategory: CategorySpend[] = [
+  { name: { en: 'Gift boxes & hampers', ar: 'علب وسلال الهدايا' }, amountMinor: 18600000 },
+  { name: { en: 'Amenity bars', ar: 'ألواح الضيافة' }, amountMinor: 11200000 },
+  { name: { en: 'Signature bars', ar: 'الألواح التوقيعية' }, amountMinor: 8400000 },
+  { name: { en: 'Seasonal & limited', ar: 'موسمي ومحدود' }, amountMinor: 5100000 },
+  { name: { en: 'Bulk cases', ar: 'صناديق بالجملة' }, amountMinor: 3700000 },
+]
+
+// Capability matrix — what each org role may do. Drives the permissions table.
+export type Capability =
+  | 'placeOrders' | 'approveOrders' | 'manageTeam' | 'viewCredit'
+  | 'manageBudgets' | 'downloadInvoices' | 'manageGifting' | 'editPolicy'
+
+export const capabilityOrder: Capability[] = [
+  'placeOrders', 'approveOrders', 'manageTeam', 'viewCredit',
+  'manageBudgets', 'downloadInvoices', 'manageGifting', 'editPolicy',
+]
+
+export const rolePermissions: Record<OrgMember['role'], Record<Capability, boolean>> = {
+  b2b_admin: { placeOrders: true, approveOrders: true, manageTeam: true, viewCredit: true, manageBudgets: true, downloadInvoices: true, manageGifting: true, editPolicy: true },
+  approver: { placeOrders: true, approveOrders: true, manageTeam: false, viewCredit: true, manageBudgets: false, downloadInvoices: true, manageGifting: true, editPolicy: false },
+  buyer: { placeOrders: true, approveOrders: false, manageTeam: false, viewCredit: true, manageBudgets: false, downloadInvoices: false, manageGifting: true, editPolicy: false },
+  viewer: { placeOrders: false, approveOrders: false, manageTeam: false, viewCredit: true, manageBudgets: false, downloadInvoices: true, manageGifting: false, editPolicy: false },
+}
