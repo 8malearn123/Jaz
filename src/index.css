@@ -1,0 +1,205 @@
+/* Font substitutes per the JAZ design system "Note on Font Substitutes":
+   Canela → Fraunces · Greta Arabic → IBM Plex Sans Arabic · Gotham → Montserrat */
+@import '@fontsource/fraunces/400.css';
+@import '@fontsource/fraunces/500.css';
+@import '@fontsource/fraunces/600.css';
+@import '@fontsource/fraunces/400-italic.css';
+@import '@fontsource/montserrat/400.css';
+@import '@fontsource/montserrat/500.css';
+@import '@fontsource/montserrat/600.css';
+@import '@fontsource/ibm-plex-sans-arabic/400.css';
+@import '@fontsource/ibm-plex-sans-arabic/500.css';
+@import '@fontsource/ibm-plex-sans-arabic/600.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --focus-ring: rgba(176, 138, 87, 0.6);
+  }
+
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-canvas text-ink font-serif antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Arabic runs looser vertically and never carries Latin negative tracking */
+  [dir='rtl'] {
+    letter-spacing: 0 !important;
+  }
+  [dir='rtl'] body,
+  [dir='rtl'] p,
+  [dir='rtl'] li {
+    line-height: 1.85;
+  }
+
+  ::selection {
+    background: #b08a57;
+    color: #2a1a12;
+  }
+
+  /* Focus ring — 2px gold at ~60% opacity, 2px offset (design system Level 4) */
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* Quiet, warm scrollbar */
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #f3eee5;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #d2c7b4;
+    border: 3px solid #f3eee5;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #b08a57;
+  }
+}
+
+@layer components {
+  /* ── Eyebrow / functional label voice (Gotham, uppercase, tracked) ── */
+  .eyebrow {
+    @apply font-sans text-eyebrow uppercase;
+  }
+
+  /* ── Buttons ──────────────────────────────────────────────── */
+  .btn {
+    @apply inline-flex items-center justify-center gap-xs font-sans text-button uppercase
+      rounded-md transition-all duration-300 ease-editorial select-none
+      whitespace-nowrap disabled:opacity-50 disabled:pointer-events-none;
+    padding: 14px 28px;
+    min-height: 48px;
+  }
+  .btn-primary {
+    @apply btn bg-primary text-on-primary hover:bg-primary-hover;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset;
+  }
+  .btn-primary:hover {
+    transform: translateY(-1px);
+  }
+  .btn-secondary {
+    @apply btn bg-surface-1 text-ink border border-hairline-strong hover:border-ink/40;
+  }
+  .btn-dark {
+    @apply btn bg-chocolate text-ink-on-dark hover:text-primary;
+  }
+  .btn-ghost {
+    @apply btn bg-transparent text-ink hover:text-primary-hover;
+    padding: 14px 20px;
+  }
+  .btn-sm {
+    padding: 9px 18px;
+    min-height: 40px;
+  }
+
+  /* ── Cards ────────────────────────────────────────────────── */
+  .card {
+    @apply bg-surface-1 text-ink rounded-lg border border-hairline;
+  }
+  .card-hover {
+    @apply transition-all duration-500 ease-editorial hover:shadow-soft hover:-translate-y-1;
+  }
+
+  /* ── Inputs ───────────────────────────────────────────────── */
+  .input {
+    @apply w-full bg-surface-1 text-ink font-serif text-body rounded-md
+      border border-hairline-strong transition-colors duration-200
+      placeholder:text-ink-subtle;
+    padding: 12px 16px;
+  }
+  .input:focus {
+    @apply outline-none border-primary;
+    box-shadow: 0 0 0 3px rgba(176, 138, 87, 0.18);
+  }
+  .label {
+    @apply block font-sans text-caption uppercase tracking-[0.1em] text-ink-muted mb-xs;
+  }
+
+  /* ── Chips & badges ───────────────────────────────────────── */
+  .chip {
+    @apply inline-flex items-center gap-xs font-sans text-caption rounded-pill
+      border border-transparent transition-colors duration-200 cursor-pointer;
+    padding: 6px 14px;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 font-sans text-caption rounded-pill;
+    padding: 3px 11px;
+  }
+
+  /* ── Layout helpers ───────────────────────────────────────── */
+  .container-jaz {
+    @apply mx-auto px-lg md:px-xl;
+    max-width: 1240px;
+  }
+  .container-narrow {
+    @apply mx-auto px-lg;
+    max-width: 920px;
+  }
+
+  /* ── Link emphasis: gold foil underline ───────────────────── */
+  .link-gold {
+    @apply text-primary-hover font-sans text-button uppercase inline-flex items-center gap-xs
+      transition-colors duration-200 hover:text-ink;
+  }
+
+  /* Hide scrollbar utility for horizontal rails */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+@layer utilities {
+  /* Latin display gets the negative tracking; Arabic is protected in base layer */
+  .text-balance {
+    text-wrap: balance;
+  }
+  .bg-grain {
+    background-image: radial-gradient(rgba(36, 23, 18, 0.015) 1px, transparent 1px);
+    background-size: 4px 4px;
+  }
+  .animation-delay-100 {
+    animation-delay: 0.1s;
+  }
+  .animation-delay-200 {
+    animation-delay: 0.2s;
+  }
+  .animation-delay-300 {
+    animation-delay: 0.3s;
+  }
+  .animation-delay-400 {
+    animation-delay: 0.4s;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

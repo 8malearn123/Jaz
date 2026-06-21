@@ -1,0 +1,5 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="64" height="64" rx="12" fill="#17120f"/>
+  <text x="32" y="38" font-family="Georgia, serif" font-size="26" font-weight="500" letter-spacing="1" fill="#b08a57" text-anchor="middle">JAZ</text>
+  <path d="M14 46 Q 20 42, 26 46 T 38 46 T 50 46" stroke="#b08a57" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+</svg>
