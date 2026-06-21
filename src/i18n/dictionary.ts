@@ -511,6 +511,7 @@ export const dict: Dict = {
   'admin.title': { en: 'Admin console', ar: 'لوحة الإدارة' },
   'admin.platform': { en: 'Platform', ar: 'المنصة' },
   'admin.restricted': { en: 'Your role does not have access to this section.', ar: 'دورك لا يملك صلاحية الوصول لهذا القسم.' },
+  'admin.restrictedHint': { en: 'Use the role switcher in the top bar to change roles.', ar: 'استخدم مبدّل الدور في الشريط العلوي لتغيير الدور.' },
   'admin.section.overview': { en: 'Overview', ar: 'نظرة عامة' },
   'admin.section.credit': { en: 'Credit approvals', ar: 'اعتمادات الائتمان' },
   'admin.section.invoicing': { en: 'Invoicing & ZATCA', ar: 'الفوترة والهيئة' },

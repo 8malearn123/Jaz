@@ -23,7 +23,7 @@ const statusVariant: Record<AccountOrderStatus, 'gold' | 'success' | 'danger' | 
   rejected: 'neutral',
 }
 
-export function BuyerWorkspace({ headerExtra }: { headerExtra: React.ReactNode }) {
+export function BuyerWorkspace() {
   const { t, pick } = useLocale()
   const { org, persona } = useChannel()
   const [activeRaw, setActive] = useTab('dashboard')
@@ -48,7 +48,6 @@ export function BuyerWorkspace({ headerExtra }: { headerExtra: React.ReactNode }
       tabs={tabs}
       active={active}
       onSelect={setActive}
-      headerExtra={headerExtra}
     >
       {active === 'dashboard' && <Dashboard me={me} myOrders={myOrders} awaiting={awaiting} onTab={setActive} />}
       {active === 'orders' && <MyOrders orders={myOrders} />}

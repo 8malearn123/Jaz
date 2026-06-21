@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   LayoutGrid, Package, Gem, Repeat, Gift, MapPin, ShieldCheck,
-  Snowflake, ChevronRight, Check, Plus, Download, Sparkles, ArrowRight, ArrowLeftRight,
+  Snowflake, ChevronRight, Check, Plus, Download, Sparkles, ArrowRight,
   Ticket, Trash2, CreditCard,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
@@ -57,12 +57,6 @@ function AccountContent() {
       tabs={tabs}
       active={active}
       onSelect={setActive}
-      headerExtra={
-        <Link to="/roles" className={buttonClass('primary', 'sm')}>
-          <ArrowLeftRight size={15} />
-          {t('role.switch')}
-        </Link>
-      }
     >
       {active === 'overview' && <OverviewPanel onTab={setActive} />}
       {active === 'orders' && <OrdersPanel />}

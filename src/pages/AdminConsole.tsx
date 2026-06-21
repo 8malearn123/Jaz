@@ -70,11 +70,6 @@ export function AdminConsole() {
         tabs={tabs}
         active={active}
         onSelect={setActive}
-        headerExtra={
-          <Link to="/roles" className={buttonClass('primary', 'sm')}>
-            {t('role.switch')}
-          </Link>
-        }
       >
         {active === 'overview' && <OverviewPanel role={role} onSection={setActive} allowed={allowed} />}
         {active === 'credit' && <CreditPanel />}
@@ -99,8 +94,9 @@ function Restricted() {
           <ShieldAlert size={30} />
         </span>
         <h1 className="font-serif text-headline text-ink">{t('admin.restricted')}</h1>
-        <Link to="/roles" className={buttonClass('primary')}>
-          {t('role.switch')} <ArrowRight size={15} className="rtl:rotate-180" />
+        <p className="font-sans text-data text-ink-muted max-w-sm">{t('admin.restrictedHint')}</p>
+        <Link to="/" className={buttonClass('primary')}>
+          {t('notFound.cta')} <ArrowRight size={15} className="rtl:rotate-180" />
         </Link>
       </div>
     </div>

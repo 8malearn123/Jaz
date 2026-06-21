@@ -23,7 +23,7 @@ const orderVariant: Record<AccountOrder['status'], 'gold' | 'success' | 'danger'
   awaiting_approval: 'danger', confirmed: 'gold', processing: 'gold', shipped: 'gold', delivered: 'success', rejected: 'neutral',
 }
 
-export function OrgAdminPortal({ headerExtra }: { headerExtra: React.ReactNode }) {
+export function OrgAdminPortal() {
   const { t, pick } = useLocale()
   const [activeRaw, setActive] = useTab('overview')
   const active = ['overview', 'team', 'credit', 'orders', 'quotes', 'gifting', 'settings'].includes(activeRaw) ? activeRaw : 'overview'
@@ -47,7 +47,6 @@ export function OrgAdminPortal({ headerExtra }: { headerExtra: React.ReactNode }
       tabs={tabs}
       active={active}
       onSelect={setActive}
-      headerExtra={headerExtra}
     >
       {active === 'overview' && <Overview onTab={setActive} />}
       {active === 'team' && <Team />}

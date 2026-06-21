@@ -1,22 +1,29 @@
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Smartphone, Lock, ShieldCheck, Fingerprint, ArrowRight } from 'lucide-react'
+import { Smartphone, Lock, ShieldCheck, Fingerprint, ArrowRight, User, Building2 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useChannel } from '@/state/ChannelContext'
 import { buttonClass } from '@/components/ui/Button'
 import { Wordmark } from '@/components/brand/Wordmark'
 import { JazanScene } from '@/components/brand/JazanScene'
-import { RoleSwitcher } from '@/components/layout/RoleSwitcher'
 import { WaveDivider } from '@/components/brand/WaveDivider'
+import { cn } from '@/lib/cn'
 
 export function SignInPage() {
   const { t, pick } = useLocale()
-  const { channel } = useChannel()
+  const { setRole } = useChannel()
   const navigate = useNavigate()
-  const isBusiness = channel === 'b2b'
+  // Local choice only — does not change your live role until you sign in.
+  const [mode, setMode] = useState<'b2c' | 'b2b'>('b2c')
+  const isBusiness = mode === 'b2b'
 
+  const signIn = () => {
+    setRole(isBusiness ? 'b2b_buyer' : 'customer')
+    navigate(isBusiness ? '/business' : '/account')
+  }
   const goToDashboard = (e: React.FormEvent) => {
     e.preventDefault()
-    navigate(isBusiness ? '/business' : '/account')
+    signIn()
   }
 
   return (
@@ -43,8 +50,26 @@ export function SignInPage() {
             <p className="text-body text-ink-muted">{t('signin.subtitle')}</p>
           </div>
 
-          {/* role selector */}
-          <RoleSwitcher full />
+          {/* local sign-in type — commits only when you sign in */}
+          <div className="inline-flex p-0.5 rounded-pill border border-hairline bg-surface-2 w-full">
+            {([
+              { v: 'b2c' as const, label: t('role.individual'), icon: User },
+              { v: 'b2b' as const, label: t('role.business'), icon: Building2 },
+            ]).map((o) => (
+              <button
+                key={o.v}
+                type="button"
+                onClick={() => setMode(o.v)}
+                className={cn(
+                  'flex-1 inline-flex items-center justify-center gap-xs rounded-pill py-2.5 font-sans text-button uppercase transition-all',
+                  mode === o.v ? 'bg-primary text-on-primary shadow-lift' : 'text-ink-muted hover:text-ink',
+                )}
+              >
+                <o.icon size={15} />
+                {o.label}
+              </button>
+            ))}
+          </div>
 
           <form onSubmit={goToDashboard} className="flex flex-col gap-md">
             {isBusiness ? (
@@ -63,7 +88,7 @@ export function SignInPage() {
                   <span className="font-sans text-caption text-ink-subtle uppercase tracking-wide">{pick({ en: 'or', ar: 'أو' })}</span>
                   <span className="flex-1 h-px bg-hairline" />
                 </div>
-                <button type="button" onClick={() => navigate('/business')} className={buttonClass('secondary', 'md', 'w-full')}>
+                <button type="button" onClick={signIn} className={buttonClass('secondary', 'md', 'w-full')}>
                   <Fingerprint size={16} /> {t('signin.nafath')}
                 </button>
               </>

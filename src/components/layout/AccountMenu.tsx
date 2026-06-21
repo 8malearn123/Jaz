@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { User, Building2, ShieldCheck, LogIn, LogOut, ChevronRight, ArrowLeftRight, Lock } from 'lucide-react'
+import { User, Building2, ShieldCheck, LogIn, LogOut, ChevronRight, Lock } from 'lucide-react'
 import { useChannel } from '@/state/ChannelContext'
 import { useLocale } from '@/i18n/LocaleContext'
 import { roleIcons } from '@/components/roles/roleIcons'
-import { buttonClass } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 
 export function AccountMenu() {
@@ -61,19 +60,15 @@ export function AccountMenu() {
             </div>
           </div>
 
-          {/* switch role */}
-          <div className="p-lg border-b border-hairline">
-            <Link to="/roles" onClick={() => setOpen(false)} className={buttonClass('primary', 'sm', 'w-full')}>
-              <ArrowLeftRight size={15} />
-              {t('role.switch')}
-            </Link>
-          </div>
-
-          {/* destinations */}
-          <div className="p-xs">
-            <MenuLink to="/account" icon={User} label={t('role.myAccount')} active={persona.group === 'shopper'} onClick={() => setOpen(false)} />
-            <MenuLink to="/business" icon={Building2} label={t('role.businessPortal')} active={persona.group === 'business'} onClick={() => setOpen(false)} />
-            <MenuLink to="/admin" icon={ShieldCheck} label={t('role.adminConsole')} active={isStaff} onClick={() => setOpen(false)} />
+          {/* the current role's dashboard only */}
+          <div className="p-xs border-t border-hairline">
+            {persona.group === 'staff' ? (
+              <MenuLink to="/admin" icon={ShieldCheck} label={t('role.adminConsole')} active onClick={() => setOpen(false)} />
+            ) : persona.group === 'business' ? (
+              <MenuLink to="/business" icon={Building2} label={t('role.businessPortal')} active onClick={() => setOpen(false)} />
+            ) : (
+              <MenuLink to="/account" icon={User} label={t('role.myAccount')} active onClick={() => setOpen(false)} />
+            )}
           </div>
           <div className="p-xs border-t border-hairline">
             <MenuLink to="/signin" icon={LogIn} label={t('nav.signin')} onClick={() => setOpen(false)} />

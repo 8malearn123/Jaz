@@ -28,7 +28,7 @@ const seededHistory: Decision[] = [
   },
 ]
 
-export function ApproverWorkspace({ headerExtra }: { headerExtra: React.ReactNode }) {
+export function ApproverWorkspace() {
   const { t, pick } = useLocale()
   const { org, persona } = useChannel()
   const [activeRaw, setActive] = useTab('approvals')
@@ -58,7 +58,6 @@ export function ApproverWorkspace({ headerExtra }: { headerExtra: React.ReactNod
       tabs={tabs}
       active={active}
       onSelect={setActive}
-      headerExtra={headerExtra}
     >
       {active === 'approvals' && <Queue pending={pending} onDecide={decide} />}
       {active === 'decided' && <Decided decided={decided} />}

@@ -214,14 +214,11 @@ function MobileSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
               {t(item.key)}
             </NavLink>
           ))}
-          <Link to="/account" className="font-serif text-headline py-2 border-b border-hairline/60 text-ink hover:text-primary-hover">
-            {t('role.myAccount')}
-          </Link>
-          <Link to="/business" className="font-serif text-headline py-2 border-b border-hairline/60 text-ink hover:text-primary-hover">
-            {t('role.businessPortal')}
-          </Link>
-          <Link to="/admin" className="font-serif text-headline py-2 border-b border-hairline/60 text-ink hover:text-primary-hover">
-            {t('role.adminConsole')}
+          <Link
+            to={persona.group === 'staff' ? '/admin' : persona.group === 'business' ? '/business' : '/account'}
+            className="font-serif text-headline py-2 border-b border-hairline/60 text-ink hover:text-primary-hover"
+          >
+            {persona.group === 'staff' ? t('role.adminConsole') : persona.group === 'business' ? t('role.businessPortal') : t('role.myAccount')}
           </Link>
         </nav>
         <div className="p-lg flex flex-col gap-sm border-t border-hairline">
