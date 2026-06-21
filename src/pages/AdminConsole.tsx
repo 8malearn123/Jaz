@@ -2,14 +2,14 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   LayoutGrid, Wallet, FileText, Building2, Headset, PenTool, ScrollText, Users, Workflow,
-  CheckCircle2, X, Check, RefreshCw, QrCode, Lock, ArrowRight, ShieldCheck, ShieldAlert,
+  X, Check, RefreshCw, QrCode, Lock, ArrowRight, ShieldCheck, ShieldAlert, Target,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useChannel } from '@/state/ChannelContext'
 import { personaList, type RoleId } from '@/data/roles'
 import { roleIcons } from '@/components/roles/roleIcons'
 import {
-  creditApplications, invoices, articles, auditEvents, consentLedger, platformKpis, orgDirectory,
+  creditApplications, invoices, articles, auditEvents, consentLedger, platformKpis,
   type CreditApplication, type Invoice, type AuditEvent,
 } from '@/data/staff'
 import { products } from '@/data/products'
@@ -21,8 +21,10 @@ import { useTab } from '@/lib/useTab'
 import { cn } from '@/lib/cn'
 import { SupportDesk } from './admin/SupportDesk'
 import { SalesPipeline } from './admin/SalesPipeline'
+import { SalesPerformance } from './admin/SalesPerformance'
+import { AccountsPanel } from './admin/AccountsPanel'
 
-type Section = 'overview' | 'credit' | 'invoicing' | 'accounts' | 'pipeline' | 'support' | 'catalogue' | 'audit' | 'users'
+type Section = 'overview' | 'credit' | 'invoicing' | 'accounts' | 'pipeline' | 'performance' | 'support' | 'catalogue' | 'audit' | 'users'
 
 const SECTION_META: Record<Section, { key: string; icon: TabDef['icon'] }> = {
   overview: { key: 'admin.section.overview', icon: LayoutGrid },
@@ -30,6 +32,7 @@ const SECTION_META: Record<Section, { key: string; icon: TabDef['icon'] }> = {
   invoicing: { key: 'admin.section.invoicing', icon: FileText },
   accounts: { key: 'admin.section.accounts', icon: Building2 },
   pipeline: { key: 'admin.section.pipeline', icon: Workflow },
+  performance: { key: 'perf.section', icon: Target },
   support: { key: 'admin.section.support', icon: Headset },
   catalogue: { key: 'admin.section.catalogue', icon: PenTool },
   audit: { key: 'admin.section.audit', icon: ScrollText },
@@ -37,9 +40,9 @@ const SECTION_META: Record<Section, { key: string; icon: TabDef['icon'] }> = {
 }
 
 const ACCESS: Record<RoleId, Section[]> = {
-  admin: ['overview', 'credit', 'invoicing', 'accounts', 'pipeline', 'support', 'catalogue', 'audit', 'users'],
+  admin: ['overview', 'credit', 'invoicing', 'accounts', 'pipeline', 'performance', 'support', 'catalogue', 'audit', 'users'],
   finance: ['overview', 'credit', 'invoicing'],
-  sales_agent: ['overview', 'pipeline', 'accounts'],
+  sales_agent: ['overview', 'pipeline', 'performance', 'accounts'],
   support_agent: ['overview', 'support'],
   content_editor: ['overview', 'catalogue'],
   auditor: ['overview', 'audit'],
@@ -76,6 +79,7 @@ export function AdminConsole() {
         {active === 'invoicing' && <InvoicingPanel />}
         {active === 'accounts' && <AccountsPanel />}
         {active === 'pipeline' && <SalesPipeline />}
+        {active === 'performance' && <SalesPerformance />}
         {active === 'support' && <SupportDesk />}
         {active === 'catalogue' && <CataloguePanel />}
         {active === 'audit' && <AuditPanel />}
@@ -271,57 +275,6 @@ function InvoicingPanel() {
             </li>
           ))}
         </ul>
-      </div>
-    </div>
-  )
-}
-
-/* ───────────── B2B accounts (sales) ───────────── */
-function AccountsPanel() {
-  const { t, pick, money } = useLocale()
-  const [raised, setRaised] = useState<Record<string, boolean>>({})
-  const tierVariant = { platinum: 'gold', gold: 'gold', silver: 'neutral', bronze: 'neutral' } as const
-  const statusVariant = { active: 'success', pending: 'gold', suspended: 'danger' } as const
-
-  return (
-    <div className="flex flex-col gap-lg">
-      <h2 className="font-serif text-headline text-ink">{t('accts.title')}</h2>
-      <div className="grid gap-md sm:grid-cols-2">
-        {orgDirectory.map((o) => {
-          const pct = Math.round((o.availableMinor / o.limitMinor) * 100)
-          return (
-            <div key={o.id} className="card p-lg flex flex-col gap-sm">
-              <div className="flex items-start justify-between gap-sm">
-                <div className="min-w-0">
-                  <h3 className="font-serif text-card-title text-ink truncate">{pick(o.name)}</h3>
-                  <p className="font-sans text-caption text-ink-subtle">{pick(o.type)}</p>
-                </div>
-                <div className="flex flex-col items-end gap-xxs shrink-0">
-                  <StatusBadge variant={tierVariant[o.tier]}>{o.tier}</StatusBadge>
-                  <StatusBadge variant={statusVariant[o.status]}>{t(`accts.status.${o.status}`)}</StatusBadge>
-                </div>
-              </div>
-              <div className="flex flex-col gap-xxs">
-                <div className="flex items-center justify-between font-sans text-caption text-ink-muted">
-                  <span>{t('accts.available')}</span>
-                  <span className="tabular-nums text-ink">{money(o.availableMinor)} / {money(o.limitMinor)}</span>
-                </div>
-                <div className="h-1.5 rounded-pill bg-canvas-cool overflow-hidden">
-                  <span className="block h-full bg-success/60" style={{ width: `${pct}%` }} />
-                </div>
-              </div>
-              {raised[o.id] ? (
-                <p className="inline-flex items-center gap-xs font-sans text-caption text-success pt-xs">
-                  <CheckCircle2 size={14} /> {t('accts.raised')}
-                </p>
-              ) : (
-                <button onClick={() => setRaised((p) => ({ ...p, [o.id]: true }))} className={buttonClass('secondary', 'sm', 'self-start mt-xs')}>
-                  {t('accts.raise')}
-                </button>
-              )}
-            </div>
-          )
-        })}
       </div>
     </div>
   )

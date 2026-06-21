@@ -155,21 +155,34 @@ export interface PipelineQuote {
   id: string
   ref: string
   account: Bilingual
+  accountId: string // → orgDirectory
   stage: 'draft' | 'sent' | 'accepted' | 'won' | 'lost'
   valueMinor: number
+  createdAt: string
   validUntil: string
   note: Bilingual
 }
 
 export const salesPipeline: PipelineQuote[] = [
-  { id: 'pq-4', ref: 'RFQ-2026-0192', account: { en: 'Jeddah Grand Hotel', ar: 'فندق جدة الكبير' }, stage: 'draft', valueMinor: 6300000, validUntil: '2026-07-20', note: { en: 'Platinum amenity programme', ar: 'برنامج ضيافة بلاتيني' } },
-  { id: 'pq-1', ref: 'RFQ-2026-0188', account: { en: 'Najd Hospitality', ar: 'نجد للضيافة' }, stage: 'sent', valueMinor: 4820000, validUntil: '2026-07-10', note: { en: 'Ramadan gifting — 400 boxes', ar: 'إهداء رمضان — ٤٠٠ علبة' } },
-  { id: 'pq-5', ref: 'RFQ-2026-0190', account: { en: 'Rawabi Catering', ar: 'روابي للتموين' }, stage: 'sent', valueMinor: 1560000, validUntil: '2026-07-05', note: { en: 'Reseller starter order', ar: 'طلب موزّع مبدئي' } },
-  { id: 'pq-2', ref: 'RFQ-2026-0171', account: { en: 'Najd Hospitality', ar: 'نجد للضيافة' }, stage: 'accepted', valueMinor: 2140000, validUntil: '2026-06-30', note: { en: 'Hotel amenity bars — monthly', ar: 'ألواح ضيافة الفندق — شهريًا' } },
-  { id: 'pq-6', ref: 'RFQ-2026-0185', account: { en: 'Aseer Events', ar: 'عسير للفعاليات' }, stage: 'accepted', valueMinor: 1200000, validUntil: '2026-07-02', note: { en: 'National Day campaign', ar: 'حملة اليوم الوطني' } },
-  { id: 'pq-7', ref: 'RFQ-2026-0179', account: { en: 'Najd Hospitality', ar: 'نجد للضيافة' }, stage: 'won', valueMinor: 3180000, validUntil: '2026-06-09', note: { en: 'Amenity bars — converted', ar: 'ألواح ضيافة — محوّلة' } },
-  { id: 'pq-8', ref: 'RFQ-2026-0168', account: { en: 'Jeddah Grand Hotel', ar: 'فندق جدة الكبير' }, stage: 'won', valueMinor: 2750000, validUntil: '2026-05-28', note: { en: 'Eid corporate gifting', ar: 'إهداء العيد المؤسسي' } },
-  { id: 'pq-3', ref: 'RFQ-2026-0150', account: { en: 'Aseer Events', ar: 'عسير للفعاليات' }, stage: 'lost', valueMinor: 980000, validUntil: '2026-05-20', note: { en: 'Conference welcome gifts', ar: 'هدايا ترحيب المؤتمر' } },
+  { id: 'pq-4', ref: 'RFQ-2026-0192', account: { en: 'Jeddah Grand Hotel', ar: 'فندق جدة الكبير' }, accountId: 'o-4', stage: 'draft', valueMinor: 6300000, createdAt: '2026-06-19', validUntil: '2026-07-20', note: { en: 'Platinum amenity programme', ar: 'برنامج ضيافة بلاتيني' } },
+  { id: 'pq-1', ref: 'RFQ-2026-0188', account: { en: 'Najd Hospitality', ar: 'نجد للضيافة' }, accountId: 'o-1', stage: 'sent', valueMinor: 4820000, createdAt: '2026-06-08', validUntil: '2026-07-10', note: { en: 'Ramadan gifting — 400 boxes', ar: 'إهداء رمضان — ٤٠٠ علبة' } },
+  { id: 'pq-5', ref: 'RFQ-2026-0190', account: { en: 'Rawabi Catering', ar: 'روابي للتموين' }, accountId: 'o-2', stage: 'sent', valueMinor: 1560000, createdAt: '2026-06-17', validUntil: '2026-07-05', note: { en: 'Reseller starter order', ar: 'طلب موزّع مبدئي' } },
+  { id: 'pq-2', ref: 'RFQ-2026-0171', account: { en: 'Najd Hospitality', ar: 'نجد للضيافة' }, accountId: 'o-1', stage: 'accepted', valueMinor: 2140000, createdAt: '2026-06-12', validUntil: '2026-06-30', note: { en: 'Hotel amenity bars — monthly', ar: 'ألواح ضيافة الفندق — شهريًا' } },
+  { id: 'pq-6', ref: 'RFQ-2026-0185', account: { en: 'Aseer Events', ar: 'عسير للفعاليات' }, accountId: 'o-3', stage: 'accepted', valueMinor: 1200000, createdAt: '2026-06-15', validUntil: '2026-07-02', note: { en: 'National Day campaign', ar: 'حملة اليوم الوطني' } },
+  { id: 'pq-7', ref: 'RFQ-2026-0179', account: { en: 'Najd Hospitality', ar: 'نجد للضيافة' }, accountId: 'o-1', stage: 'won', valueMinor: 3180000, createdAt: '2026-06-01', validUntil: '2026-06-09', note: { en: 'Amenity bars — converted', ar: 'ألواح ضيافة — محوّلة' } },
+  { id: 'pq-8', ref: 'RFQ-2026-0168', account: { en: 'Jeddah Grand Hotel', ar: 'فندق جدة الكبير' }, accountId: 'o-4', stage: 'won', valueMinor: 2750000, createdAt: '2026-05-20', validUntil: '2026-05-28', note: { en: 'Eid corporate gifting', ar: 'إهداء العيد المؤسسي' } },
+  { id: 'pq-3', ref: 'RFQ-2026-0150', account: { en: 'Aseer Events', ar: 'عسير للفعاليات' }, accountId: 'o-3', stage: 'lost', valueMinor: 980000, createdAt: '2026-05-10', validUntil: '2026-05-20', note: { en: 'Conference welcome gifts', ar: 'هدايا ترحيب المؤتمر' } },
+]
+
+// Sales target & won-trend for the performance dashboard.
+export const salesQuotaMinor = 10000000 // SAR 100,000 quarter quota
+export const salesWonByMonth: { month: Bilingual; valueMinor: number }[] = [
+  { month: { en: 'Jan', ar: 'ينا' }, valueMinor: 2100000 },
+  { month: { en: 'Feb', ar: 'فبر' }, valueMinor: 3400000 },
+  { month: { en: 'Mar', ar: 'مار' }, valueMinor: 5200000 },
+  { month: { en: 'Apr', ar: 'أبر' }, valueMinor: 2800000 },
+  { month: { en: 'May', ar: 'ماي' }, valueMinor: 2750000 },
+  { month: { en: 'Jun', ar: 'يون' }, valueMinor: 3180000 },
 ]
 
 // ── Catalogue & CMS (content editor) ──
