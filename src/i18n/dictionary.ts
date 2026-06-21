@@ -710,6 +710,21 @@ export const dict: Dict = {
   'buyer.browseCatalogue': { en: 'Browse catalogue', ar: 'تصفّح الكتالوج' },
   'buyer.recentOrders': { en: 'Recent orders', ar: 'أحدث الطلبات' },
   'buyer.overYourLimit': { en: 'Above your per-order limit — awaiting approval', ar: 'يتجاوز حدّك الواحد — بانتظار الموافقة' },
+  'buyer.awaitingDetail': { en: 'This order exceeds your per-order limit and is awaiting an approver before it consumes credit.', ar: 'يتجاوز هذا الطلب حدّك الواحد وينتظر اعتماد المعتمِد قبل استهلاك الائتمان.' },
+  'order.details': { en: 'Order details', ar: 'تفاصيل الطلب' },
+  'order.view': { en: 'View', ar: 'عرض' },
+  'quotes.acceptedToast': { en: 'Accepted — converting to an order. Sales will confirm shortly.', ar: 'تم القبول — يُحوَّل إلى طلب. ستؤكد المبيعات قريبًا.' },
+
+  // RFQ builder (buyer)
+  'rfq.product': { en: 'Product', ar: 'المنتج' },
+  'rfq.qty': { en: 'Qty', ar: 'الكمية' },
+  'rfq.addLine': { en: 'Add line', ar: 'إضافة بند' },
+  'rfq.notes': { en: 'Notes', ar: 'ملاحظات' },
+  'rfq.notesPlaceholder': { en: 'e.g. Ramadan corporate gifting, 400 boxes', ar: 'مثال: إهداء رمضان للشركات، ٤٠٠ علبة' },
+  'rfq.estTotal': { en: 'Estimated total (account pricing)', ar: 'الإجمالي التقديري (سعر الحساب)' },
+  'rfq.submit': { en: 'Send to sales', ar: 'إرسال للمبيعات' },
+  'rfq.selectProduct': { en: 'Select a product…', ar: 'اختر منتجًا…' },
+  'rfq.note': { en: 'Your account manager will send a priced, valid quote shortly.', ar: 'سيرسل مدير حسابك عرض سعر مُسعّرًا وصالحًا قريبًا.' },
 
   // ── B2B Approver workspace ─────────────────────────────
   'approver.title': { en: 'Approvals', ar: 'الموافقات' },
