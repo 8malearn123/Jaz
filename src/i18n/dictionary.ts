@@ -607,5 +607,48 @@ export const dict: Dict = {
   'users.title': { en: 'Users & roles', ar: 'المستخدمون والأدوار' },
   'users.scopePlatform': { en: 'Platform', ar: 'المنصة' },
   'users.scopeOrg': { en: 'Org-scoped', ar: 'ضمن منشأة' },
+
+  // ── B2B Buyer workspace ────────────────────────────────
+  'buyer.subtitle': { en: 'Buyer workspace', ar: 'مساحة المشتري' },
+  'buyer.tab.dashboard': { en: 'Dashboard', ar: 'لوحتي' },
+  'buyer.tab.myOrders': { en: 'My orders', ar: 'طلباتي' },
+  'buyer.awaiting': { en: 'order(s) awaiting approval', ar: 'طلب بانتظار الموافقة' },
+  'buyer.awaitingBody': { en: 'Orders above your per-order limit are with your approver.', ar: 'الطلبات التي تتجاوز حدّك الواحد مع المعتمِد.' },
+  'buyer.myLimit': { en: 'Your per-order limit', ar: 'حدّ طلبك الواحد' },
+  'buyer.perOrder': { en: 'per order', ar: 'للطلب الواحد' },
+  'buyer.orgAvailable': { en: 'Org credit available', ar: 'ائتمان المنشأة المتاح' },
+  'buyer.readOnly': { en: 'read-only', ar: 'للعرض فقط' },
+  'buyer.monthSpend': { en: 'Spend this month', ar: 'إنفاق هذا الشهر' },
+  'buyer.orderTitle': { en: 'Order on account', ar: 'اطلب على الحساب' },
+  'buyer.orderBody': { en: 'Browse the catalogue at your negotiated account prices and order on Net terms.', ar: 'تصفّح الكتالوج بأسعار حسابك التفاوضية واطلب بشروط آجلة.' },
+  'buyer.browseCatalogue': { en: 'Browse catalogue', ar: 'تصفّح الكتالوج' },
+  'buyer.recentOrders': { en: 'Recent orders', ar: 'أحدث الطلبات' },
+  'buyer.overYourLimit': { en: 'Above your per-order limit — awaiting approval', ar: 'يتجاوز حدّك الواحد — بانتظار الموافقة' },
+
+  // ── B2B Approver workspace ─────────────────────────────
+  'approver.title': { en: 'Approvals', ar: 'الموافقات' },
+  'approver.subtitle': { en: 'Approver workspace', ar: 'مساحة المعتمِد' },
+  'approver.tab.queue': { en: 'Queue', ar: 'قائمة الانتظار' },
+  'approver.tab.decided': { en: 'Decided', ar: 'المُنجزة' },
+  'approver.pending': { en: 'Pending approvals', ar: 'موافقات معلّقة' },
+  'approver.valueAwaiting': { en: 'Value awaiting', ar: 'القيمة المعلّقة' },
+  'approver.explainer': { en: "Orders above a buyer's per-order limit need your approval before they consume credit.", ar: 'الطلبات التي تتجاوز حدّ المشتري الواحد تحتاج موافقتك قبل أن تستهلك الائتمان.' },
+  'approver.empty': { en: 'All caught up', ar: 'كل شيء مُنجز' },
+  'approver.emptyBody': { en: 'No orders are waiting for your approval.', ar: 'لا طلبات تنتظر موافقتك.' },
+  'approver.buyerLimit': { en: 'Buyer limit', ar: 'حدّ المشتري' },
+  'approver.orderTotal': { en: 'Order total', ar: 'إجمالي الطلب' },
+  'approver.overBy': { en: 'Over by', ar: 'يتجاوز بـ' },
+  'approver.notePlaceholder': { en: 'Add a note (optional)', ar: 'أضف ملاحظة (اختياري)' },
+  'approver.approveOrder': { en: 'Approve order', ar: 'اعتماد الطلب' },
+
+  // ── B2B Org admin ──────────────────────────────────────
+  'orgadmin.title': { en: 'Organization admin', ar: 'إدارة المنشأة' },
+  'orgadmin.tab.settings': { en: 'Settings', ar: 'الإعدادات' },
+  'orgadmin.verified': { en: 'verified', ar: 'موثّقة' },
+  'orgadmin.teamNote': { en: "Assign roles and set each buyer's per-order approval threshold.", ar: 'عيّن الأدوار وحدّد عتبة موافقة كل مشترٍ.' },
+  'orgadmin.withApprover': { en: 'With the approver', ar: 'لدى المعتمِد' },
+  'orgadmin.verification': { en: 'Verification', ar: 'التوثيق' },
+  'orgadmin.addresses': { en: 'Addresses', ar: 'العناوين' },
+  'accuracy.expires': { en: 'expires', ar: 'تنتهي' },
 }
 

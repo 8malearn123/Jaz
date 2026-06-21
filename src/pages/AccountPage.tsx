@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   LayoutGrid, Package, Gem, Repeat, Gift, MapPin, ShieldCheck,
-  Snowflake, ChevronRight, Check, Plus, Download, Sparkles, ArrowRight,
+  Snowflake, ChevronRight, Check, Plus, Download, Sparkles, ArrowRight, ArrowLeftRight,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useCart } from '@/state/CartContext'
@@ -10,7 +10,6 @@ import { customer, tierOrder, type CustomerOrder, type LoyaltyTier, type OrderSt
 import { variantById } from '@/data/products'
 import { flavors } from '@/data/flavors'
 import { AccountShell, type TabDef } from '@/components/account/AccountShell'
-import { RoleSwitcher } from '@/components/layout/RoleSwitcher'
 import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
 import { ProductArt } from '@/components/brand/ProductArt'
@@ -50,7 +49,12 @@ export function AccountPage() {
       tabs={tabs}
       active={active}
       onSelect={setActive}
-      headerExtra={<RoleSwitcher />}
+      headerExtra={
+        <Link to="/roles" className={buttonClass('primary', 'sm')}>
+          <ArrowLeftRight size={15} />
+          {t('role.switch')}
+        </Link>
+      }
     >
       {active === 'overview' && <OverviewPanel onTab={setActive} />}
       {active === 'orders' && <OrdersPanel />}
