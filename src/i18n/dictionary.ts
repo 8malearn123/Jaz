@@ -764,6 +764,7 @@ export const dict: Dict = {
   'rfq.estTotal': { en: 'Estimated total (account pricing)', ar: 'الإجمالي التقديري (سعر الحساب)' },
   'rfq.submit': { en: 'Send to sales', ar: 'إرسال للمبيعات' },
   'rfq.orderNow': { en: 'Order now', ar: 'اطلب الآن' },
+  'rfq.removeLine': { en: 'Remove line', ar: 'حذف البند' },
   'rfq.selectProduct': { en: 'Select a product…', ar: 'اختر منتجًا…' },
   'rfq.note': { en: 'Your account manager will send a priced, valid quote shortly.', ar: 'سيرسل مدير حسابك عرض سعر مُسعّرًا وصالحًا قريبًا.' },
 

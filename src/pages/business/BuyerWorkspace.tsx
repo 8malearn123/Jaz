@@ -15,14 +15,14 @@ import {
   type AccountOrder, type AccountOrderStatus, type Quote, type SavedList,
 } from '@/data/business'
 import { products, variantById } from '@/data/products'
-import { flavors } from '@/data/flavors'
 import { AccountShell, type TabDef } from '@/components/account/AccountShell'
 import { UtilizationGauge, Sparkline } from '@/components/charts/Charts'
+import { ProductPicker, ProductThumb } from '@/components/ui/ProductPicker'
 import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
 import { Modal } from '@/components/ui/Modal'
 import { useTab } from '@/lib/useTab'
-import { cn, tint } from '@/lib/cn'
+import { cn } from '@/lib/cn'
 
 const BUYER_ID = 'm-3' // Faisal Al-Harbi
 const MY_SPEND = [620000, 980000, 1450000, 720000, 2100000, 2840000] // 6-month personal spend trend
@@ -348,7 +348,7 @@ function MyQuotes() {
 }
 
 function RequestQuoteModal({ open, onClose, onCreated, onAddToCart }: { open: boolean; onClose: () => void; onCreated: (q: Quote) => void; onAddToCart: (variantId: string, qty: number) => void }) {
-  const { t, pick, money } = useLocale()
+  const { t, money } = useLocale()
   const [lines, setLines] = useState<{ productId: string; qty: number }[]>([{ productId: '', qty: 50 }])
   const [note, setNote] = useState('')
 
@@ -387,24 +387,20 @@ function RequestQuoteModal({ open, onClose, onCreated, onAddToCart }: { open: bo
     >
       <div className="flex flex-col gap-md">
         <div className="flex flex-col gap-sm">
-          <div className="hidden sm:flex items-center gap-sm px-xs">
-            <span className="flex-1 font-sans text-caption uppercase tracking-wide text-ink-subtle">{t('rfq.product')}</span>
-            <span className="w-24 font-sans text-caption uppercase tracking-wide text-ink-subtle">{t('rfq.qty')}</span>
-            <span className="w-28 text-end font-sans text-caption uppercase tracking-wide text-ink-subtle">{t('inv.lineTotal')}</span>
-            <span className="w-8" />
-          </div>
           {lines.map((l, i) => {
             const p = products.find((x) => x.id === l.productId)
             const lineTotal = p ? p.variants[0].b2bPriceMinor * (l.qty || 0) : 0
             return (
-              <div key={i} className="flex items-center gap-sm">
-                <select value={l.productId} onChange={(e) => setLine(i, { productId: e.target.value })} className="input flex-1 cursor-pointer">
-                  <option value="">{t('rfq.selectProduct')}</option>
-                  {products.map((pr) => <option key={pr.id} value={pr.id}>{pick(pr.title)} · {pick(flavors[pr.flavorId].name)}</option>)}
-                </select>
-                <input type="number" min={1} value={l.qty} onChange={(e) => setLine(i, { qty: Math.max(0, Number(e.target.value)) })} className="input w-24 text-center" />
-                <span className="w-28 text-end font-sans text-data text-ink tabular-nums">{money(lineTotal, { withSymbol: false })}</span>
-                <button onClick={() => removeLine(i)} className="grid place-items-center w-8 h-8 rounded-md text-ink-subtle hover:text-danger transition-colors shrink-0" aria-label="remove"><Trash2 size={15} /></button>
+              <div key={i} className="rounded-lg border border-hairline p-sm flex flex-col gap-sm">
+                <ProductPicker value={l.productId} onChange={(id) => setLine(i, { productId: id })} />
+                <div className="flex items-center gap-sm">
+                  <label className="inline-flex items-center gap-xs">
+                    <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{t('rfq.qty')}</span>
+                    <input type="number" min={1} value={l.qty} onChange={(e) => setLine(i, { qty: Math.max(0, Number(e.target.value)) })} className="input w-20 text-center py-1.5" />
+                  </label>
+                  <span className="ms-auto font-sans text-data text-ink tabular-nums">{money(lineTotal, { withSymbol: false })}</span>
+                  <button onClick={() => removeLine(i)} className="grid place-items-center w-8 h-8 rounded-md text-ink-subtle hover:text-danger transition-colors shrink-0" aria-label={t('rfq.removeLine')}><Trash2 size={15} /></button>
+                </div>
               </div>
             )
           })}
@@ -466,7 +462,7 @@ function Lists() {
               <ul className="flex flex-col gap-xs">
                 {items.map(({ it, v }, i) => (
                   <li key={i} className="flex items-center gap-sm">
-                    <span className="w-6 h-6 rounded overflow-hidden border border-hairline shrink-0" style={{ backgroundColor: tint(flavors[v.product.flavorId].accent, 14) }} />
+                    <ProductThumb flavorId={v.product.flavorId} type={v.product.type} className="w-7 h-7" />
                     <span className="flex-1 font-sans text-caption text-ink truncate">{pick(v.product.title)}</span>
                     <span className="font-sans text-caption text-ink-subtle tabular-nums">×{it.qty}</span>
                   </li>
@@ -493,11 +489,12 @@ function Lists() {
 }
 
 function NewListModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (l: SavedList) => void }) {
-  const { t, pick, money } = useLocale()
+  const { t, money } = useLocale()
   const [name, setName] = useState('')
   const [lines, setLines] = useState<{ productId: string; qty: number }[]>([{ productId: '', qty: 24 }])
   const valid = name.trim() && lines.some((l) => l.productId && l.qty > 0)
   const setLine = (i: number, patch: Partial<{ productId: string; qty: number }>) => setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
+  const removeLine = (i: number) => setLines((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev))
 
   const submit = () => {
     const items = lines.filter((l) => l.productId && l.qty > 0).map((l) => ({ variantId: products.find((p) => p.id === l.productId)!.variants[0].id, qty: l.qty }))
@@ -520,13 +517,16 @@ function NewListModal({ open, onClose, onCreate }: { open: boolean; onClose: () 
           {lines.map((l, i) => {
             const p = products.find((x) => x.id === l.productId)
             return (
-              <div key={i} className="flex items-center gap-sm">
-                <select value={l.productId} onChange={(e) => setLine(i, { productId: e.target.value })} className="input flex-1 cursor-pointer">
-                  <option value="">{t('rfq.selectProduct')}</option>
-                  {products.map((pr) => <option key={pr.id} value={pr.id}>{pick(pr.title)}</option>)}
-                </select>
-                <input type="number" min={1} value={l.qty} onChange={(e) => setLine(i, { qty: Math.max(0, Number(e.target.value)) })} className="input w-20 text-center" />
-                <span className="w-20 text-end font-sans text-caption text-ink-subtle tabular-nums">{p ? money(p.variants[0].b2bPriceMinor * l.qty, { withSymbol: false }) : '—'}</span>
+              <div key={i} className="rounded-lg border border-hairline p-sm flex flex-col gap-sm">
+                <ProductPicker value={l.productId} onChange={(id) => setLine(i, { productId: id })} />
+                <div className="flex items-center gap-sm">
+                  <label className="inline-flex items-center gap-xs">
+                    <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{t('rfq.qty')}</span>
+                    <input type="number" min={1} value={l.qty} onChange={(e) => setLine(i, { qty: Math.max(0, Number(e.target.value)) })} className="input w-20 text-center py-1.5" />
+                  </label>
+                  <span className="ms-auto font-sans text-data text-ink-subtle tabular-nums">{p ? money(p.variants[0].b2bPriceMinor * l.qty, { withSymbol: false }) : '—'}</span>
+                  <button onClick={() => removeLine(i)} className="grid place-items-center w-8 h-8 rounded-md text-ink-subtle hover:text-danger transition-colors shrink-0" aria-label={t('rfq.removeLine')}><Trash2 size={15} /></button>
+                </div>
               </div>
             )
           })}
@@ -606,7 +606,7 @@ function OrderDetailModal({ order, open, onClose }: { order: AccountOrder | null
                 <tr key={i} className="border-t border-hairline">
                   <td className="px-md py-2.5">
                     <div className="flex items-center gap-sm">
-                      <span className="w-8 h-8 rounded-md overflow-hidden border border-hairline shrink-0" style={{ backgroundColor: tint(flavors[l.found.product.flavorId].accent, 14) }} />
+                      <ProductThumb flavorId={l.found.product.flavorId} type={l.found.product.type} className="w-9 h-9" />
                       <span className="font-sans text-data text-ink">{pick(l.found.product.title)}</span>
                     </div>
                   </td>
