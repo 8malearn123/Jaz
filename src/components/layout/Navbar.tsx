@@ -9,6 +9,7 @@ import { Wordmark } from '@/components/brand/Wordmark'
 import { buttonClass } from '@/components/ui/Button'
 import { roleIcons } from '@/components/roles/roleIcons'
 import { AccountMenu } from './AccountMenu'
+import { SearchOverlay } from './SearchOverlay'
 
 const navItems = [
   { to: '/shop', key: 'nav.shop' },
@@ -22,6 +23,7 @@ export function Navbar() {
   const { count } = useCart()
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const location = useLocation()
 
   useEffect(() => {
@@ -111,7 +113,7 @@ export function Navbar() {
               <Globe size={15} />
               {t('lang.toggle')}
             </button>
-            <button className="grid place-items-center w-10 h-10 text-ink-muted hover:text-ink transition-colors" aria-label={t('nav.search')}>
+            <button onClick={() => setSearchOpen(true)} className="grid place-items-center w-10 h-10 text-ink-muted hover:text-ink transition-colors" aria-label={t('nav.search')}>
               <Search size={19} />
             </button>
             <AccountMenu />
@@ -132,6 +134,7 @@ export function Navbar() {
 
       {/* mobile sheet */}
       <MobileSheet open={open} onClose={() => setOpen(false)} />
+      <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
     </header>
   )
 }

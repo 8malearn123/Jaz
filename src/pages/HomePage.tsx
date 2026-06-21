@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, ArrowUpRight, Snowflake, FileCheck2, Gift, Sparkles } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, Snowflake, FileCheck2, Gift, Sparkles, Check } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { products } from '@/data/products'
 import { collections } from '@/data/collections'
@@ -349,7 +350,8 @@ function CorporateBand() {
 
 /* ─────────────────────────── Newsletter ─────────────────────────── */
 function NewsletterSection() {
-  const { t } = useLocale()
+  const { t, pick } = useLocale()
+  const [sent, setSent] = useState(false)
   return (
     <section className="container-jaz pt-section">
       <Reveal>
@@ -361,21 +363,28 @@ function NewsletterSection() {
             <MotifGlyph motif="jasmine" size={32} />
             <h2 className="font-serif text-display-md text-ink text-balance">{t('home.newsletter.title')}</h2>
             <p className="text-body text-ink-muted">{t('home.newsletter.body')}</p>
-            <form
-              onSubmit={(e) => e.preventDefault()}
-              className="mt-sm w-full flex flex-col sm:flex-row gap-sm max-w-md mx-auto"
-            >
-              <input
-                type="email"
-                required
-                placeholder={t('home.newsletter.placeholder')}
-                className="input flex-1 text-center sm:text-start"
-                aria-label={t('home.newsletter.placeholder')}
-              />
-              <button type="submit" className={buttonClass('primary')}>
-                {t('home.newsletter.cta')}
-              </button>
-            </form>
+            {sent ? (
+              <div className="mt-sm inline-flex items-center gap-sm rounded-pill bg-success/10 border border-success/30 px-5 py-3 animate-scale-in">
+                <Check size={18} className="text-success" />
+                <span className="font-serif text-body text-ink">{pick({ en: 'You are on the list — welcome to the maison.', ar: 'أنت على القائمة — أهلًا بك في المنزل.' })}</span>
+              </div>
+            ) : (
+              <form
+                onSubmit={(e) => { e.preventDefault(); setSent(true) }}
+                className="mt-sm w-full flex flex-col sm:flex-row gap-sm max-w-md mx-auto"
+              >
+                <input
+                  type="email"
+                  required
+                  placeholder={t('home.newsletter.placeholder')}
+                  className="input flex-1 text-center sm:text-start"
+                  aria-label={t('home.newsletter.placeholder')}
+                />
+                <button type="submit" className={buttonClass('primary')}>
+                  {t('home.newsletter.cta')}
+                </button>
+              </form>
+            )}
           </div>
         </div>
       </Reveal>
