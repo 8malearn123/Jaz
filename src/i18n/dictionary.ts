@@ -438,6 +438,8 @@ export const dict: Dict = {
   'business.accountManager': { en: 'Account manager', ar: 'مدير الحساب' },
   'biz.account': { en: 'Business account', ar: 'حساب الأعمال' },
   'biz.tab.approvals': { en: 'Approvals', ar: 'الموافقات' },
+  'biz.tab.credit': { en: 'Credit & statements', ar: 'الائتمان والكشوف' },
+  'biz.tab.company': { en: 'Company', ar: 'المنشأة' },
   'business.priceList': { en: 'Price list', ar: 'قائمة الأسعار' },
   'business.tier': { en: 'tier', ar: 'فئة' },
   'business.recentActivity': { en: 'Recent activity', ar: 'النشاط الأخير' },

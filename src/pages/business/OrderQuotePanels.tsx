@@ -1,14 +1,13 @@
 import { useMemo, useState } from 'react'
 import {
-  AlertTriangle, Repeat, Check, Plus, Eye, Download, CheckCircle2, Trash2, Bookmark, Pencil,
+  AlertTriangle, Repeat, Check, Plus, Eye, Download, CheckCircle2, Trash2,
   ClipboardCheck, Cog, Truck, PackageCheck, Clock, ShoppingCart,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useCart } from '@/state/CartContext'
 import {
   accountOrders, accountOrderItems, quotes as quoteSeed, members,
-  savedLists as savedListsSeed,
-  type AccountOrder, type AccountOrderStatus, type Quote, type SavedList,
+  type AccountOrder, type AccountOrderStatus, type Quote,
 } from '@/data/business'
 import { products, variantById } from '@/data/products'
 import { ProductPicker, ProductThumb } from '@/components/ui/ProductPicker'
@@ -16,8 +15,6 @@ import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
 import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/cn'
-
-const BUYER_ID = 'm-3' // Faisal Al-Harbi
 
 const statusVariant: Record<AccountOrderStatus, 'gold' | 'success' | 'danger' | 'neutral'> = {
   awaiting_approval: 'danger', confirmed: 'gold', processing: 'gold', shipped: 'gold', delivered: 'success', rejected: 'neutral',
@@ -279,135 +276,6 @@ function RequestQuoteModal({ open, onClose, onCreated, onAddToCart }: { open: bo
 }
 
 /* ─────────── Lists ─────────── */
-export function Lists() {
-  const { t, pick, money } = useLocale()
-  const { add } = useCart()
-  const [lists, setLists] = useState<SavedList[]>(savedListsSeed.filter((l) => l.ownerId === BUYER_ID))
-  const [editor, setEditor] = useState<{ list: SavedList | null } | null>(null)
-  const [addedId, setAddedId] = useState<string | null>(null)
-
-  const listTotal = (l: SavedList) => l.items.reduce((s, it) => { const v = variantById(it.variantId); return v ? s + v.variant.b2bPriceMinor * it.qty : s }, 0)
-  const addAll = (l: SavedList) => { l.items.forEach((it) => add(it.variantId, it.qty)); setAddedId(l.id); setTimeout(() => setAddedId(null), 1500) }
-  const upsert = (saved: SavedList) => setLists((prev) => (prev.some((x) => x.id === saved.id) ? prev.map((x) => (x.id === saved.id ? saved : x)) : [saved, ...prev]))
-
-  return (
-    <div className="flex flex-col gap-lg">
-      <div className="flex items-center justify-between gap-md">
-        <div>
-          <h2 className="font-serif text-headline text-ink">{t('buyer.lists.title')}</h2>
-          <p className="font-sans text-data text-ink-muted mt-xxs">{t('buyer.lists.subtitle')}</p>
-        </div>
-        <button onClick={() => setEditor({ list: null })} className={buttonClass('primary', 'sm', 'shrink-0')}><Plus size={15} /> {t('buyer.lists.new')}</button>
-      </div>
-
-      <div className="grid sm:grid-cols-2 gap-md">
-        {lists.map((l) => {
-          const items = l.items.map((it) => ({ it, v: variantById(it.variantId) })).filter((x) => x.v) as { it: { variantId: string; qty: number }; v: NonNullable<ReturnType<typeof variantById>> }[]
-          return (
-            <div key={l.id} className="card p-lg flex flex-col gap-md">
-              <div className="flex items-start justify-between gap-sm">
-                <div className="flex items-center gap-sm min-w-0">
-                  <span className="grid place-items-center w-10 h-10 rounded-md bg-primary/10 text-primary-hover shrink-0"><Bookmark size={18} /></span>
-                  <div className="min-w-0">
-                    <h3 className="font-serif text-card-title text-ink truncate">{pick(l.name)}</h3>
-                    <p className="font-sans text-caption text-ink-subtle">{l.items.length} {t('buyer.lists.items')} · {money(listTotal(l))}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-xxs shrink-0">
-                  <button onClick={() => setEditor({ list: l })} className="grid place-items-center w-8 h-8 rounded-md text-ink-subtle hover:text-primary-hover hover:bg-primary/5" aria-label={t('buyer.lists.edit')}><Pencil size={15} /></button>
-                  <button onClick={() => setLists((prev) => prev.filter((x) => x.id !== l.id))} className="grid place-items-center w-8 h-8 rounded-md text-ink-subtle hover:text-danger hover:bg-danger/5" aria-label={t('buyer.lists.delete')}><Trash2 size={15} /></button>
-                </div>
-              </div>
-
-              <ul className="flex flex-col gap-xs">
-                {items.map(({ it, v }, i) => (
-                  <li key={i} className="flex items-center gap-sm">
-                    <ProductThumb flavorId={v.product.flavorId} type={v.product.type} className="w-7 h-7" />
-                    <span className="flex-1 font-sans text-caption text-ink truncate">{pick(v.product.title)}</span>
-                    <span className="font-sans text-caption text-ink-subtle tabular-nums">×{it.qty}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <button onClick={() => addAll(l)} className={buttonClass(addedId === l.id ? 'secondary' : 'primary', 'sm', 'self-start')}>
-                {addedId === l.id ? <><Check size={14} /> {t('cta.added')}</> : <><ShoppingCart size={14} /> {t('buyer.lists.addAll')}</>}
-              </button>
-            </div>
-          )
-        })}
-        {lists.length === 0 && (
-          <div className="card p-xxl flex flex-col items-center text-center gap-sm sm:col-span-2">
-            <span className="grid place-items-center w-14 h-14 rounded-pill bg-surface-2 text-ink-subtle"><Bookmark size={24} /></span>
-            <p className="font-sans text-data text-ink-muted">{t('buyer.lists.empty')}</p>
-          </div>
-        )}
-      </div>
-
-      {editor && (
-        <ListEditorModal
-          key={editor.list?.id ?? 'new'}
-          list={editor.list}
-          onClose={() => setEditor(null)}
-          onSave={(l) => { upsert(l); setEditor(null) }}
-        />
-      )}
-    </div>
-  )
-}
-
-function ListEditorModal({ list, onClose, onSave }: { list: SavedList | null; onClose: () => void; onSave: (l: SavedList) => void }) {
-  const { t, pick, locale, money } = useLocale()
-  const editing = !!list
-  const [name, setName] = useState(list ? pick(list.name) : '')
-  const [lines, setLines] = useState<{ productId: string; qty: number }[]>(
-    list && list.items.length
-      ? list.items.map((it) => ({ productId: variantById(it.variantId)?.product.id ?? '', qty: it.qty }))
-      : [{ productId: '', qty: 24 }],
-  )
-  const valid = name.trim() && lines.some((l) => l.productId && l.qty > 0)
-  const setLine = (i: number, patch: Partial<{ productId: string; qty: number }>) => setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
-  const removeLine = (i: number) => setLines((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev))
-
-  const submit = () => {
-    const items = lines.filter((l) => l.productId && l.qty > 0).map((l) => ({ variantId: products.find((p) => p.id === l.productId)!.variants[0].id, qty: l.qty }))
-    const nm = list ? { ...list.name, [locale]: name } : { en: name, ar: name }
-    onSave({ id: list?.id ?? `sl-${Date.now()}`, name: nm, ownerId: BUYER_ID, items })
-  }
-
-  return (
-    <Modal open onClose={onClose} size="md" eyebrow={t('buyer.tab.lists')} title={editing ? t('buyer.lists.editTitle') : t('buyer.lists.newTitle')}
-      footer={<>
-        <button onClick={onClose} className={buttonClass('ghost', 'sm')}>{t('common.cancel')}</button>
-        <button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}>{editing ? t('buyer.lists.save') : t('buyer.lists.create')}</button>
-      </>}>
-      <div className="flex flex-col gap-md">
-        <label className="flex flex-col gap-xs">
-          <span className="label">{t('buyer.lists.name')}</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Weekly amenities" className="input" />
-        </label>
-        <div className="flex flex-col gap-sm">
-          {lines.map((l, i) => {
-            const p = products.find((x) => x.id === l.productId)
-            return (
-              <div key={i} className="rounded-lg border border-hairline p-sm flex flex-col gap-sm">
-                <ProductPicker value={l.productId} onChange={(id) => setLine(i, { productId: id })} />
-                <div className="flex items-center gap-sm">
-                  <label className="inline-flex items-center gap-xs">
-                    <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{t('rfq.qty')}</span>
-                    <input type="number" min={1} value={l.qty} onChange={(e) => setLine(i, { qty: Math.max(0, Number(e.target.value)) })} className="input w-20 text-center py-1.5" />
-                  </label>
-                  <span className="ms-auto font-sans text-data text-ink-subtle tabular-nums">{p ? money(p.variants[0].b2bPriceMinor * l.qty, { withSymbol: false }) : '—'}</span>
-                  <button onClick={() => removeLine(i)} className="grid place-items-center w-8 h-8 rounded-md text-ink-subtle hover:text-danger transition-colors shrink-0" aria-label={t('rfq.removeLine')}><Trash2 size={15} /></button>
-                </div>
-              </div>
-            )
-          })}
-          <button onClick={() => setLines((prev) => [...prev, { productId: '', qty: 24 }])} className={buttonClass('ghost', 'sm', 'self-start')}><Plus size={14} /> {t('rfq.addLine')}</button>
-        </div>
-      </div>
-    </Modal>
-  )
-}
 
 /* ─────────── Order detail / invoice ─────────── */
 function OrderDetailModal({ order, open, onClose }: { order: AccountOrder | null; open: boolean; onClose: () => void }) {
