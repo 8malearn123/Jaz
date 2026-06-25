@@ -13,7 +13,7 @@ import { tint } from '@/lib/cn'
 
 export function CartPage() {
   const { t, pick, money, locale } = useLocale()
-  const { channel } = useChannel()
+  const { channel, signedIn } = useChannel()
   const { lines, setQty, remove, unitPrice, hasColdChain } = useCart()
   const navigate = useNavigate()
 
@@ -125,9 +125,12 @@ export function CartPage() {
         <div className="lg:sticky lg:top-28">
           <OrderSummary>
             <button onClick={() => navigate('/checkout')} className={buttonClass('primary', 'md', 'w-full mt-md')}>
-              {t('cta.checkout')}
+              {signedIn ? t('cta.checkout') : t('cart.signInToCheckout')}
               <ArrowRight size={16} className="rtl:rotate-180" />
             </button>
+            {!signedIn && (
+              <p className="text-center font-sans text-caption text-ink-subtle mt-xs">{t('cart.guestNote')}</p>
+            )}
             <div className="flex flex-wrap items-center justify-center gap-x-md gap-y-xs mt-md">
               {['mada', 'Visa', 'Apple Pay', 'tabby', 'tamara'].map((m) => (
                 <StatusBadge key={m} variant="neutral" className="!text-ink-subtle">

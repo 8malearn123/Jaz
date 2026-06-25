@@ -9,8 +9,8 @@ if (routes.length === 0) {
   routes.push('/business', '/business?tab=team', '/business?tab=credit', '/business?tab=orders', '/business?tab=quotes', '/business?tab=gifting', '/business?tab=settings')
 }
 
-// Minimal browser stubs so ChannelProvider reads the seeded role.
-const store = new Map([['jaz.role', role]])
+// Minimal browser stubs so ChannelProvider reads the seeded role as a signed-in session.
+const store = new Map([['jaz.role', role], ['jaz.authed', '1']])
 const localStorage = {
   getItem: (k) => (store.has(k) ? store.get(k) : null),
   setItem: (k, v) => store.set(k, String(v)),

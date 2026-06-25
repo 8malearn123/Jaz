@@ -13,7 +13,9 @@ import { BusinessPage } from '@/pages/BusinessPage'
 import { AdminConsole } from '@/pages/AdminConsole'
 import { RolePicker } from '@/pages/RolePicker'
 import { SignInPage } from '@/pages/SignInPage'
+import { SignUpPage } from '@/pages/SignUpPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
+import { RequireAuth } from '@/components/account/RequireAuth'
 
 export default function App() {
   return (
@@ -28,11 +30,19 @@ export default function App() {
         <Route path="corporate" element={<CorporatePage />} />
         <Route path="heritage" element={<HeritagePage />} />
         <Route path="cart" element={<CartPage />} />
-        <Route path="checkout" element={<CheckoutPage />} />
-        <Route path="account" element={<AccountPage />} />
-        <Route path="business" element={<BusinessPage />} />
-        <Route path="admin" element={<AdminConsole />} />
+        <Route
+          path="checkout"
+          element={
+            <RequireAuth titleKey="auth.gate.checkoutTitle" bodyKey="auth.gate.checkoutBody" explore={false}>
+              <CheckoutPage />
+            </RequireAuth>
+          }
+        />
+        <Route path="account" element={<RequireAuth><AccountPage /></RequireAuth>} />
+        <Route path="business" element={<RequireAuth><BusinessPage /></RequireAuth>} />
+        <Route path="admin" element={<RequireAuth><AdminConsole /></RequireAuth>} />
         <Route path="signin" element={<SignInPage />} />
+        <Route path="signup" element={<SignUpPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
