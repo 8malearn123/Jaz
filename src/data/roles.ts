@@ -3,9 +3,7 @@ import type { Bilingual } from './types'
 // The ten roles from the Production Architecture §2.2 (Identity & Access).
 export type RoleId =
   | 'customer'
-  | 'b2b_buyer'
-  | 'b2b_approver'
-  | 'b2b_admin'
+  | 'b2b'
   | 'sales_agent'
   | 'support_agent'
   | 'content_editor'
@@ -45,39 +43,15 @@ export const personas: Record<RoleId, Persona> = {
     accent: '#b08a57',
     onAccent: '#2a1a12',
   },
-  b2b_buyer: {
-    id: 'b2b_buyer',
-    name: { en: 'Faisal Al-Harbi', ar: 'فيصل الحربي' },
-    roleLabel: { en: 'Buyer · Najd Hospitality', ar: 'مشترٍ · مجموعة نجد للضيافة' },
+  b2b: {
+    id: 'b2b',
+    name: { en: 'Khalid Al-Otaibi', ar: 'خالد العتيبي' },
+    roleLabel: { en: 'Business Account · Najd Hospitality', ar: 'حساب أعمال · مجموعة نجد' },
     group: 'business',
     scope: 'org',
     channel: 'b2b',
     requiresMFA: false,
     home: '/business',
-    accent: '#365766',
-    onAccent: '#f3eee5',
-  },
-  b2b_approver: {
-    id: 'b2b_approver',
-    name: { en: 'Sara Al-Dosari', ar: 'سارة الدوسري' },
-    roleLabel: { en: 'Approver · Najd Hospitality', ar: 'معتمِدة · مجموعة نجد' },
-    group: 'business',
-    scope: 'org',
-    channel: 'b2b',
-    requiresMFA: false,
-    home: '/business?tab=orders',
-    accent: '#355c4b',
-    onAccent: '#f3eee5',
-  },
-  b2b_admin: {
-    id: 'b2b_admin',
-    name: { en: 'Khalid Al-Otaibi', ar: 'خالد العتيبي' },
-    roleLabel: { en: 'Org Admin · Najd Hospitality', ar: 'مدير المنشأة · مجموعة نجد' },
-    group: 'business',
-    scope: 'org',
-    channel: 'b2b',
-    requiresMFA: false,
-    home: '/business?tab=team',
     accent: '#3b241a',
     onAccent: '#f3eee5',
   },

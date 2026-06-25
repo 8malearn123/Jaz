@@ -18,7 +18,7 @@ export function SignInPage() {
   const isBusiness = mode === 'b2b'
 
   const signIn = () => {
-    setRole(isBusiness ? 'b2b_buyer' : 'customer')
+    setRole(isBusiness ? 'b2b' : 'customer')
     navigate(isBusiness ? '/business' : '/account')
   }
   const goToDashboard = (e: React.FormEvent) => {
