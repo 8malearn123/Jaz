@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link, NavLink, useLocation } from 'react-router-dom'
-import { ShoppingBag, Search, Menu, X, Globe, ArrowLeftRight } from 'lucide-react'
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { ShoppingBag, Search, Menu, X, Globe, ArrowLeftRight, LogIn, LogOut, UserPlus } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useCart } from '@/state/CartContext'
 import { useChannel } from '@/state/ChannelContext'
@@ -21,6 +21,7 @@ const navItems = [
 export function Navbar() {
   const { t, toggleLocale, locale } = useLocale()
   const { count } = useCart()
+  const { signedIn } = useChannel()
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -55,9 +56,11 @@ export function Navbar() {
               : 'Cold-chain delivery Kingdom-wide · ZATCA-compliant invoicing'}
           </p>
           <div className="flex items-center gap-sm ms-auto">
-            <span className="hidden md:inline font-sans text-caption uppercase tracking-[0.1em] text-ink-on-dark-muted/70">
-              {t('role.current')}
-            </span>
+            {signedIn && (
+              <span className="hidden md:inline font-sans text-caption uppercase tracking-[0.1em] text-ink-on-dark-muted/70">
+                {t('role.current')}
+              </span>
+            )}
             <PersonaPill />
           </div>
         </div>
@@ -139,10 +142,28 @@ export function Navbar() {
   )
 }
 
-/** Always-visible current-persona chip that opens the role launcher. */
+/** Top-strip chip: guests get a sign-in prompt; members get the persona switcher. */
 function PersonaPill() {
-  const { persona } = useChannel()
+  const { persona, signedIn } = useChannel()
   const { t, pick } = useLocale()
+
+  if (!signedIn) {
+    return (
+      <Link
+        to="/signin"
+        className="group inline-flex items-center gap-xs rounded-pill border border-hairline-dark bg-canvas-dark/30 ps-1 pe-2.5 py-1 hover:border-primary/50 transition-colors"
+        aria-label={t('nav.signin')}
+      >
+        <span className="grid place-items-center w-6 h-6 rounded-pill bg-surface-dark-1 text-primary-bright shrink-0">
+          <LogIn size={12} />
+        </span>
+        <span className="font-sans text-[11px] uppercase tracking-[0.08em] text-ink-on-dark-muted group-hover:text-ink-on-dark">
+          {t('nav.signin')}
+        </span>
+      </Link>
+    )
+  }
+
   const Icon = roleIcons[persona.id]
   return (
     <Link
@@ -164,8 +185,14 @@ function PersonaPill() {
 
 function MobileSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t, toggleLocale, pick } = useLocale()
-  const { persona } = useChannel()
+  const { persona, signedIn, signOut } = useChannel()
+  const navigate = useNavigate()
   const PersonaIcon = roleIcons[persona.id]
+  const handleSignOut = () => {
+    signOut()
+    onClose()
+    navigate('/')
+  }
   return (
     <div className={cn('fixed inset-0 z-50 lg:hidden', open ? 'pointer-events-auto' : 'pointer-events-none')} aria-hidden={!open}>
       <div
@@ -185,20 +212,31 @@ function MobileSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
             <X size={22} />
           </button>
         </div>
-        {/* persona launcher */}
-        <div className="px-lg pt-lg flex flex-col gap-xs">
-          <span className="font-sans text-caption uppercase tracking-[0.1em] text-ink-subtle">{t('role.current')}</span>
-          <Link to="/roles" className="flex items-center gap-sm rounded-md border border-hairline bg-surface-2 p-sm hover:border-hairline-strong transition-colors">
-            <span className="grid place-items-center w-9 h-9 rounded-md shrink-0" style={{ backgroundColor: persona.accent, color: persona.onAccent }}>
-              <PersonaIcon size={17} />
-            </span>
-            <span className="flex-1 min-w-0">
-              <span className="block font-sans text-data text-ink truncate">{pick(persona.name)}</span>
-              <span className="block font-sans text-caption text-ink-subtle truncate">{pick(persona.roleLabel)}</span>
-            </span>
-            <ArrowLeftRight size={16} className="text-ink-subtle shrink-0" />
-          </Link>
-        </div>
+        {/* identity / auth */}
+        {signedIn ? (
+          <div className="px-lg pt-lg flex flex-col gap-xs">
+            <span className="font-sans text-caption uppercase tracking-[0.1em] text-ink-subtle">{t('role.current')}</span>
+            <Link to="/roles" onClick={onClose} className="flex items-center gap-sm rounded-md border border-hairline bg-surface-2 p-sm hover:border-hairline-strong transition-colors">
+              <span className="grid place-items-center w-9 h-9 rounded-md shrink-0" style={{ backgroundColor: persona.accent, color: persona.onAccent }}>
+                <PersonaIcon size={17} />
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="block font-sans text-data text-ink truncate">{pick(persona.name)}</span>
+                <span className="block font-sans text-caption text-ink-subtle truncate">{pick(persona.roleLabel)}</span>
+              </span>
+              <ArrowLeftRight size={16} className="text-ink-subtle shrink-0" />
+            </Link>
+          </div>
+        ) : (
+          <div className="px-lg pt-lg grid grid-cols-2 gap-sm">
+            <Link to="/signin" onClick={onClose} className={buttonClass('primary', 'md', 'w-full')}>
+              <LogIn size={16} /> {t('nav.signin')}
+            </Link>
+            <Link to="/signup" onClick={onClose} className={buttonClass('secondary', 'md', 'w-full')}>
+              <UserPlus size={16} /> {t('signin.createAccount')}
+            </Link>
+          </div>
+        )}
         <nav className="flex flex-col p-lg gap-xs flex-1 overflow-y-auto">
           {navItems.map((item) => (
             <NavLink
@@ -214,19 +252,27 @@ function MobileSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
               {t(item.key)}
             </NavLink>
           ))}
-          <Link
-            to={persona.group === 'staff' ? '/admin' : persona.group === 'business' ? '/business' : '/account'}
-            className="font-serif text-headline py-2 border-b border-hairline/60 text-ink hover:text-primary-hover"
-          >
-            {persona.group === 'staff' ? t('role.adminConsole') : persona.group === 'business' ? t('role.businessPortal') : t('role.myAccount')}
-          </Link>
+          {signedIn && (
+            <Link
+              to={persona.group === 'staff' ? '/admin' : persona.group === 'business' ? '/business' : '/account'}
+              onClick={onClose}
+              className="font-serif text-headline py-2 border-b border-hairline/60 text-ink hover:text-primary-hover"
+            >
+              {persona.group === 'staff' ? t('role.adminConsole') : persona.group === 'business' ? t('role.businessPortal') : t('role.myAccount')}
+            </Link>
+          )}
         </nav>
         <div className="p-lg flex flex-col gap-sm border-t border-hairline">
+          {signedIn && (
+            <button onClick={handleSignOut} className={buttonClass('secondary', 'md', 'w-full')}>
+              <LogOut size={16} /> {t('role.signOut')}
+            </button>
+          )}
           <button onClick={toggleLocale} className={buttonClass('secondary', 'md', 'w-full')}>
             <Globe size={16} />
             {t('lang.toggle')}
           </button>
-          <Link to="/shop" className={buttonClass('primary', 'md', 'w-full')}>
+          <Link to="/shop" onClick={onClose} className={buttonClass('primary', 'md', 'w-full')}>
             {t('cta.shop')}
           </Link>
         </div>

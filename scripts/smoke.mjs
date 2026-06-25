@@ -24,6 +24,7 @@ const routes = [
   '/business?tab=orders',
   '/business?tab=quotes',
   '/signin',
+  '/signup',
   '/roles',
   '/admin',
   '/this-route-does-not-exist',

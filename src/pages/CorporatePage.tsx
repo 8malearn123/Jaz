@@ -20,12 +20,16 @@ const features = [
 
 export function CorporatePage() {
   const { t, pick } = useLocale()
-  const { setChannel } = useChannel()
+  const { signedIn, setChannel } = useChannel()
   const navigate = useNavigate()
 
   const enterBusiness = () => {
-    setChannel('b2b')
-    navigate('/business')
+    if (signedIn) {
+      setChannel('b2b')
+      navigate('/business')
+    } else {
+      navigate('/signin?mode=b2b&next=%2Fbusiness')
+    }
   }
 
   return (

@@ -17,11 +17,11 @@ const groups: { id: RoleGroup; key: string }[] = [
 
 export function RolePicker() {
   const { t, pick, toggleLocale, locale } = useLocale()
-  const { role, setRole } = useChannel()
+  const { role, signIn } = useChannel()
   const navigate = useNavigate()
 
   const choose = (p: Persona) => {
-    setRole(p.id)
+    signIn(p.id)
     navigate(p.home)
   }
 
