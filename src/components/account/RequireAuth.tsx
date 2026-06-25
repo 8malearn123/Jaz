@@ -6,14 +6,24 @@ import { useLocale } from '@/i18n/LocaleContext'
 import { buttonClass } from '@/components/ui/Button'
 
 /** Gate a route behind an authenticated session; guests see a sign-in prompt. */
-export function RequireAuth({ children }: { children: ReactNode }) {
+export function RequireAuth({
+  children,
+  titleKey = 'auth.gate.title',
+  bodyKey = 'auth.gate.body',
+  explore = true,
+}: {
+  children: ReactNode
+  titleKey?: string
+  bodyKey?: string
+  explore?: boolean
+}) {
   const { signedIn } = useChannel()
   const { pathname, search } = useLocation()
   if (signedIn) return <>{children}</>
-  return <SignInGate next={encodeURIComponent(pathname + search)} />
+  return <SignInGate next={encodeURIComponent(pathname + search)} titleKey={titleKey} bodyKey={bodyKey} explore={explore} />
 }
 
-function SignInGate({ next }: { next: string }) {
+function SignInGate({ next, titleKey, bodyKey, explore }: { next: string; titleKey: string; bodyKey: string; explore: boolean }) {
   const { t } = useLocale()
   return (
     <section className="container-narrow py-section">
@@ -22,8 +32,8 @@ function SignInGate({ next }: { next: string }) {
           <Lock size={28} />
         </span>
         <div className="flex flex-col gap-xs">
-          <h1 className="font-serif text-display-md text-ink">{t('auth.gate.title')}</h1>
-          <p className="text-body text-ink-muted">{t('auth.gate.body')}</p>
+          <h1 className="font-serif text-display-md text-ink">{t(titleKey)}</h1>
+          <p className="text-body text-ink-muted">{t(bodyKey)}</p>
         </div>
         <div className="w-full flex flex-col gap-sm">
           <Link to={`/signin?next=${next}`} className={buttonClass('primary', 'md', 'w-full')}>
@@ -33,9 +43,11 @@ function SignInGate({ next }: { next: string }) {
             <UserPlus size={16} /> {t('signin.createAccount')}
           </Link>
         </div>
-        <Link to="/roles" className="link-gold">
-          {t('auth.gate.explore')} <ArrowRight size={14} className="rtl:rotate-180" />
-        </Link>
+        {explore && (
+          <Link to="/roles" className="link-gold">
+            {t('auth.gate.explore')} <ArrowRight size={14} className="rtl:rotate-180" />
+          </Link>
+        )}
       </div>
     </section>
   )

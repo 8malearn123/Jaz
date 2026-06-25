@@ -125,6 +125,8 @@ export const dict: Dict = {
 
   // ── Cart ───────────────────────────────────────────────
   'cart.title': { en: 'Your cart', ar: 'سلتك' },
+  'cart.signInToCheckout': { en: 'Sign in to check out', ar: 'سجّل الدخول لإتمام الشراء' },
+  'cart.guestNote': { en: 'An account is required to place an order.', ar: 'يلزم وجود حساب لإتمام الطلب.' },
   'cart.empty': { en: 'Your cart is quiet for now', ar: 'سلتك هادئة حتى الآن' },
   'cart.emptyBody': {
     en: 'Add a bar, a box, or a collectible — we will keep it cold all the way to the door.',
@@ -368,6 +370,11 @@ export const dict: Dict = {
   'auth.gate.title': { en: 'Sign in to continue', ar: 'سجّل الدخول للمتابعة' },
   'auth.gate.body': { en: 'This area is for members. Sign in or create an account to view it.', ar: 'هذه المنطقة للأعضاء. سجّل الدخول أو أنشئ حسابًا لعرضها.' },
   'auth.gate.explore': { en: 'Explore demo roles', ar: 'استكشف أدوار العرض' },
+  'auth.gate.checkoutTitle': { en: 'Sign in to complete your order', ar: 'سجّل الدخول لإتمام طلبك' },
+  'auth.gate.checkoutBody': {
+    en: 'Your cart is saved. Sign in or create an account to check out securely.',
+    ar: 'سلتك محفوظة. سجّل الدخول أو أنشئ حسابًا لإتمام الدفع بأمان.',
+  },
   'auth.menu.guestTitle': { en: 'Welcome to JAZ', ar: 'أهلًا بك في جاز' },
   'auth.menu.guestBody': { en: 'Sign in to track orders, credit & more.', ar: 'سجّل الدخول لتتبّع الطلبات والائتمان والمزيد.' },
   'auth.point.secure': { en: 'Bank-grade security & MFA', ar: 'حماية بمستوى البنوك وتحقق ثنائي' },

@@ -30,7 +30,14 @@ export default function App() {
         <Route path="corporate" element={<CorporatePage />} />
         <Route path="heritage" element={<HeritagePage />} />
         <Route path="cart" element={<CartPage />} />
-        <Route path="checkout" element={<CheckoutPage />} />
+        <Route
+          path="checkout"
+          element={
+            <RequireAuth titleKey="auth.gate.checkoutTitle" bodyKey="auth.gate.checkoutBody" explore={false}>
+              <CheckoutPage />
+            </RequireAuth>
+          }
+        />
         <Route path="account" element={<RequireAuth><AccountPage /></RequireAuth>} />
         <Route path="business" element={<RequireAuth><BusinessPage /></RequireAuth>} />
         <Route path="admin" element={<RequireAuth><AdminConsole /></RequireAuth>} />
