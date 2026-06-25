@@ -1,184 +1,29 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
-  LayoutGrid, Package, FileText, ShoppingBag, AlertTriangle, Repeat, Check, ArrowRight,
-  Wallet, ClipboardList, Plus, Eye, Download, CheckCircle2, Trash2, Building2, Bookmark, Pencil,
+  AlertTriangle, Repeat, Check, Plus, Eye, Download, CheckCircle2, Trash2, Bookmark, Pencil,
   ClipboardCheck, Cog, Truck, PackageCheck, Clock, ShoppingCart,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
-import { useChannel } from '@/state/ChannelContext'
 import { useCart } from '@/state/CartContext'
-import { availableCreditMinor } from '@/data/organization'
 import {
-  accountOrders, accountOrderItems, quotes as quoteSeed, members, memberById, costCenterById,
+  accountOrders, accountOrderItems, quotes as quoteSeed, members,
   savedLists as savedListsSeed,
   type AccountOrder, type AccountOrderStatus, type Quote, type SavedList,
 } from '@/data/business'
 import { products, variantById } from '@/data/products'
-import { AccountShell, type TabDef } from '@/components/account/AccountShell'
-import { UtilizationGauge, Sparkline } from '@/components/charts/Charts'
 import { ProductPicker, ProductThumb } from '@/components/ui/ProductPicker'
 import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
 import { Modal } from '@/components/ui/Modal'
-import { useTab } from '@/lib/useTab'
 import { cn } from '@/lib/cn'
 
 const BUYER_ID = 'm-3' // Faisal Al-Harbi
-const MY_SPEND = [620000, 980000, 1450000, 720000, 2100000, 2840000] // 6-month personal spend trend
 
 const statusVariant: Record<AccountOrderStatus, 'gold' | 'success' | 'danger' | 'neutral'> = {
   awaiting_approval: 'danger', confirmed: 'gold', processing: 'gold', shipped: 'gold', delivered: 'success', rejected: 'neutral',
 }
 const quoteVariant: Record<Quote['status'], 'gold' | 'success' | 'neutral' | 'danger'> = {
   sent: 'gold', accepted: 'success', converted: 'success', draft: 'neutral', expired: 'danger',
-}
-
-export function BuyerWorkspace() {
-  const { t, pick } = useLocale()
-  const { org, persona } = useChannel()
-  const [activeRaw, setActive] = useTab('dashboard')
-  const active = ['dashboard', 'orders', 'quotes', 'lists'].includes(activeRaw) ? activeRaw : 'dashboard'
-  const [viewOrder, setViewOrder] = useState<AccountOrder | null>(null)
-
-  const me = memberById(BUYER_ID)
-  const myOrders = accountOrders.filter((o) => o.buyerId === BUYER_ID)
-  const awaiting = myOrders.filter((o) => o.status === 'awaiting_approval')
-
-  const tabs: TabDef[] = [
-    { id: 'dashboard', label: t('buyer.tab.dashboard'), icon: LayoutGrid },
-    { id: 'orders', label: t('buyer.tab.myOrders'), icon: Package },
-    { id: 'quotes', label: t('business.tab.quotes'), icon: FileText },
-    { id: 'lists', label: t('buyer.tab.lists'), icon: Bookmark },
-  ]
-
-  return (
-    <AccountShell
-      eyebrow={pick(persona.roleLabel)}
-      title={`${t('account.greeting')}, ${pick(persona.name).split(' ')[0]}`}
-      subtitle={`${pick(org.legalName)} · ${t('buyer.subtitle')}`}
-      tone="dark"
-      tabs={tabs}
-      active={active}
-      onSelect={setActive}
-    >
-      {active === 'dashboard' && <Dashboard me={me} myOrders={myOrders} awaiting={awaiting} onTab={setActive} onView={setViewOrder} />}
-      {active === 'orders' && <MyOrders orders={myOrders} onView={setViewOrder} />}
-      {active === 'quotes' && <MyQuotes />}
-      {active === 'lists' && <Lists />}
-
-      <OrderDetailModal order={viewOrder} open={!!viewOrder} onClose={() => setViewOrder(null)} />
-    </AccountShell>
-  )
-}
-
-/* ─────────── Dashboard ─────────── */
-function Dashboard({
-  me, myOrders, awaiting, onTab, onView,
-}: {
-  me: ReturnType<typeof memberById>
-  myOrders: AccountOrder[]
-  awaiting: AccountOrder[]
-  onTab: (id: string) => void
-  onView: (o: AccountOrder) => void
-}) {
-  const { t, pick, money } = useLocale()
-  const { org } = useChannel()
-  const limit = me?.perOrderLimitMinor ?? null
-  const available = availableCreditMinor(org)
-  const monthSpend = MY_SPEND[MY_SPEND.length - 1]
-  const approver = members.find((m) => m.role === 'approver')
-  const cc = costCenterById(me?.costCenterId)
-
-  return (
-    <div className="flex flex-col gap-lg">
-      {awaiting.length > 0 && (
-        <div className="rounded-lg bg-danger/6 border border-danger/25 p-lg flex items-start gap-sm">
-          <Clock size={20} className="text-danger shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p className="font-sans text-data font-medium text-ink">{awaiting.length} {t('buyer.awaiting')}</p>
-            <p className="font-sans text-caption text-ink-muted mt-0.5">
-              {t('buyer.awaitingBody')}{approver ? ` · ${t('buyer.pendingWith')} ${pick(approver.name)}` : ''}
-            </p>
-          </div>
-          <button onClick={() => onTab('orders')} className={buttonClass('secondary', 'sm', 'shrink-0')}>{t('cta.viewAll')}</button>
-        </div>
-      )}
-
-      <div className="grid gap-md sm:grid-cols-2 lg:grid-cols-4">
-        <Stat icon={Wallet} label={t('buyer.myLimit')} value={limit ? money(limit) : t('team.noLimit')} hint={t('buyer.perOrder')} />
-        <Stat icon={Package} label={t('buyer.monthSpend')} value={money(monthSpend)} spark={MY_SPEND} />
-        <Stat icon={ClipboardList} label={t('buyer.orgAvailable')} value={money(available)} hint={t('buyer.readOnly')} />
-        <Stat icon={AlertTriangle} label={t('orders.status.awaiting_approval')} value={String(awaiting.length)} alert={awaiting.length > 0} />
-      </div>
-
-      {/* budget awareness — closes the loop with the approver & admin */}
-      {cc && <BudgetCard cc={cc} />}
-
-      {/* order on account */}
-      <div className="rounded-xl bg-canvas-dark text-ink-on-dark p-xl flex flex-col sm:flex-row sm:items-center justify-between gap-md">
-        <div>
-          <h2 className="font-serif text-headline text-ink-on-dark">{t('buyer.orderTitle')}</h2>
-          <p className="text-body text-ink-on-dark-muted mt-xs max-w-md">{t('buyer.orderBody')}</p>
-        </div>
-        <Link to="/shop" className={buttonClass('primary', 'md', 'shrink-0')}>
-          <ShoppingBag size={16} /> {t('buyer.browseCatalogue')}
-        </Link>
-      </div>
-
-      {/* recent orders */}
-      <div className="flex flex-col gap-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="font-serif text-headline text-ink">{t('buyer.recentOrders')}</h2>
-          <button onClick={() => onTab('orders')} className="link-gold">{t('cta.viewAll')} <ArrowRight size={15} className="rtl:rotate-180" /></button>
-        </div>
-        <div className="flex flex-col divide-y divide-hairline border-y border-hairline">
-          {myOrders.slice(0, 3).map((o) => (
-            <button key={o.orderNo} onClick={() => onView(o)} className="flex items-center gap-md py-md text-start hover:bg-surface-2/60 transition-colors -mx-sm px-sm rounded-md">
-              <OrderRowBody order={o} />
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function BudgetCard({ cc }: { cc: NonNullable<ReturnType<typeof costCenterById>> }) {
-  const { t, pick, money } = useLocale()
-  const pct = Math.min(100, Math.round((cc.consumedMinor / cc.budgetMinor) * 100))
-  const remaining = Math.max(0, cc.budgetMinor - cc.consumedMinor)
-  const tone = pct >= 90 ? 'danger' : pct >= 75 ? 'gold' : 'success'
-  const consumedColor = tone === 'danger' ? '#b5403b' : tone === 'gold' ? '#b08a57' : '#355c4b'
-  const noteTone = tone === 'danger' ? 'text-danger' : tone === 'gold' ? 'text-primary-hover' : 'text-success'
-
-  return (
-    <div className={cn('card p-lg grid sm:grid-cols-[auto_1fr] gap-lg items-center', tone === 'danger' && 'ring-1 ring-danger/25')}>
-      <div className="grid place-items-center">
-        <UtilizationGauge
-          segments={[{ value: cc.consumedMinor, color: consumedColor }, { value: remaining, color: '#e7ddc9' }]}
-          centerValue={`${pct}%`}
-          centerLabel={t('buyer.ofBudget')}
-          size={140}
-        />
-      </div>
-      <div className="flex flex-col gap-sm">
-        <div className="flex items-center gap-sm">
-          <Building2 size={18} className="text-primary-hover" />
-          <h3 className="font-serif text-card-title text-ink">{pick(cc.name)} · {t('buyer.deptBudget')}</h3>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-md">
-          <Mini label={t('buyer.budgetUsed')} value={money(cc.consumedMinor)} />
-          <Mini label={t('buyer.remaining')} value={money(remaining)} tone={tone} />
-          <Mini label={t('oa.fyBudget')} value={money(cc.budgetMinor)} />
-        </div>
-        <p className={cn('inline-flex items-center gap-xs font-sans text-caption', noteTone)}>
-          {tone === 'danger' ? <AlertTriangle size={13} /> : <CheckCircle2 size={13} />}
-          {tone === 'danger' ? t('buyer.budgetTight') : t('buyer.budgetHealthy')}
-        </p>
-      </div>
-    </div>
-  )
 }
 
 /* ─────────── Org orders (unified B2B account — all orders, not just mine) ─────────── */
@@ -670,40 +515,4 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 /* ─────────── pieces ─────────── */
-function Stat({ icon: Icon, label, value, hint, alert, spark }: { icon: typeof Wallet; label: string; value: string; hint?: string; alert?: boolean; spark?: number[] }) {
-  return (
-    <div className={cn('card p-lg flex flex-col gap-xs', alert && 'ring-1 ring-danger/30')}>
-      <span className="grid place-items-center w-9 h-9 rounded-md bg-primary/10 text-primary-hover mb-xxs"><Icon size={17} /></span>
-      <span className="font-sans text-caption uppercase tracking-[0.12em] text-ink-subtle">{label}</span>
-      <span className={cn('font-serif text-headline tabular-nums', alert ? 'text-danger' : 'text-ink')}>{value}</span>
-      {spark ? <span className="text-primary-hover/70 mt-xxs"><Sparkline points={spark} /></span> : hint ? <span className="font-sans text-caption text-ink-subtle">{hint}</span> : null}
-    </div>
-  )
-}
 
-function Mini({ label, value, tone = 'ink' }: { label: string; value: string; tone?: 'ink' | 'gold' | 'danger' | 'success' }) {
-  const color = tone === 'danger' ? 'text-danger' : tone === 'gold' ? 'text-primary-hover' : tone === 'success' ? 'text-success' : 'text-ink'
-  return (
-    <div className="flex flex-col gap-xxs">
-      <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{label}</span>
-      <span className={cn('font-serif text-card-title tabular-nums', color)}>{value}</span>
-    </div>
-  )
-}
-
-function OrderRowBody({ order }: { order: AccountOrder }) {
-  const { t, pick, money, locale } = useLocale()
-  return (
-    <>
-      <div className="flex-1 min-w-0">
-        <p className="font-sans text-data text-ink">{order.orderNo}</p>
-        <p className="font-sans text-caption text-ink-subtle truncate">
-          {pick(order.summary)} · {new Date(order.placedAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-GB', { day: 'numeric', month: 'short' })}
-        </p>
-      </div>
-      <span className="font-sans text-data text-ink tabular-nums">{money(order.totalMinor)}</span>
-      <StatusBadge variant={statusVariant[order.status]}>{t(`orders.status.${order.status}`)}</StatusBadge>
-      <Eye size={15} className="text-ink-subtle shrink-0" />
-    </>
-  )
-}

@@ -1,26 +1,21 @@
 import { useMemo, useState } from 'react'
 import {
-  ClipboardCheck, History, Wallet, AlertTriangle, Check, X, CheckCircle2, XCircle,
-  ChevronRight, ShieldCheck, ShieldAlert, ArrowRight, BarChart3, Clock, Search,
-  UserCheck, Layers, Gauge, TrendingUp, Building2,
+  ClipboardCheck, Wallet, AlertTriangle, Check, X, CheckCircle2, XCircle,
+  ChevronRight, ShieldCheck, ShieldAlert, ArrowRight, Clock, Search, Layers, Building2,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useChannel } from '@/state/ChannelContext'
 import { availableCreditMinor } from '@/data/organization'
 import {
-  accountOrders, accountOrderItems, members, memberById, costCenterById, orgPolicy,
+  accountOrders, accountOrderItems, memberById, costCenterById, orgPolicy,
   type AccountOrder,
 } from '@/data/business'
 import { variantById } from '@/data/products'
 import { flavors } from '@/data/flavors'
-import { AccountShell, type TabDef } from '@/components/account/AccountShell'
-import { UtilizationGauge, Sparkline, RankedBars } from '@/components/charts/Charts'
 import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
-import { useTab } from '@/lib/useTab'
 import { cn, tint } from '@/lib/cn'
 
-const APPROVER_ID = 'm-2' // Sara Al-Dosari
 const SLA_DAYS = 2
 const TODAY = new Date('2026-06-21')
 
@@ -49,57 +44,6 @@ const seededHistory: Decision[] = [
 
 const daysWaiting = (placedAt: string) => Math.max(0, Math.round((TODAY.getTime() - new Date(placedAt).getTime()) / 86400000))
 
-export function ApproverWorkspace() {
-  const { t, pick } = useLocale()
-  const { org, persona } = useChannel()
-  const [activeRaw, setActive] = useTab('queue')
-  const active = ['queue', 'insights', 'history', 'authority'].includes(activeRaw) ? activeRaw : 'queue'
-  const [decisions, setDecisions] = useState<Record<string, Decision>>({})
-  const [delegateTo, setDelegateTo] = useState<string | null>(null)
-
-  const pending = useMemo(
-    () => accountOrders.filter((o) => o.status === 'awaiting_approval' && !decisions[o.orderNo]),
-    [decisions],
-  )
-  const decided = useMemo(() => [...Object.values(decisions), ...seededHistory], [decisions])
-
-  const decide = (order: AccountOrder, outcome: Outcome, note: string) =>
-    setDecisions((prev) => ({ ...prev, [order.orderNo]: { order, outcome, note, decidedAt: '2026-06-21', hoursToDecide: 1 } }))
-  const decideBatch = (orders: AccountOrder[]) =>
-    setDecisions((prev) => {
-      const next = { ...prev }
-      orders.forEach((o) => { next[o.orderNo] = { order: o, outcome: 'approved', note: 'Batch approved', decidedAt: '2026-06-21', hoursToDecide: 1 } })
-      return next
-    })
-
-  const tabs: TabDef[] = [
-    { id: 'queue', label: `${t('approver.tab.queue')}${pending.length ? ` · ${pending.length}` : ''}`, icon: ClipboardCheck },
-    { id: 'insights', label: t('approver.tab.insights'), icon: BarChart3 },
-    { id: 'history', label: t('approver.tab.decided'), icon: History },
-    { id: 'authority', label: t('approver.tab.authority'), icon: ShieldCheck },
-  ]
-
-  return (
-    <AccountShell
-      eyebrow={pick(persona.roleLabel)}
-      title={t('approver.title')}
-      subtitle={`${pick(org.legalName)} · ${t('approver.subtitle')}`}
-      tone="dark"
-      tabs={tabs}
-      active={active}
-      onSelect={setActive}
-      headerExtra={delegateTo
-        ? <span className="hidden sm:inline-flex items-center gap-xs rounded-pill bg-primary/12 text-primary-hover px-3 py-1.5 font-sans text-caption"><UserCheck size={14} /> {t('approver.delegatedTo')} {pick(memberById(delegateTo)?.name ?? { en: '', ar: '' })}</span>
-        : undefined}
-    >
-      {active === 'queue' && <Queue pending={pending} onDecide={decide} onBatch={decideBatch} delegated={!!delegateTo} />}
-      {active === 'insights' && <Insights pending={pending} decided={decided} />}
-      {active === 'history' && <Decided decided={decided} />}
-      {active === 'authority' && <Authority delegateTo={delegateTo} onDelegate={setDelegateTo} />}
-    </AccountShell>
-  )
-}
-
 /** Self-contained approvals surface for the unified B2B account — the account
  *  holder approves on the org's behalf, so they carry full authority. */
 export function ApprovalsPanel() {
@@ -112,23 +56,21 @@ export function ApprovalsPanel() {
     setDecisions((prev) => { const next = { ...prev }; orders.forEach((o) => { next[o.orderNo] = { order: o, outcome: 'approved', note: 'Batch approved', decidedAt: '2026-06-21', hoursToDecide: 1 } }); return next })
   return (
     <div className="flex flex-col gap-xl">
-      <Queue pending={pending} onDecide={decide} onBatch={decideBatch} delegated={false} authority={null} />
+      <Queue pending={pending} onDecide={decide} onBatch={decideBatch} authority={null} />
       <Decided decided={decided} />
     </div>
   )
 }
 
 /* ═══════════════ Queue ═══════════════ */
-function Queue({ pending, onDecide, onBatch, delegated, authority: authorityProp }: {
+function Queue({ pending, onDecide, onBatch, authority }: {
   pending: AccountOrder[]
   onDecide: (o: AccountOrder, d: Outcome, note: string) => void
   onBatch: (orders: AccountOrder[]) => void
-  delegated: boolean
-  authority?: number | null
+  authority: number | null
 }) {
   const { t, money } = useLocale()
   const { org } = useChannel()
-  const authority = authorityProp !== undefined ? authorityProp : (memberById(APPROVER_ID)?.perOrderLimitMinor ?? null)
   const available = availableCreditMinor(org)
   const [sort, setSort] = useState<'age' | 'value'>('age')
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -149,13 +91,6 @@ function Queue({ pending, onDecide, onBatch, delegated, authority: authorityProp
 
   return (
     <div className="flex flex-col gap-lg">
-      {delegated && (
-        <div className="rounded-lg bg-primary/6 border border-primary/25 p-md flex items-start gap-sm">
-          <UserCheck size={18} className="text-primary-hover shrink-0 mt-0.5" />
-          <p className="font-sans text-data text-ink-muted">{t('approver.delegatedNote')}</p>
-        </div>
-      )}
-
       <div className="grid gap-md sm:grid-cols-2 lg:grid-cols-4">
         <Stat icon={ClipboardCheck} label={t('approver.pending')} value={String(pending.length)} alert={pending.length > 0} />
         <Stat icon={AlertTriangle} label={t('approver.valueAwaiting')} value={money(totalAwaiting)} />
@@ -369,74 +304,6 @@ function ApprovalCard({ order, authority, available, selectable, selected, onTog
   )
 }
 
-/* ═══════════════ Insights ═══════════════ */
-function Insights({ pending, decided }: { pending: AccountOrder[]; decided: Decision[] }) {
-  const { t, pick, money } = useLocale()
-  const approved = decided.filter((d) => d.outcome === 'approved')
-  const rejected = decided.filter((d) => d.outcome === 'rejected')
-  const escalated = decided.filter((d) => d.outcome === 'escalated')
-  const rate = decided.length ? Math.round((approved.length / decided.length) * 100) : 0
-  const avgHours = decided.length ? Math.round(decided.reduce((s, d) => s + d.hoursToDecide, 0) / decided.length) : 0
-  const valueApproved = approved.reduce((s, d) => s + d.order.totalMinor, 0)
-  const totalAwaiting = pending.reduce((s, o) => s + o.totalMinor, 0)
-
-  // value processed over the decided timeline (oldest → newest)
-  const series = [...decided].sort((a, b) => new Date(a.decidedAt).getTime() - new Date(b.decidedAt).getTime()).map((d) => d.order.totalMinor)
-
-  // submissions by buyer (awaiting + decided)
-  const byBuyer = useMemo(() => {
-    const map = new Map<string, number>()
-    ;[...pending, ...decided.map((d) => d.order)].forEach((o) => map.set(o.buyerId, (map.get(o.buyerId) ?? 0) + 1))
-    return [...map.entries()].map(([id, n]) => ({ id, n })).sort((a, b) => b.n - a.n)
-  }, [pending, decided])
-  const maxBuyer = Math.max(...byBuyer.map((b) => b.n), 1)
-
-  return (
-    <div className="flex flex-col gap-lg">
-      <div className="grid gap-md grid-cols-2 lg:grid-cols-4">
-        <Kpi label={t('approver.pending')} value={String(pending.length)} sub={money(totalAwaiting)} alert={pending.length > 0} />
-        <Kpi label={t('approver.approvedMtd')} value={String(approved.length)} sub={money(valueApproved)} tone="success" />
-        <Kpi label={t('approver.rejectedMtd')} value={String(rejected.length)} tone="danger" />
-        <Kpi label={t('approver.avgDecision')} value={`${avgHours}${t('approver.hoursShort')}`} sub={t('approver.perOrder')} />
-      </div>
-
-      <div className="grid lg:grid-cols-[auto_1fr] gap-lg items-center card p-lg">
-        <div className="grid place-items-center">
-          <UtilizationGauge
-            segments={[
-              { value: approved.length, color: '#355c4b' },
-              { value: escalated.length, color: '#b08a57' },
-              { value: rejected.length, color: '#b5403b' },
-            ]}
-            centerValue={`${rate}%`}
-            centerLabel={t('approver.approvalRate')}
-          />
-        </div>
-        <div className="flex flex-col gap-md">
-          <h3 className="font-serif text-card-title text-ink">{t('approver.decisionMix')}</h3>
-          <div className="grid grid-cols-3 gap-md">
-            <LegendStat color="#355c4b" label={t('capp.approved')} value={String(approved.length)} />
-            <LegendStat color="#b08a57" label={t('approver.escalatedLabel')} value={String(escalated.length)} />
-            <LegendStat color="#b5403b" label={t('capp.rejected')} value={String(rejected.length)} />
-          </div>
-          <div className="flex flex-col gap-xs pt-sm border-t border-hairline">
-            <div className="flex items-center justify-between">
-              <span className="inline-flex items-center gap-xs font-sans text-caption text-ink-subtle"><TrendingUp size={13} /> {t('approver.valueProcessed')}</span>
-              <span className="font-sans text-data text-ink tabular-nums">{money(series.reduce((s, x) => s + x, 0))}</span>
-            </div>
-            <span className="text-primary-hover/70"><Sparkline points={series} /></span>
-          </div>
-        </div>
-      </div>
-
-      <div className="card p-lg flex flex-col gap-md">
-        <h3 className="font-serif text-card-title text-ink inline-flex items-center gap-sm"><Gauge size={18} className="text-primary-hover" /> {t('approver.submissionsByBuyer')}</h3>
-        <RankedBars rows={byBuyer.map((b) => ({ label: pick(memberById(b.id)?.name ?? { en: b.id, ar: b.id }), value: b.n, display: `${b.n} · ${Math.round((b.n / maxBuyer) * 100)}%` }))} />
-      </div>
-    </div>
-  )
-}
-
 /* ═══════════════ History ═══════════════ */
 function Decided({ decided }: { decided: Decision[] }) {
   const { t, pick, money, locale } = useLocale()
@@ -494,103 +361,6 @@ function Decided({ decided }: { decided: Decision[] }) {
   )
 }
 
-/* ═══════════════ Authority — policy reference + delegation ═══════════════ */
-function Authority({ delegateTo, onDelegate }: { delegateTo: string | null; onDelegate: (id: string | null) => void }) {
-  const { t, pick, money } = useLocale()
-  const me = memberById(APPROVER_ID)
-  const authority = me?.perOrderLimitMinor ?? null
-  const delegates = members.filter((m) => m.status === 'active' && m.id !== APPROVER_ID && (m.role === 'b2b_admin' || m.role === 'approver'))
-  // buyers whose over-limit orders route to this approver
-  const actingFor = members.filter((m) => m.role === 'buyer')
-
-  const chain = [
-    { label: t('oa.chain.auto'), sub: `≤ ${money(orgPolicy.autoApproveBelowMinor)}`, tone: 'success' as const },
-    { label: t('approver.youApprove'), sub: `> ${money(orgPolicy.autoApproveBelowMinor)}`, tone: 'gold' as const },
-    { label: t('oa.chain.dual'), sub: `≥ ${money(orgPolicy.dualControlAboveMinor)}`, tone: 'danger' as const },
-  ]
-  const toneCls = { success: 'bg-success/10 text-success border-success/30', gold: 'bg-primary/10 text-primary-hover border-primary/30', danger: 'bg-danger/10 text-danger border-danger/30' }
-
-  return (
-    <div className="flex flex-col gap-lg">
-      {/* my authority */}
-      <div className="rounded-xl bg-canvas-dark text-ink-on-dark p-xl flex flex-wrap items-center justify-between gap-md">
-        <div className="flex items-center gap-md">
-          <span className="grid place-items-center w-14 h-14 rounded-lg bg-surface-dark-1 border border-hairline-dark text-primary-bright shrink-0"><ShieldCheck size={26} /></span>
-          <div>
-            <p className="font-sans text-caption uppercase tracking-[0.12em] text-ink-on-dark-muted">{t('approver.yourAuthority')}</p>
-            <p className="font-serif text-display-md text-ink-on-dark tabular-nums">{authority ? money(authority) : t('team.noLimit')}</p>
-          </div>
-        </div>
-        <p className="font-sans text-caption text-ink-on-dark-muted max-w-xs">{t('approver.authorityNote')}</p>
-      </div>
-
-      {/* the policy you enforce (set by the admin) */}
-      <div className="card p-lg flex flex-col gap-md">
-        <div className="flex items-center justify-between gap-sm">
-          <h3 className="font-serif text-card-title text-ink inline-flex items-center gap-sm"><ClipboardCheck size={18} className="text-primary-hover" /> {t('approver.policyEnforced')}</h3>
-          <StatusBadge variant="neutral">{t('approver.setByAdmin')}</StatusBadge>
-        </div>
-        <div className="flex items-stretch gap-xs overflow-x-auto pb-xs">
-          {chain.map((s, i) => (
-            <div key={i} className="flex items-center gap-xs shrink-0">
-              <div className={cn('flex flex-col gap-xxs rounded-lg border p-md min-w-[150px]', toneCls[s.tone])}>
-                <span className="font-sans text-data font-medium">{s.label}</span>
-                <span className="font-sans text-caption tabular-nums opacity-90">{s.sub}</span>
-              </div>
-              {i < chain.length - 1 && <ArrowRight size={16} className="text-ink-subtle rtl:rotate-180 shrink-0" />}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* delegation */}
-      <div className="card p-lg flex flex-col gap-md">
-        <h3 className="font-serif text-card-title text-ink inline-flex items-center gap-sm"><UserCheck size={18} className="text-primary-hover" /> {t('approver.delegation')}</h3>
-        <p className="font-sans text-data text-ink-muted">{t('approver.delegationNote')}</p>
-        {delegateTo ? (
-          <div className="flex flex-wrap items-center gap-md rounded-lg bg-primary/6 border border-primary/25 p-md">
-            <UserCheck size={18} className="text-primary-hover" />
-            <span className="font-sans text-data text-ink flex-1">{t('approver.currentlyDelegated')} <strong>{pick(memberById(delegateTo)?.name ?? { en: '', ar: '' })}</strong></span>
-            <button onClick={() => onDelegate(null)} className={buttonClass('secondary', 'sm')}>{t('approver.endDelegation')}</button>
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-center gap-sm">
-            {delegates.map((m) => (
-              <button key={m.id} onClick={() => onDelegate(m.id)} className="inline-flex items-center gap-sm rounded-lg border border-hairline-strong bg-surface-1 px-md py-2.5 hover:border-ink/40 transition-colors">
-                <span className="grid place-items-center w-8 h-8 rounded-pill bg-primary/10 font-serif text-body text-primary-hover">{pick(m.name).charAt(0)}</span>
-                <span className="text-start">
-                  <span className="block font-sans text-data text-ink">{pick(m.name)}</span>
-                  <span className="block font-sans text-caption text-ink-subtle">{t(`team.role.${m.role}`)}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* acting for */}
-      <div className="card overflow-hidden">
-        <div className="px-lg py-md bg-surface-2 border-b border-hairline"><h3 className="font-serif text-card-title text-ink">{t('approver.actingFor')}</h3></div>
-        <ul className="divide-y divide-hairline">
-          {actingFor.map((m) => {
-            const cc = costCenterById(m.costCenterId)
-            return (
-              <li key={m.id} className="flex items-center gap-md px-lg py-md">
-                <span className="grid place-items-center w-9 h-9 rounded-pill bg-primary/10 border border-hairline font-serif text-card-title text-primary-hover shrink-0">{pick(m.name).charAt(0)}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="font-sans text-data text-ink truncate">{pick(m.name)}</p>
-                  <p className="font-sans text-caption text-ink-subtle truncate">{cc ? pick(cc.name) : m.costCenter}</p>
-                </div>
-                <span className="font-sans text-caption text-ink-subtle">{t('approver.limit')} {m.perOrderLimitMinor ? money(m.perOrderLimitMinor) : t('team.noLimit')}</span>
-              </li>
-            )
-          })}
-        </ul>
-      </div>
-    </div>
-  )
-}
-
 /* ═══════════════ pieces ═══════════════ */
 function Stat({ icon: Icon, label, value, alert }: { icon: typeof Wallet; label: string; value: string; alert?: boolean }) {
   return (
@@ -598,28 +368,6 @@ function Stat({ icon: Icon, label, value, alert }: { icon: typeof Wallet; label:
       <span className="grid place-items-center w-9 h-9 rounded-md bg-primary/10 text-primary-hover mb-xxs"><Icon size={17} /></span>
       <span className="font-sans text-caption uppercase tracking-[0.12em] text-ink-subtle">{label}</span>
       <span className={cn('font-serif text-headline tabular-nums', alert ? 'text-danger' : 'text-ink')}>{value}</span>
-    </div>
-  )
-}
-
-function Kpi({ label, value, sub, tone = 'ink', alert }: { label: string; value: string; sub?: string; tone?: 'ink' | 'success' | 'danger'; alert?: boolean }) {
-  const color = alert ? 'text-danger' : tone === 'success' ? 'text-success' : tone === 'danger' ? 'text-danger' : 'text-ink'
-  return (
-    <div className={cn('card p-lg flex flex-col gap-xs', alert && 'ring-1 ring-danger/30')}>
-      <span className="font-sans text-caption uppercase tracking-[0.12em] text-ink-subtle">{label}</span>
-      <span className={cn('font-serif text-headline tabular-nums', color)}>{value}</span>
-      {sub && <span className="font-sans text-caption text-ink-subtle tabular-nums">{sub}</span>}
-    </div>
-  )
-}
-
-function LegendStat({ color, label, value }: { color: string; label: string; value: string }) {
-  return (
-    <div className="flex flex-col gap-xxs">
-      <span className="inline-flex items-center gap-xs font-sans text-caption uppercase tracking-wide text-ink-subtle">
-        <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: color }} />{label}
-      </span>
-      <span className="font-serif text-card-title text-ink tabular-nums">{value}</span>
     </div>
   )
 }
