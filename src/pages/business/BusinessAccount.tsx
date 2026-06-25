@@ -3,16 +3,18 @@ import {
   LayoutGrid, Users, SlidersHorizontal, Landmark, Package, BarChart3, Gift, Building2,
   ShieldCheck, BadgeCheck, Download, ArrowUpRight, ArrowDownRight, MapPin, Plus, Check,
   Pencil, Trash2, TrendingUp, AlertTriangle, FileText, Wallet, Lock, ArrowRight, Mail,
-  Plug, ClipboardCheck, CornerDownRight,
+  Plug, ClipboardCheck, Bookmark,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
+import { ApprovalsPanel } from './ApproverWorkspace'
+import { OrgOrdersPanel, MyQuotes, Lists } from './BuyerWorkspace'
 import { organization, availableCreditMinor } from '@/data/organization'
 import type { CreditLedgerEntry, Bilingual } from '@/data/types'
 import {
   members as memberData, accountOrders, giftBatches as batchData,
   orgAddresses as addressData, orgVerification, costCenters as ccData, orgPolicy as policyData,
   spendByMonth, spendByCategory, rolePermissions, capabilityOrder, memberById,
-  type OrgMember, type AccountOrder, type OrgAddress, type GiftBatch, type CostCenter,
+  type OrgMember, type OrgAddress, type GiftBatch, type CostCenter,
   type OrgPolicy, type Capability,
 } from '@/data/business'
 import { AccountShell, type TabDef } from '@/components/account/AccountShell'
@@ -26,9 +28,6 @@ import { cn } from '@/lib/cn'
 const org = organization
 const ROLES: OrgMember['role'][] = ['b2b_admin', 'approver', 'buyer', 'viewer']
 const roleAccent: Record<OrgMember['role'], 'gold' | 'success' | 'neutral'> = { b2b_admin: 'gold', approver: 'success', buyer: 'neutral', viewer: 'neutral' }
-const orderVariant: Record<AccountOrder['status'], 'gold' | 'success' | 'danger' | 'neutral'> = {
-  awaiting_approval: 'danger', confirmed: 'gold', processing: 'gold', shipped: 'gold', delivered: 'success', rejected: 'neutral',
-}
 
 /** Budget burn → traffic-light tone. */
 function budgetTone(consumed: number, budget: number): 'success' | 'gold' | 'danger' {
@@ -36,22 +35,26 @@ function budgetTone(consumed: number, budget: number): 'success' | 'gold' | 'dan
   return r >= 0.9 ? 'danger' : r >= 0.75 ? 'gold' : 'success'
 }
 
-const TABS = ['overview', 'people', 'controls', 'credit', 'orders', 'analytics', 'gifting', 'account'] as const
+const TABS = ['overview', 'orders', 'approvals', 'quotes', 'lists', 'people', 'controls', 'credit', 'analytics', 'gifting', 'account'] as const
 type Tab = (typeof TABS)[number]
 
-export function OrgAdminPortal() {
+export function BusinessAccount() {
   const { t, pick } = useLocale()
   const [activeRaw, setActive] = useTab('overview')
   const active = (TABS.includes(activeRaw as Tab) ? activeRaw : 'overview') as Tab
 
   const verifiedCount = orgVerification.filter((v) => v.status === 'approved').length
+  const pendingApprovals = accountOrders.filter((o) => o.status === 'awaiting_approval').length
 
   const tabs: TabDef[] = [
     { id: 'overview', label: t('business.tab.overview'), icon: LayoutGrid },
+    { id: 'orders', label: t('business.tab.orders'), icon: Package },
+    { id: 'approvals', label: `${t('biz.tab.approvals')}${pendingApprovals ? ` · ${pendingApprovals}` : ''}`, icon: ClipboardCheck },
+    { id: 'quotes', label: t('business.tab.quotes'), icon: FileText },
+    { id: 'lists', label: t('buyer.tab.lists'), icon: Bookmark },
     { id: 'people', label: t('oa.tab.people'), icon: Users },
     { id: 'controls', label: t('oa.tab.controls'), icon: SlidersHorizontal },
     { id: 'credit', label: t('business.tab.credit'), icon: Landmark },
-    { id: 'orders', label: t('business.tab.orders'), icon: Package },
     { id: 'analytics', label: t('oa.tab.analytics'), icon: BarChart3 },
     { id: 'gifting', label: t('business.tab.gifting'), icon: Gift },
     { id: 'account', label: t('oa.tab.account'), icon: Building2 },
@@ -59,8 +62,8 @@ export function OrgAdminPortal() {
 
   return (
     <AccountShell
-      eyebrow={pick(org.legalName)}
-      title={t('orgadmin.title')}
+      eyebrow={t('biz.account')}
+      title={pick(org.legalName)}
       subtitle={`${pick(org.accountType)} · ${t('business.accountManager')}: ${pick(org.salesRep)}`}
       tone="dark"
       tabs={tabs}
@@ -73,10 +76,13 @@ export function OrgAdminPortal() {
       }
     >
       {active === 'overview' && <Overview onTab={setActive} />}
+      {active === 'orders' && <OrgOrdersPanel />}
+      {active === 'approvals' && <ApprovalsPanel />}
+      {active === 'quotes' && <MyQuotes />}
+      {active === 'lists' && <Lists />}
       {active === 'people' && <People />}
       {active === 'controls' && <SpendControls />}
       {active === 'credit' && <Credit />}
-      {active === 'orders' && <Orders />}
       {active === 'analytics' && <Analytics />}
       {active === 'gifting' && <Gifting />}
       {active === 'account' && <Account />}
@@ -101,7 +107,7 @@ function Overview({ onTab }: { onTab: (id: string) => void }) {
   const vat = orgVerification.find((v) => v.check === 'vat')
   const overBudget = ccData.filter((c) => c.consumedMinor / c.budgetMinor >= 0.9)
   const alerts: { tone: 'danger' | 'gold'; icon: typeof AlertTriangle; text: string; cta: string; to: Tab }[] = []
-  if (pending.length) alerts.push({ tone: 'danger', icon: ClipboardCheck, text: `${pending.length} ${t('oa.alert.pending')}`, cta: t('oa.alert.review'), to: 'orders' })
+  if (pending.length) alerts.push({ tone: 'danger', icon: ClipboardCheck, text: `${pending.length} ${t('oa.alert.pending')}`, cta: t('oa.alert.review'), to: 'approvals' })
   overBudget.forEach((c) => alerts.push({ tone: 'gold', icon: Wallet, text: `${pick(c.name)} · ${Math.round((c.consumedMinor / c.budgetMinor) * 100)}% ${t('oa.alert.ofBudget')}`, cta: t('oa.alert.adjust'), to: 'controls' }))
   if (vat) alerts.push({ tone: 'gold', icon: ShieldCheck, text: `${t('oa.alert.vatExpires')} ${new Date(vat.expiresAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-GB', { month: 'short', year: 'numeric' })}`, cta: t('oa.alert.view'), to: 'account' })
   alerts.push({ tone: 'gold', icon: TrendingUp, text: `${t('oa.alert.creditReview')} ${new Date(org.credit.nextReview).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-GB', { day: 'numeric', month: 'short' })}`, cta: t('oa.alert.view'), to: 'credit' })
@@ -533,51 +539,6 @@ function Credit() {
       </div>
 
       <RequestCreditModal open={reqOpen} onClose={() => setReqOpen(false)} onSubmit={() => { setReqOpen(false); setRequested(true) }} />
-    </div>
-  )
-}
-
-/* ═══════════════ Orders — org-wide oversight ═══════════════ */
-function Orders() {
-  const { t, pick, money, locale } = useLocale()
-  const [filter, setFilter] = useState<'all' | 'awaiting_approval' | 'processing' | 'delivered'>('all')
-  const filters: typeof filter[] = ['all', 'awaiting_approval', 'processing', 'delivered']
-  const shown = filter === 'all' ? accountOrders : accountOrders.filter((o) => o.status === filter)
-
-  return (
-    <div className="flex flex-col gap-lg">
-      <div className="flex flex-wrap items-center justify-between gap-md">
-        <h2 className="font-serif text-headline text-ink">{t('oa.allOrders')}</h2>
-        <div className="flex items-center gap-xs flex-wrap">
-          {filters.map((f) => (
-            <button key={f} onClick={() => setFilter(f)}
-              className={cn('rounded-pill px-3 py-1.5 font-sans text-caption transition-colors border',
-                filter === f ? 'bg-ink text-ink-on-dark border-ink' : 'bg-surface-1 text-ink-muted border-hairline-strong hover:border-ink/40')}>
-              {f === 'all' ? t('oa.filterAll') : t(`orders.status.${f}`)}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="flex flex-col gap-md">
-        {shown.map((o) => (
-          <div key={o.orderNo} className="card p-lg flex flex-wrap items-center justify-between gap-sm">
-            <div className="min-w-0">
-              <div className="flex items-center gap-sm">
-                <span className="font-sans text-data text-ink">{o.orderNo}</span>
-                <StatusBadge variant={orderVariant[o.status]}>{t(`orders.status.${o.status}`)}</StatusBadge>
-              </div>
-              <p className="font-sans text-caption text-ink-subtle mt-xxs">
-                {t('border.buyer')}: {pick(o.buyer)} · {pick(o.summary)} · {new Date(o.placedAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-GB', { day: 'numeric', month: 'short' })}
-              </p>
-              {o.status === 'awaiting_approval' && (
-                <p className="inline-flex items-center gap-xs font-sans text-caption text-danger mt-xxs"><CornerDownRight size={13} /> {t('orgadmin.withApprover')}</p>
-              )}
-            </div>
-            <span className="font-serif text-card-title text-ink tabular-nums">{money(o.totalMinor)}</span>
-          </div>
-        ))}
-        {shown.length === 0 && <p className="font-sans text-data text-ink-subtle py-xl text-center">{t('oa.noOrders')}</p>}
-      </div>
     </div>
   )
 }

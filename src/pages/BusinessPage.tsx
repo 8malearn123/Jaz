@@ -1,18 +1,11 @@
-import { useChannel } from '@/state/ChannelContext'
-import { BuyerWorkspace } from './business/BuyerWorkspace'
-import { ApproverWorkspace } from './business/ApproverWorkspace'
-import { OrgAdminPortal } from './business/OrgAdminPortal'
+import { BusinessAccount } from './business/BusinessAccount'
 
 /**
- * The B2B portal renders a different, purpose-built workspace per role:
- * - b2b_admin    → full organization administration
- * - b2b_approver → an order-approvals queue
- * - b2b_buyer    → an ordering cockpit (default)
+ * The B2B portal is a single unified account — like the B2C account, but built
+ * for business: ordering, approvals, quotes, lists, team, credit, budgets,
+ * analytics, gifting and the legal entity, all in one place.
  * Role switching happens only from the top-nav persona chip.
  */
 export function BusinessPage() {
-  const { role } = useChannel()
-  if (role === 'b2b_admin') return <OrgAdminPortal />
-  if (role === 'b2b_approver') return <ApproverWorkspace />
-  return <BuyerWorkspace />
+  return <BusinessAccount />
 }

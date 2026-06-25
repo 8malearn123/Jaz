@@ -100,16 +100,35 @@ export function ApproverWorkspace() {
   )
 }
 
+/** Self-contained approvals surface for the unified B2B account — the account
+ *  holder approves on the org's behalf, so they carry full authority. */
+export function ApprovalsPanel() {
+  const [decisions, setDecisions] = useState<Record<string, Decision>>({})
+  const pending = useMemo(() => accountOrders.filter((o) => o.status === 'awaiting_approval' && !decisions[o.orderNo]), [decisions])
+  const decided = useMemo(() => [...Object.values(decisions), ...seededHistory], [decisions])
+  const decide = (order: AccountOrder, outcome: Outcome, note: string) =>
+    setDecisions((prev) => ({ ...prev, [order.orderNo]: { order, outcome, note, decidedAt: '2026-06-21', hoursToDecide: 1 } }))
+  const decideBatch = (orders: AccountOrder[]) =>
+    setDecisions((prev) => { const next = { ...prev }; orders.forEach((o) => { next[o.orderNo] = { order: o, outcome: 'approved', note: 'Batch approved', decidedAt: '2026-06-21', hoursToDecide: 1 } }); return next })
+  return (
+    <div className="flex flex-col gap-xl">
+      <Queue pending={pending} onDecide={decide} onBatch={decideBatch} delegated={false} authority={null} />
+      <Decided decided={decided} />
+    </div>
+  )
+}
+
 /* ═══════════════ Queue ═══════════════ */
-function Queue({ pending, onDecide, onBatch, delegated }: {
+function Queue({ pending, onDecide, onBatch, delegated, authority: authorityProp }: {
   pending: AccountOrder[]
   onDecide: (o: AccountOrder, d: Outcome, note: string) => void
   onBatch: (orders: AccountOrder[]) => void
   delegated: boolean
+  authority?: number | null
 }) {
   const { t, money } = useLocale()
   const { org } = useChannel()
-  const authority = memberById(APPROVER_ID)?.perOrderLimitMinor ?? null
+  const authority = authorityProp !== undefined ? authorityProp : (memberById(APPROVER_ID)?.perOrderLimitMinor ?? null)
   const available = availableCreditMinor(org)
   const [sort, setSort] = useState<'age' | 'value'>('age')
   const [selected, setSelected] = useState<Set<string>>(new Set())

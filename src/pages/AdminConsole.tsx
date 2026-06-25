@@ -47,9 +47,7 @@ const ACCESS: Record<RoleId, Section[]> = {
   content_editor: ['overview', 'catalogue'],
   auditor: ['overview', 'audit'],
   customer: [],
-  b2b_buyer: [],
-  b2b_approver: [],
-  b2b_admin: [],
+  b2b: [],
 }
 
 export function AdminConsole() {
@@ -126,7 +124,7 @@ function OverviewPanel({ role, onSection, allowed }: { role: RoleId; onSection: 
     support_agent: ['openTickets', 'orders'],
     content_editor: ['orders', 'gmv'],
     auditor: ['pendingCredit', 'zatcaPending'],
-    customer: [], b2b_buyer: [], b2b_approver: [], b2b_admin: [],
+    customer: [], b2b: [],
   }
   const keys = kpisByRole[role].length ? kpisByRole[role] : ['gmv', 'orders']
 

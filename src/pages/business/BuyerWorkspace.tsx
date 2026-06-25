@@ -181,6 +181,17 @@ function BudgetCard({ cc }: { cc: NonNullable<ReturnType<typeof costCenterById>>
   )
 }
 
+/* ─────────── Org orders (unified B2B account — all orders, not just mine) ─────────── */
+export function OrgOrdersPanel() {
+  const [viewOrder, setViewOrder] = useState<AccountOrder | null>(null)
+  return (
+    <>
+      <MyOrders orders={accountOrders} onView={setViewOrder} />
+      <OrderDetailModal order={viewOrder} open={!!viewOrder} onClose={() => setViewOrder(null)} />
+    </>
+  )
+}
+
 /* ─────────── My orders ─────────── */
 function MyOrders({ orders, onView }: { orders: AccountOrder[]; onView: (o: AccountOrder) => void }) {
   const { t } = useLocale()
@@ -291,7 +302,7 @@ function OrderTimeline({ status, compact }: { status: AccountOrderStatus; compac
 }
 
 /* ─────────── My quotes ─────────── */
-function MyQuotes() {
+export function MyQuotes() {
   const { t, pick, money, locale } = useLocale()
   const { add } = useCart()
   const [list, setList] = useState<Quote[]>(quoteSeed)
@@ -423,7 +434,7 @@ function RequestQuoteModal({ open, onClose, onCreated, onAddToCart }: { open: bo
 }
 
 /* ─────────── Lists ─────────── */
-function Lists() {
+export function Lists() {
   const { t, pick, money } = useLocale()
   const { add } = useCart()
   const [lists, setLists] = useState<SavedList[]>(savedListsSeed.filter((l) => l.ownerId === BUYER_ID))

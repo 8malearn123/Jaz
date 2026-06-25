@@ -41,7 +41,7 @@ export function ChannelProvider({ children }: { children: ReactNode }) {
 
   const setRole = useCallback((r: RoleId) => setRoleState(r), [])
   // Backward-compatible quick toggle: maps to the matching shopper/business persona.
-  const setChannel = useCallback((c: Channel) => setRoleState(c === 'b2b' ? 'b2b_buyer' : 'customer'), [])
+  const setChannel = useCallback((c: Channel) => setRoleState(c === 'b2b' ? 'b2b' : 'customer'), [])
 
   const value = useMemo<ChannelContextValue>(
     () => ({

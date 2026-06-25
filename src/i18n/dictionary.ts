@@ -436,6 +436,8 @@ export const dict: Dict = {
   'business.tab.team': { en: 'Team', ar: 'الفريق' },
   'business.tab.gifting': { en: 'Gifting', ar: 'الإهداء' },
   'business.accountManager': { en: 'Account manager', ar: 'مدير الحساب' },
+  'biz.account': { en: 'Business account', ar: 'حساب الأعمال' },
+  'biz.tab.approvals': { en: 'Approvals', ar: 'الموافقات' },
   'business.priceList': { en: 'Price list', ar: 'قائمة الأسعار' },
   'business.tier': { en: 'tier', ar: 'فئة' },
   'business.recentActivity': { en: 'Recent activity', ar: 'النشاط الأخير' },
