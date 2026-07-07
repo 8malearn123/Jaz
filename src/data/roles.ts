@@ -4,12 +4,14 @@ import type { Bilingual } from './types'
 export type RoleId =
   | 'customer'
   | 'b2b'
+  | 'mega_business'
   | 'sales_agent'
   | 'support_agent'
   | 'content_editor'
   | 'finance'
   | 'admin'
   | 'auditor'
+  | 'owner'
 
 export type RoleGroup = 'shopper' | 'business' | 'staff'
 
@@ -54,6 +56,19 @@ export const personas: Record<RoleId, Persona> = {
     home: '/business',
     accent: '#3b241a',
     onAccent: '#f3eee5',
+  },
+  // Large wholesale/export B2B account — its own export-first workspace (/mega).
+  mega_business: {
+    id: 'mega_business',
+    name: { en: 'Sofia Bauer', ar: 'صوفيا باور' },
+    roleLabel: { en: 'Mega Business · Export', ar: 'الأعمال الكبرى · التصدير' },
+    group: 'business',
+    scope: 'org',
+    channel: 'b2b',
+    requiresMFA: false,
+    home: '/mega',
+    accent: '#365766',
+    onAccent: '#eaf1f4',
   },
   sales_agent: {
     id: 'sales_agent',
@@ -127,11 +142,26 @@ export const personas: Record<RoleId, Persona> = {
     accent: '#6e6258',
     onAccent: '#f3eee5',
   },
+  // Platform owner — operational/executive command center. Privileged (step-up MFA).
+  owner: {
+    id: 'owner',
+    name: { en: 'Abdullah Al-Jazi', ar: 'عبدالله الجازي' },
+    roleLabel: { en: 'Platform Owner', ar: 'المالك' },
+    group: 'staff',
+    scope: 'platform',
+    channel: 'b2c',
+    requiresMFA: true,
+    home: '/admin?section=owner_exec',
+    accent: '#1a1410',
+    onAccent: '#cdaa77',
+  },
 }
 
 export const personaList: Persona[] = Object.values(personas)
 
-export const PRIVILEGED_ROLES: RoleId[] = ['admin', 'finance', 'auditor']
+// Roles that require step-up MFA — derived from each persona's `requiresMFA` flag
+// so this list and the flag can never drift out of sync.
+export const PRIVILEGED_ROLES: RoleId[] = personaList.filter((p) => p.requiresMFA).map((p) => p.id)
 
 export function isStaffRole(role: RoleId): boolean {
   return personas[role].group === 'staff'

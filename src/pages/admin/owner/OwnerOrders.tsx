@@ -1,0 +1,197 @@
+import { useState } from 'react'
+import { Eye, ArrowRight, Check, X, AlertTriangle } from 'lucide-react'
+import { useLocale } from '@/i18n/LocaleContext'
+import { useToast } from '@/components/account/Toast'
+import { Modal } from '@/components/ui/Modal'
+import { buttonClass } from '@/components/ui/Button'
+import {
+  ownerOrderStatuses, ownerChannelMeta, ownerDepartments,
+  type OwnerChannel, type OwnerOrderStage,
+} from '@/data/ownerOrders'
+import { useOwnerState } from '@/state/OwnerStateContext'
+import { cn } from '@/lib/cn'
+import { PanelHead, StatCard, FilterChips, Pill } from './_shared'
+
+const LAST = (ownerOrderStatuses.length - 1) as OwnerOrderStage
+
+export function OwnerOrders() {
+  const { pick, money } = useLocale()
+  const { flash } = useToast()
+  const { orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pipelineValueMinor } = useOwnerState()
+  const [chan, setChan] = useState<OwnerChannel | 'all'>('all')
+  const [status, setStatus] = useState<string>('all')
+  const [sel, setSel] = useState<string | null>(null)
+  const [newOpen, setNewOpen] = useState(false)
+
+  const advance = (id: string) => {
+    const o = orders.find((x) => x.id === id)
+    if (!o || o.cancelled || o.stage >= LAST) return
+    advanceOrder(id)
+    flash(`${id} → ${pick(ownerOrderStatuses[o.stage + 1].label)}`)
+  }
+  const setStage = (id: string, s: OwnerOrderStage) => { setOrderStage(id, s); flash(`${id} → ${pick(ownerOrderStatuses[s].label)}`) }
+  const cancel = (id: string) => { cancelOrder(id); setSel(null); flash(`${pick({ en: 'Cancelled', ar: 'أُلغي' })} ${id}`) }
+
+  const cnt = (k: string) => orders.filter((o) => !o.cancelled && ownerOrderStatuses[o.stage].key === k).length
+  const stats: { label: { en: string; ar: string }; value: string; sub: { en: string; ar: string }; tone: 'dark' | 'plain' | 'green' | 'gold' }[] = [
+    { label: { en: 'New', ar: 'طلبات جديدة' }, value: String(cnt('new')), sub: { en: 'Awaiting confirm', ar: 'بانتظار التأكيد' }, tone: 'dark' },
+    { label: { en: 'In prep', ar: 'قيد التجهيز' }, value: String(cnt('confirmed') + cnt('prod')), sub: { en: 'Confirm · produce', ar: 'تأكيد · تصنيع' }, tone: 'plain' },
+    { label: { en: 'Ready / shipped', ar: 'جاهزة / مشحونة' }, value: String(cnt('ready') + cnt('shipped')), sub: { en: 'Awaiting delivery', ar: 'بانتظار التسليم' }, tone: 'plain' },
+    { label: { en: 'Completed', ar: 'مكتملة' }, value: String(cnt('done')), sub: { en: 'This cycle', ar: 'هذه الدورة' }, tone: 'green' },
+    { label: { en: 'Pipeline value', ar: 'قيمة قيد التنفيذ' }, value: money(pipelineValueMinor, { withSymbol: false }), sub: { en: 'Open orders', ar: 'طلبات مفتوحة' }, tone: 'gold' },
+  ]
+
+  const chanChips = [{ id: 'all' as const, label: pick({ en: 'All', ar: 'الكل' }), count: orders.length }, ...(['B2C', 'B2B', 'MEGA'] as OwnerChannel[]).map((c) => ({ id: c, label: pick(ownerChannelMeta[c].label), count: orders.filter((o) => o.chan === c).length }))]
+  const statusChips = [
+    { id: 'all', label: pick({ en: 'All', ar: 'الكل' }), count: orders.length },
+    ...ownerOrderStatuses.map((s) => ({ id: s.key, label: pick(s.label), count: orders.filter((o) => !o.cancelled && ownerOrderStatuses[o.stage].key === s.key).length })),
+    { id: 'cancelled', label: pick({ en: 'Cancelled', ar: 'ملغى' }), count: orders.filter((o) => o.cancelled).length },
+  ]
+  const shown = orders.filter((o) => {
+    if (chan !== 'all' && o.chan !== chan) return false
+    if (status === 'all') return true
+    if (status === 'cancelled') return !!o.cancelled
+    return !o.cancelled && ownerOrderStatuses[o.stage].key === status
+  })
+
+  const order = orders.find((o) => o.id === sel) ?? null
+
+  return (
+    <div className="flex flex-col gap-lg">
+      <PanelHead title={pick({ en: 'Orders inbox', ar: 'صندوق الطلبات' })} subtitle={pick({ en: 'All channels · advance, transfer or cancel', ar: 'كل القنوات · تقديم أو تحويل أو إلغاء' })}
+        action={<button onClick={() => setNewOpen(true)} className={buttonClass('secondary', 'sm')}>{pick({ en: 'Manual order', ar: 'طلب يدوي' })}</button>} />
+
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-sm">
+        {stats.map((s, i) => <StatCard key={i} label={pick(s.label)} value={s.value} sub={pick(s.sub)} tone={s.tone} />)}
+      </div>
+
+      <div className="flex flex-col gap-sm">
+        <FilterChips chips={chanChips} active={chan} onChange={setChan} label={pick({ en: 'Channel', ar: 'القناة' })} />
+        <FilterChips chips={statusChips} active={status} onChange={setStatus} label={pick({ en: 'Status', ar: 'الحالة' })} />
+      </div>
+
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse min-w-[720px]">
+            <tbody>
+              {shown.map((o) => {
+                const s = ownerOrderStatuses[o.stage]
+                const cm = ownerChannelMeta[o.chan]
+                const canAdv = !o.cancelled && o.stage < LAST
+                return (
+                  <tr key={o.id} className="border-b border-hairline last:border-0">
+                    <td className="px-lg py-md">
+                      <div className="flex items-center gap-sm">
+                        <span className="font-sans text-data text-ink tabular-nums">{o.id}</span>
+                        {o.sla && !o.cancelled && <span className="inline-flex items-center gap-xxs text-danger" title="SLA"><AlertTriangle size={13} /></span>}
+                      </div>
+                      <p className="font-sans text-caption text-ink-subtle truncate max-w-[180px]">{pick(o.customer)}</p>
+                    </td>
+                    <td className="px-lg py-md"><Pill color={cm.color} bg={cm.bg}>{pick(cm.label)}</Pill></td>
+                    <td className="px-lg py-md">
+                      <p className="font-sans text-data text-ink truncate max-w-[220px]">{pick(o.items)}</p>
+                      <p className="font-sans text-caption text-ink-subtle tabular-nums">{o.qty.toLocaleString()} {pick({ en: 'units', ar: 'وحدة' })} · {pick(o.date)}{o.department && <span className="text-primary-hover"> · {pick(o.department)}</span>}</p>
+                    </td>
+                    <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums">{money(o.amountMinor)}</td>
+                    <td className="px-lg py-md">{o.cancelled ? <Pill color="#b5403b" bg="#faeceb">{pick({ en: 'Cancelled', ar: 'ملغى' })}</Pill> : <Pill color={s.color} bg={s.bg}>{pick(s.label)}</Pill>}</td>
+                    <td className="px-lg py-md">
+                      <div className="flex items-center justify-end gap-xs">
+                        {canAdv ? (
+                          <button onClick={() => advance(o.id)} className="inline-flex items-center gap-xxs rounded-md bg-primary text-on-primary px-3 py-1.5 font-sans text-caption hover:bg-primary-hover whitespace-nowrap"><ArrowRight size={13} className="rtl:rotate-180" /> {pick(ownerOrderStatuses[o.stage + 1].label)}</button>
+                        ) : (
+                          <span className={cn('font-sans text-caption', o.cancelled ? 'text-danger' : 'text-success')}>{o.cancelled ? '—' : `${pick({ en: 'Done', ar: 'مكتمل' })} ✓`}</span>
+                        )}
+                        <button onClick={() => setSel(o.id)} className="grid place-items-center w-8 h-8 rounded-md border border-hairline text-ink-muted hover:text-ink hover:border-ink/30" aria-label={pick({ en: 'Details', ar: 'تفاصيل' })}><Eye size={15} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="px-lg py-sm bg-surface-2 border-t border-hairline font-sans text-caption text-ink-subtle">{shown.length} {pick({ en: 'of', ar: 'من' })} {orders.length} {pick({ en: 'orders', ar: 'طلب' })}</div>
+      </div>
+
+      {/* detail modal */}
+      <Modal open={!!order} onClose={() => setSel(null)} size="lg" eyebrow={order ? pick(ownerChannelMeta[order.chan].label) : ''} title={order?.id ?? ''}
+        footer={order && !order.cancelled ? <>
+          <button onClick={() => cancel(order.id)} className="btn btn-sm bg-transparent text-danger border border-danger/40 hover:bg-danger/5"><X size={15} /> {pick({ en: 'Cancel order', ar: 'إلغاء الطلب' })}</button>
+          {order.stage < LAST && <button onClick={() => advance(order.id)} className={buttonClass('primary', 'sm')}><ArrowRight size={15} className="rtl:rotate-180" /> {pick({ en: 'Advance to', ar: 'تقديم إلى' })}: {pick(ownerOrderStatuses[order.stage + 1].label)}</button>}
+        </> : undefined}>
+        {order && (
+          <div className="flex flex-col gap-lg">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-md">
+              {([[{ en: 'Customer', ar: 'العميل' }, pick(order.customer)], [{ en: 'Date', ar: 'التاريخ' }, pick(order.date)], [{ en: 'Qty', ar: 'الكمية' }, order.qty.toLocaleString()], [{ en: 'Value', ar: 'القيمة' }, money(order.amountMinor)]] as const).map(([l, v], i) => (
+                <div key={i} className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick(l)}</span><span className="font-sans text-data text-ink">{v}</span></div>
+              ))}
+            </div>
+            {/* clickable stepper */}
+            <div>
+              <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Pipeline', ar: 'خط الإنتاج' })}</span>
+              <div className="flex items-center mt-sm">
+                {ownerOrderStatuses.map((s, i) => {
+                  const done = !order.cancelled && i < order.stage, cur = !order.cancelled && i === order.stage
+                  return (
+                    <div key={s.key} className="flex items-center flex-1 last:flex-none">
+                      <button onClick={() => setStage(order.id, i as OwnerOrderStage)} className={cn('grid place-items-center w-8 h-8 rounded-pill border-2 shrink-0 font-sans text-caption transition-colors', done ? 'bg-success/15 border-success text-success' : cur ? 'bg-primary/10 border-primary text-primary-hover' : 'bg-surface-2 border-hairline-strong text-ink-subtle')}>{done ? <Check size={14} /> : i + 1}</button>
+                      {i < ownerOrderStatuses.length - 1 && <span className={cn('h-0.5 flex-1 mx-1 rounded-pill', i < order.stage ? 'bg-success/50' : 'bg-hairline')} />}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+            {/* department transfer */}
+            <div>
+              <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Transfer to department', ar: 'تحويل إلى قسم' })}{order.department && <span className="text-primary-hover"> · {pick({ en: 'assigned to', ar: 'مُسند إلى' })} {pick(order.department)}</span>}</span>
+              <div className="flex flex-wrap gap-xs mt-sm">
+                {ownerDepartments.map((d, i) => {
+                  const on = order.department && pick(order.department) === pick(d)
+                  return (
+                    <button key={i} onClick={() => { assignDepartment(order.id, d); flash(`${order.id} → ${pick(d)}`) }} className={cn('rounded-md border px-3 py-2 font-sans text-caption transition-colors', on ? 'bg-primary/10 border-primary text-primary-hover' : 'border-hairline-strong text-ink-muted hover:text-ink hover:border-ink/30')}>{on && '✓ '}{pick(d)}</button>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="rounded-lg bg-surface-2 border border-hairline p-md">
+              <p className="font-sans text-data text-ink">{pick(order.items)}</p>
+              <p className="font-sans text-caption text-ink-subtle tabular-nums mt-xxs">{order.qty.toLocaleString()} {pick({ en: 'units', ar: 'وحدة' })} · {money(order.amountMinor)}</p>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <ManualOrderModal open={newOpen} onClose={() => setNewOpen(false)} onCreate={(o) => { const id = createOrder(o); flash(`${pick({ en: 'Order created', ar: 'أُنشئ الطلب' })} ${id}`) }} />
+    </div>
+  )
+}
+
+function ManualOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (o: { customer: { en: string; ar: string }; chan: OwnerChannel; items: { en: string; ar: string }; qty: number; amountMinor: number }) => void }) {
+  const { pick } = useLocale()
+  const [customer, setCustomer] = useState('')
+  const [chan, setChan] = useState<OwnerChannel>('B2C')
+  const [items, setItems] = useState('')
+  const [qty, setQty] = useState(1)
+  const [amount, setAmount] = useState(0)
+  const valid = customer.trim() !== '' && items.trim() !== '' && qty > 0 && amount > 0
+  const reset = () => { setCustomer(''); setChan('B2C'); setItems(''); setQty(1); setAmount(0) }
+  const submit = () => { onCreate({ customer: { en: customer, ar: customer }, chan, items: { en: items, ar: items }, qty, amountMinor: amount * 100 }); reset(); onClose() }
+  return (
+    <Modal open={open} onClose={onClose} size="md" eyebrow={pick({ en: 'New order', ar: 'طلب جديد' })} title={pick({ en: 'Manual order', ar: 'طلب يدوي' })}
+      footer={<><button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button><button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}>{pick({ en: 'Create order', ar: 'إنشاء الطلب' })}</button></>}>
+      <div className="flex flex-col gap-md">
+        <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Customer', ar: 'العميل' })}</span><input value={customer} onChange={(e) => setCustomer(e.target.value)} className="input" /></label>
+        <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Channel', ar: 'القناة' })}</span>
+          <select value={chan} onChange={(e) => setChan(e.target.value as OwnerChannel)} className="input cursor-pointer">
+            {(['B2C', 'B2B', 'MEGA'] as OwnerChannel[]).map((c) => <option key={c} value={c}>{pick(ownerChannelMeta[c].label)}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Items', ar: 'الأصناف' })}</span><input value={items} onChange={(e) => setItems(e.target.value)} className="input" /></label>
+        <div className="flex gap-md">
+          <label className="flex flex-col gap-xs flex-1"><span className="label">{pick({ en: 'Qty', ar: 'الكمية' })}</span><input value={qty} onChange={(e) => setQty(Math.max(0, parseInt(e.target.value.replace(/\D/g, ''), 10) || 0))} className="input tabular-nums" inputMode="numeric" /></label>
+          <label className="flex flex-col gap-xs flex-1"><span className="label">{pick({ en: 'Amount (﷼)', ar: 'المبلغ (﷼)' })}</span><input value={amount} onChange={(e) => setAmount(Math.max(0, parseInt(e.target.value.replace(/\D/g, ''), 10) || 0))} className="input tabular-nums" inputMode="numeric" /></label>
+        </div>
+      </div>
+    </Modal>
+  )
+}

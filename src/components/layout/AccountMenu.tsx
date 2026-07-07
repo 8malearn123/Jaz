@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { User, Building2, ShieldCheck, LogIn, LogOut, ChevronRight, Lock, UserPlus, ArrowLeftRight } from 'lucide-react'
+import { User, ShieldCheck, LogIn, LogOut, ChevronRight, Lock, UserPlus, ArrowLeftRight } from 'lucide-react'
 import { useChannel } from '@/state/ChannelContext'
 import { useLocale } from '@/i18n/LocaleContext'
 import { buttonClass } from '@/components/ui/Button'
@@ -75,7 +75,7 @@ export function AccountMenu() {
                 {isStaff ? (
                   <MenuLink to="/admin" icon={ShieldCheck} label={t('role.adminConsole')} active onClick={() => setOpen(false)} />
                 ) : isBusiness ? (
-                  <MenuLink to="/business" icon={Building2} label={t('role.businessPortal')} active onClick={() => setOpen(false)} />
+                  <MenuLink to={persona.home} icon={PersonaIcon} label={persona.id === 'mega_business' ? t('role.megaPortal') : t('role.businessPortal')} active onClick={() => setOpen(false)} />
                 ) : (
                   <MenuLink to="/account" icon={User} label={t('role.myAccount')} active onClick={() => setOpen(false)} />
                 )}

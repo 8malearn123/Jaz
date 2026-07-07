@@ -11,6 +11,16 @@
 @import '@fontsource/ibm-plex-sans-arabic/500.css';
 @import '@fontsource/ibm-plex-sans-arabic/600.css';
 
+/* Official Saudi Riyal symbol (SAMA, 2025). Single-glyph font mapping ﷼ (U+FDFC)
+   to the new symbol; placed first in every font stack so only that char renders
+   from it and everything else falls through to the real fonts. */
+@font-face {
+  font-family: 'SaudiRiyal';
+  src: url('/saudi-riyal.ttf') format('truetype');
+  font-weight: 100 900;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

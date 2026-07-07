@@ -18,11 +18,13 @@ interface AccountShellProps {
   active: string
   onSelect: (id: string) => void
   headerExtra?: ReactNode
+  /** Optional card pinned to the bottom of the tab column (desktop sidebar only). */
+  navFooter?: ReactNode
   children: ReactNode
 }
 
 /** Dashboard chrome shared by the Individual and Business account worlds. */
-export function AccountShell({ eyebrow, title, subtitle, tone = 'light', tabs, active, onSelect, headerExtra, children }: AccountShellProps) {
+export function AccountShell({ eyebrow, title, subtitle, tone = 'light', tabs, active, onSelect, headerExtra, navFooter, children }: AccountShellProps) {
   const dark = tone === 'dark'
   return (
     <>
@@ -67,6 +69,7 @@ export function AccountShell({ eyebrow, title, subtitle, tone = 'light', tabs, a
                 </button>
               )
             })}
+            {navFooter && <div className="hidden lg:block mt-lg pt-lg border-t border-hairline">{navFooter}</div>}
           </nav>
 
           {/* panel */}

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   LayoutGrid, Wallet, FileText, Building2, Headset, PenTool, ScrollText, Users, Workflow,
   X, Check, RefreshCw, QrCode, Lock, ArrowRight, ShieldCheck, ShieldAlert, Target,
+  Gauge, ClipboardList, Factory, Package, UsersRound, LayoutList, Handshake, Globe, Coins,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useChannel } from '@/state/ChannelContext'
@@ -15,6 +16,8 @@ import {
 import { products } from '@/data/products'
 import { AccountShell, type TabDef } from '@/components/account/AccountShell'
 import { StepUpGate } from '@/components/account/StepUpGate'
+import { ToastProvider } from '@/components/account/Toast'
+import { OwnerStateProvider } from '@/state/OwnerStateContext'
 import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
 import { useTab } from '@/lib/useTab'
@@ -23,8 +26,20 @@ import { SupportDesk } from './admin/SupportDesk'
 import { SalesPipeline } from './admin/SalesPipeline'
 import { SalesPerformance } from './admin/SalesPerformance'
 import { AccountsPanel } from './admin/AccountsPanel'
+import { OwnerExec } from './admin/owner/OwnerExec'
+import { OwnerOrders } from './admin/owner/OwnerOrders'
+import { OwnerSupply } from './admin/owner/OwnerSupply'
+import { OwnerProducts } from './admin/owner/OwnerProducts'
+import { OwnerCustomers } from './admin/owner/OwnerCustomers'
+import { OwnerCatalog } from './admin/owner/OwnerCatalog'
+import { OwnerVendors } from './admin/owner/OwnerVendors'
+import { OwnerExport } from './admin/owner/OwnerExport'
+import { OwnerFinance } from './admin/owner/OwnerFinance'
 
-type Section = 'overview' | 'credit' | 'invoicing' | 'accounts' | 'pipeline' | 'performance' | 'support' | 'catalogue' | 'audit' | 'users'
+type Section =
+  | 'overview' | 'credit' | 'invoicing' | 'accounts' | 'pipeline' | 'performance' | 'support' | 'catalogue' | 'audit' | 'users'
+  // Owner operational sections (owner role only)
+  | 'owner_exec' | 'owner_orders' | 'owner_supply' | 'owner_products' | 'owner_customers' | 'owner_catalog' | 'owner_vendors' | 'owner_export' | 'owner_fin'
 
 const SECTION_META: Record<Section, { key: string; icon: TabDef['icon'] }> = {
   overview: { key: 'admin.section.overview', icon: LayoutGrid },
@@ -37,7 +52,18 @@ const SECTION_META: Record<Section, { key: string; icon: TabDef['icon'] }> = {
   catalogue: { key: 'admin.section.catalogue', icon: PenTool },
   audit: { key: 'admin.section.audit', icon: ScrollText },
   users: { key: 'admin.section.users', icon: Users },
+  owner_exec: { key: 'owner.section.exec', icon: Gauge },
+  owner_orders: { key: 'owner.section.orders', icon: ClipboardList },
+  owner_supply: { key: 'owner.section.supply', icon: Factory },
+  owner_products: { key: 'owner.section.products', icon: Package },
+  owner_customers: { key: 'owner.section.customers', icon: UsersRound },
+  owner_catalog: { key: 'owner.section.catalog', icon: LayoutList },
+  owner_vendors: { key: 'owner.section.vendors', icon: Handshake },
+  owner_export: { key: 'owner.section.export', icon: Globe },
+  owner_fin: { key: 'owner.section.fin', icon: Coins },
 }
+
+const OWNER_SECTIONS: Section[] = ['owner_exec', 'owner_orders', 'owner_supply', 'owner_products', 'owner_customers', 'owner_catalog', 'owner_vendors', 'owner_export', 'owner_fin']
 
 const ACCESS: Record<RoleId, Section[]> = {
   admin: ['overview', 'credit', 'invoicing', 'accounts', 'pipeline', 'performance', 'support', 'catalogue', 'audit', 'users'],
@@ -46,8 +72,11 @@ const ACCESS: Record<RoleId, Section[]> = {
   support_agent: ['overview', 'support'],
   content_editor: ['overview', 'catalogue'],
   auditor: ['overview', 'audit'],
+  // Owner: the shared overview launcher + its 9 operational sections (owner-exclusive).
+  owner: ['overview', ...OWNER_SECTIONS],
   customer: [],
   b2b: [],
+  mega_business: [],
 }
 
 export function AdminConsole() {
@@ -63,6 +92,8 @@ export function AdminConsole() {
 
   return (
     <StepUpGate id={role} required={isPrivileged}>
+     <ToastProvider>
+      <OwnerStateProvider>
       <AccountShell
         eyebrow={t('admin.platform')}
         title={t('admin.title')}
@@ -82,7 +113,18 @@ export function AdminConsole() {
         {active === 'catalogue' && <CataloguePanel />}
         {active === 'audit' && <AuditPanel />}
         {active === 'users' && <UsersPanel />}
+        {active === 'owner_exec' && <OwnerExec />}
+        {active === 'owner_orders' && <OwnerOrders />}
+        {active === 'owner_supply' && <OwnerSupply />}
+        {active === 'owner_products' && <OwnerProducts />}
+        {active === 'owner_customers' && <OwnerCustomers />}
+        {active === 'owner_catalog' && <OwnerCatalog />}
+        {active === 'owner_vendors' && <OwnerVendors />}
+        {active === 'owner_export' && <OwnerExport />}
+        {active === 'owner_fin' && <OwnerFinance />}
       </AccountShell>
+      </OwnerStateProvider>
+     </ToastProvider>
     </StepUpGate>
   )
 }
@@ -124,7 +166,8 @@ function OverviewPanel({ role, onSection, allowed }: { role: RoleId; onSection: 
     support_agent: ['openTickets', 'orders'],
     content_editor: ['orders', 'gmv'],
     auditor: ['pendingCredit', 'zatcaPending'],
-    customer: [], b2b: [],
+    owner: ['gmv', 'orders', 'pendingCredit', 'openTickets', 'b2bAccounts', 'zatcaPending'],
+    customer: [], b2b: [], mega_business: [],
   }
   const keys = kpisByRole[role].length ? kpisByRole[role] : ['gmv', 'orders']
 

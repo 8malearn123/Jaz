@@ -10,6 +10,7 @@ import { CartPage } from '@/pages/CartPage'
 import { CheckoutPage } from '@/pages/CheckoutPage'
 import { AccountPage } from '@/pages/AccountPage'
 import { BusinessPage } from '@/pages/BusinessPage'
+import { MegaPage } from '@/pages/MegaPage'
 import { AdminConsole } from '@/pages/AdminConsole'
 import { RolePicker } from '@/pages/RolePicker'
 import { SignInPage } from '@/pages/SignInPage'
@@ -40,6 +41,7 @@ export default function App() {
         />
         <Route path="account" element={<RequireAuth><AccountPage /></RequireAuth>} />
         <Route path="business" element={<RequireAuth><BusinessPage /></RequireAuth>} />
+        <Route path="mega" element={<RequireAuth><MegaPage /></RequireAuth>} />
         <Route path="admin" element={<RequireAuth><AdminConsole /></RequireAuth>} />
         <Route path="signin" element={<SignInPage />} />
         <Route path="signup" element={<SignUpPage />} />

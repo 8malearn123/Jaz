@@ -229,7 +229,7 @@ function NewDealModal({ open, onClose, onAdd }: { open: boolean; onClose: () => 
         </label>
         <div className="flex flex-col sm:flex-row gap-md">
           <label className="flex flex-col gap-xs flex-1">
-            <span className="label">{t('pipe.dealValue')} (SAR)</span>
+            <span className="label">{t('pipe.dealValue')} (﷼)</span>
             <input value={value} onChange={(e) => setValue(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="50000" className="input" />
           </label>
           <label className="flex flex-col gap-xs flex-1">

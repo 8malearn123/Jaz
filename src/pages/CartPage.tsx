@@ -4,6 +4,7 @@ import { useLocale } from '@/i18n/LocaleContext'
 import { useCart } from '@/state/CartContext'
 import { useChannel } from '@/state/ChannelContext'
 import { variantById } from '@/data/products'
+import { wholesaleBySku, type WholesaleProduct } from '@/data/wholesale'
 import { flavors } from '@/data/flavors'
 import { buttonClass } from '@/components/ui/Button'
 import { Eyebrow, StatusBadge } from '@/components/ui/Misc'
@@ -54,7 +55,10 @@ export function CartPage() {
           <ul className="flex flex-col divide-y divide-hairline border-y border-hairline">
             {lines.map((line) => {
               const found = variantById(line.variantId)
-              if (!found) return null
+              if (!found) {
+                const w = wholesaleBySku(line.variantId)
+                return w ? <WholesaleCartLine key={line.variantId} product={w} qty={line.qty} /> : null
+              }
               const { product, variant } = found
               const flavor = flavors[product.flavorId]
               const unit = unitPrice(line.variantId)
@@ -142,5 +146,46 @@ export function CartPage() {
         </div>
       </div>
     </section>
+  )
+}
+
+/** Wholesale (foodservice) cart line — B2B only; retail lines render above. */
+function WholesaleCartLine({ product, qty }: { product: WholesaleProduct; qty: number }) {
+  const { t, pick, money, locale } = useLocale()
+  const { setQty, remove, unitPrice } = useCart()
+  const unit = unitPrice(product.sku, qty)
+  return (
+    <li className="flex gap-md py-lg">
+      <span
+        className="w-24 h-24 sm:w-28 sm:h-28 shrink-0 rounded-lg border border-hairline"
+        style={{ backgroundColor: product.accent, backgroundImage: 'repeating-linear-gradient(135deg, rgba(255,255,255,0.13) 0 2px, transparent 2px 9px)' }}
+      />
+      <div className="flex-1 flex flex-col gap-xs min-w-0">
+        <div className="flex items-start justify-between gap-sm">
+          <div className="min-w-0">
+            <span className="font-sans text-caption uppercase tracking-[0.1em] text-primary-hover">{pick(product.unit)}</span>
+            <span className="block font-serif text-card-title text-ink truncate">{pick(product.name)}</span>
+            <span className="font-sans text-caption text-ink-subtle tabular-nums">{product.sku}</span>
+          </div>
+          <button onClick={() => remove(product.sku)} className="grid place-items-center w-8 h-8 text-ink-subtle hover:text-danger transition-colors -me-1" aria-label={t('cart.remove')}>
+            <X size={17} />
+          </button>
+        </div>
+        <div className="mt-auto flex items-center justify-between gap-sm pt-xs">
+          <div className="flex items-center border border-hairline-strong rounded-md">
+            <button onClick={() => setQty(product.sku, Math.max(0, qty - 1))} className="grid place-items-center w-9 h-9 text-ink-muted hover:text-ink" aria-label="decrease">
+              <Minus size={14} />
+            </button>
+            <span className="w-9 text-center font-sans text-data tabular-nums">{qty}</span>
+            <button onClick={() => setQty(product.sku, qty + 1)} className="grid place-items-center w-9 h-9 text-ink-muted hover:text-ink" aria-label="increase">
+              <Plus size={14} />
+            </button>
+          </div>
+          <span className="font-sans text-body text-ink tabular-nums" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+            {money(unit * qty)}
+          </span>
+        </div>
+      </div>
+    </li>
   )
 }

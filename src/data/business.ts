@@ -23,6 +23,9 @@ export interface Quote {
 
 export type AccountOrderStatus = 'awaiting_approval' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'rejected'
 
+// An order may be cancelled within this window while still early-stage (before it ships).
+export const CANCEL_WINDOW_MS = 30 * 60 * 1000 // 30 minutes
+
 export interface AccountOrder {
   orderNo: string
   placedAt: string
@@ -33,6 +36,8 @@ export interface AccountOrder {
   poNumber: string
   requiresApproval: boolean
   summary: Bilingual
+  cancelled?: boolean
+  placedTs?: number // session epoch ms when the cancel window opened (early-stage orders only)
 }
 
 export interface GiftBatch {
@@ -204,12 +209,13 @@ export interface OrgAddress {
   district: Bilingual
   shortAddress: string
   isDefault: boolean
+  phone?: string // site contact number (for delivery / logistics)
 }
 
 export const orgAddresses: OrgAddress[] = [
-  { id: 'oa-1', type: 'billing', label: { en: 'Head office', ar: 'المقر الرئيسي' }, city: { en: 'Riyadh', ar: 'الرياض' }, district: { en: 'Al Olaya', ar: 'العليا' }, shortAddress: 'OLYA2231', isDefault: true },
-  { id: 'oa-2', type: 'shipping', label: { en: 'Central warehouse', ar: 'المستودع المركزي' }, city: { en: 'Riyadh', ar: 'الرياض' }, district: { en: 'Al Sulay', ar: 'السلي' }, shortAddress: 'SULY7740', isDefault: true },
-  { id: 'oa-3', type: 'shipping', label: { en: 'Jeddah branch', ar: 'فرع جدة' }, city: { en: 'Jeddah', ar: 'جدة' }, district: { en: 'Al Hamra', ar: 'الحمراء' }, shortAddress: 'HMRA1180', isDefault: false },
+  { id: 'oa-1', type: 'billing', label: { en: 'Head office', ar: 'المقر الرئيسي' }, city: { en: 'Riyadh', ar: 'الرياض' }, district: { en: 'Al Olaya', ar: 'العليا' }, shortAddress: 'OLYA2231', isDefault: true, phone: '+966 11 200 1120' },
+  { id: 'oa-2', type: 'shipping', label: { en: 'Central warehouse', ar: 'المستودع المركزي' }, city: { en: 'Riyadh', ar: 'الرياض' }, district: { en: 'Al Sulay', ar: 'السلي' }, shortAddress: 'SULY7740', isDefault: true, phone: '+966 11 477 3300' },
+  { id: 'oa-3', type: 'shipping', label: { en: 'Jeddah branch', ar: 'فرع جدة' }, city: { en: 'Jeddah', ar: 'جدة' }, district: { en: 'Al Hamra', ar: 'الحمراء' }, shortAddress: 'HMRA1180', isDefault: false, phone: '+966 12 610 4400' },
 ]
 
 export interface OrgVerificationCase {
@@ -345,4 +351,46 @@ export const rolePermissions: Record<OrgMember['role'], Record<Capability, boole
   approver: { placeOrders: true, approveOrders: true, manageTeam: false, viewCredit: true, manageBudgets: false, downloadInvoices: true, manageGifting: true, editPolicy: false },
   buyer: { placeOrders: true, approveOrders: false, manageTeam: false, viewCredit: true, manageBudgets: false, downloadInvoices: false, manageGifting: true, editPolicy: false },
   viewer: { placeOrders: false, approveOrders: false, manageTeam: false, viewCredit: true, manageBudgets: false, downloadInvoices: true, manageGifting: false, editPolicy: false },
+}
+
+// ── ZATCA e-invoices for the credit/invoices view ──────────────────────────
+export interface B2BInvoice {
+  id: string
+  date: string
+  amountMinor: number
+  paid: boolean
+}
+
+export const b2bInvoices: B2BInvoice[] = [
+  { id: 'INV-2026-0981', date: '2026-05-22', amountMinor: 4200000, paid: true },
+  { id: 'INV-2026-1140', date: '2026-06-09', amountMinor: 3180000, paid: false },
+  { id: 'INV-2026-1065', date: '2026-06-02', amountMinor: 720000, paid: true },
+  { id: 'INV-2026-0900', date: '2026-05-10', amountMinor: 3960000, paid: true },
+]
+
+/** This-month rollup shown under the credit tab. */
+export const b2bMonthSummary = { orders: 8, purchasesMinor: 4720000, savedMinor: 288000 }
+
+// ── Scheduled cold-chain deliveries to org branches (delivery tab) ─────────
+export interface ScheduledDelivery {
+  orderNo: string
+  /** Org shipping address (branch) id — see orgAddresses. */
+  branchId: string
+  day: string
+  dow: Bilingual
+  window: Bilingual
+  status: 'scheduled' | 'in_transit' | 'delivered'
+}
+
+export const scheduledDeliveries: ScheduledDelivery[] = [
+  { orderNo: 'JAZ-2026-001140', branchId: 'oa-2', day: '5', dow: { en: 'Tomorrow', ar: 'غدًا' }, window: { en: '7:00–9:00 AM', ar: '٧:٠٠ – ٩:٠٠ ص' }, status: 'in_transit' },
+  { orderNo: 'JAZ-2026-001190', branchId: 'oa-3', day: '8', dow: { en: 'Thu', ar: 'الخميس' }, window: { en: '7:00–9:00 AM', ar: '٧:٠٠ – ٩:٠٠ ص' }, status: 'scheduled' },
+  { orderNo: 'JAZ-2026-001188', branchId: 'oa-2', day: '12', dow: { en: 'Mon', ar: 'الإثنين' }, window: { en: '7:00–9:00 AM', ar: '٧:٠٠ – ٩:٠٠ ص' }, status: 'scheduled' },
+]
+
+/** Default B2B notification preferences (toggled in the company tab). */
+export const orgNotificationDefaults = { orders: true, invoices: true, lowStock: true, marketing: false }
+
+export function orgAddressById(id: string): OrgAddress | undefined {
+  return orgAddresses.find((a) => a.id === id)
 }

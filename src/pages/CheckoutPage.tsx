@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CheckCircle2, CreditCard, Landmark, Wallet, ShieldCheck, AlertTriangle, ArrowRight } from 'lucide-react'
+import { CheckCircle2, CreditCard, Landmark, Wallet, ShieldCheck, AlertTriangle, ArrowRight, MapPin, Plus, Pencil, Gift } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useCart } from '@/state/CartContext'
 import { useChannel, type Channel } from '@/state/ChannelContext'
+import { customer } from '@/data/account'
 import { organization, availableCreditMinor } from '@/data/organization'
+import { members, orgAddresses } from '@/data/business'
+import type { Bilingual } from '@/data/types'
 import { buttonClass } from '@/components/ui/Button'
 import { Eyebrow, StatusBadge } from '@/components/ui/Misc'
 import { OrderSummary } from '@/components/ui/OrderSummary'
@@ -51,8 +54,8 @@ export function CheckoutPage() {
       <div className="grid lg:grid-cols-[1.6fr_1fr] gap-xl items-start">
         {/* form */}
         <div className="flex flex-col gap-xl">
-          <ContactSection />
-          <DeliverySection />
+          <ContactSection channel={channel} />
+          <DeliverySection channel={channel} />
           {channel === 'b2b' && <PoSection />}
           <PaymentSection channel={channel} method={method} setMethod={setMethod} />
         </div>
@@ -100,26 +103,53 @@ function Field({ label, ...props }: { label: string } & React.InputHTMLAttribute
   )
 }
 
-function ContactSection() {
-  const { t } = useLocale()
+function ContactSection({ channel }: { channel: Channel }) {
+  const { t, pick } = useLocale()
+  const b2c = channel === 'b2c'
+  const [editing, setEditing] = useState(false)
+
+  // We already know who the buyer is — the signed-in customer, or the business account's admin.
+  const admin = members.find((m) => m.role === 'b2b_admin') ?? members[0]
+  const known: { name: string; email: string; phone: string | null; org: string | null } = b2c
+    ? { name: pick(customer.name), email: customer.email, phone: customer.phone, org: null }
+    : { name: pick(admin.name), email: admin.email, phone: null, org: pick(organization.legalName) }
+
+  // Show what we have — don't re-ask.
+  if (!editing) {
+    const initials = known.name.split(' ').map((w) => w[0]).slice(0, 2).join('')
+    return (
+      <FieldShell step="01" title={t('checkout.contact')}>
+        <div className="flex items-center gap-md">
+          <span className="grid place-items-center w-12 h-12 rounded-pill bg-primary/10 border border-primary/20 text-primary-hover font-serif text-card-title shrink-0">{initials}</span>
+          <div className="flex-1 min-w-0">
+            <p className="font-sans text-data text-ink truncate">{known.name}{known.org && <span className="text-ink-subtle"> · {known.org}</span>}</p>
+            <p className="font-sans text-caption text-ink-subtle truncate">{known.email}{known.phone && <> · <span className="tabular-nums" dir="ltr">{known.phone}</span></>}</p>
+          </div>
+          <button onClick={() => setEditing(true)} className={buttonClass('ghost', 'sm')}><Pencil size={14} /> {t('addr.edit')}</button>
+        </div>
+      </FieldShell>
+    )
+  }
+
+  const [first, ...rest] = known.name.split(' ')
   return (
     <FieldShell step="01" title={t('checkout.contact')}>
       <div className="flex flex-col sm:flex-row gap-md">
-        <Field label={t('checkout.firstName')} autoComplete="given-name" defaultValue="" />
-        <Field label={t('checkout.lastName')} autoComplete="family-name" />
+        <Field label={t('checkout.firstName')} autoComplete="given-name" defaultValue={first ?? ''} />
+        <Field label={t('checkout.lastName')} autoComplete="family-name" defaultValue={rest.join(' ')} />
       </div>
       <div className="flex flex-col sm:flex-row gap-md">
-        <Field label={t('checkout.email')} type="email" autoComplete="email" placeholder="name@example.com" />
-        <Field label={t('checkout.phone')} type="tel" inputMode="tel" placeholder="+9665XXXXXXXX" />
+        <Field label={t('checkout.email')} type="email" autoComplete="email" placeholder="name@example.com" defaultValue={known.email} />
+        <Field label={t('checkout.phone')} type="tel" inputMode="tel" placeholder="+9665XXXXXXXX" defaultValue={known.phone ?? ''} />
       </div>
     </FieldShell>
   )
 }
 
-function DeliverySection() {
+function AddressForm() {
   const { t } = useLocale()
   return (
-    <FieldShell step="02" title={t('checkout.delivery')}>
+    <>
       <div className="flex items-center gap-xs mb-xs">
         <StatusBadge variant="gold">{t('checkout.nationalAddress')}</StatusBadge>
         <span className="font-sans text-caption text-ink-subtle">SPL</span>
@@ -129,7 +159,155 @@ function DeliverySection() {
         <Field label={t('checkout.district')} />
       </div>
       <Field label={t('checkout.shortAddress')} placeholder="RWAB1234" />
+    </>
+  )
+}
+
+function DeliverySection({ channel }: { channel: Channel }) {
+  const { t } = useLocale()
+  const b2c = channel === 'b2c'
+  const [mode, setMode] = useState<'me' | 'gift'>('me')
+
+  // Reuse the account's known addresses — the customer's saved ones for B2C, the org's branches for B2B.
+  const addresses = b2c ? customer.addresses : orgAddresses.filter((a) => a.type === 'shipping')
+
+  // No saved addresses on either side → plain manual entry.
+  if (addresses.length === 0) {
+    return <FieldShell step="02" title={t('checkout.delivery')}><AddressForm /></FieldShell>
+  }
+
+  // B2B ships to its own branches — pick one, no gift mode.
+  if (!b2c) {
+    return (
+      <FieldShell step="02" title={t('checkout.delivery')}>
+        <SavedAddressPicker addresses={addresses} />
+      </FieldShell>
+    )
+  }
+
+  return (
+    <FieldShell step="02" title={t('checkout.delivery')}>
+      <div className="inline-flex self-start rounded-md border border-hairline-strong p-0.5">
+        <SegBtn active={mode === 'me'} onClick={() => setMode('me')} icon={MapPin} label={t('checkout.deliverToMe')} />
+        <SegBtn active={mode === 'gift'} onClick={() => setMode('gift')} icon={Gift} label={t('checkout.sendAsGift')} />
+      </div>
+      {mode === 'me' ? <SavedAddressPicker addresses={addresses} /> : <GiftRecipientPicker />}
     </FieldShell>
+  )
+}
+
+function SegBtn({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon: typeof MapPin; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn('inline-flex items-center gap-xs px-md py-2 rounded-sm font-sans text-data transition-colors', active ? 'bg-primary text-on-primary' : 'text-ink-muted hover:text-ink')}
+    >
+      <Icon size={15} /> {label}
+    </button>
+  )
+}
+
+function SavedAddressPicker({ addresses }: { addresses: { id: string; label: Bilingual; city: Bilingual; district: Bilingual; shortAddress: string; isDefault: boolean }[] }) {
+  const { t, pick } = useLocale()
+  const defaultAddr = addresses.find((a) => a.isDefault) ?? addresses[0]
+  const [selectedId, setSelectedId] = useState<string>(defaultAddr?.id ?? 'new')
+  const usingNew = selectedId === 'new'
+
+  return (
+    <div className="flex flex-col gap-md">
+      <span className="label !mb-0">{t('checkout.savedAddresses')}</span>
+      <div className="grid sm:grid-cols-2 gap-sm">
+        {addresses.map((a) => {
+          const active = selectedId === a.id
+          return (
+            <button
+              key={a.id}
+              onClick={() => setSelectedId(a.id)}
+              className={cn('text-start p-md rounded-md border transition-all flex flex-col gap-xs', active ? 'border-primary bg-primary/8 ring-1 ring-primary/30' : 'border-hairline-strong hover:border-ink/30')}
+            >
+              <span className="flex items-center justify-between gap-sm">
+                <span className="inline-flex items-center gap-xs font-serif text-card-title text-ink"><MapPin size={16} className="text-primary-hover" /> {pick(a.label)}</span>
+                {a.isDefault && <StatusBadge variant="gold">{t('addr.default')}</StatusBadge>}
+              </span>
+              <span className="font-sans text-caption text-ink-muted">{pick(a.district)}, {pick(a.city)} · {a.shortAddress}</span>
+            </button>
+          )
+        })}
+        <button
+          onClick={() => setSelectedId('new')}
+          className={cn('text-start p-md rounded-md border border-dashed transition-all flex items-center gap-sm font-sans text-data', usingNew ? 'border-primary bg-primary/8 ring-1 ring-primary/30 text-ink' : 'border-hairline-strong text-ink-muted hover:border-ink/30 hover:text-ink')}
+        >
+          <Plus size={16} /> {t('checkout.useNewAddress')}
+        </button>
+      </div>
+      {usingNew && <div className="flex flex-col gap-md pt-sm animate-fade-up"><AddressForm /></div>}
+    </div>
+  )
+}
+
+function GiftRecipientPicker() {
+  const { t, pick } = useLocale()
+  const recipients = customer.giftRecipients
+  const [recipientId, setRecipientId] = useState(recipients[0]?.id ?? '')
+  const [anon, setAnon] = useState(recipients[0]?.anonymous ?? false)
+  const selected = recipients.find((r) => r.id === recipientId)
+  const pickRecipient = (r: (typeof recipients)[number]) => { setRecipientId(r.id); setAnon(r.anonymous) }
+
+  if (recipients.length === 0) {
+    return (
+      <div className="rounded-md border border-dashed border-hairline-strong p-lg text-center flex flex-col items-center gap-sm">
+        <Gift size={22} className="text-ink-subtle" />
+        <p className="font-sans text-data text-ink-muted">{t('checkout.noRecipients')}</p>
+        <Link to="/account?tab=addresses" className={buttonClass('secondary', 'sm')}>{t('checkout.addRecipient')}</Link>
+      </div>
+    )
+  }
+
+  const who = selected ? pick(selected.name) : ''
+  const me = pick(customer.name)
+
+  return (
+    <div className="flex flex-col gap-md">
+      <span className="label !mb-0">{t('checkout.chooseRecipient')}</span>
+      <div className="grid sm:grid-cols-2 gap-sm">
+        {recipients.map((r) => {
+          const active = r.id === recipientId
+          const initials = pick(r.name).split(' ').map((w) => w[0]).slice(0, 2).join('')
+          return (
+            <button
+              key={r.id}
+              onClick={() => pickRecipient(r)}
+              className={cn('text-start p-md rounded-md border transition-all flex items-center gap-sm', active ? 'border-primary bg-primary/8 ring-1 ring-primary/30' : 'border-hairline-strong hover:border-ink/30')}
+            >
+              <span className="grid place-items-center w-10 h-10 rounded-pill bg-primary/10 border border-primary/20 text-primary-hover font-serif text-card-title shrink-0">{initials}</span>
+              <span className="flex flex-col min-w-0">
+                <span className="font-sans text-data text-ink truncate">{pick(r.name)} <span className="text-ink-subtle">· {pick(r.relation)}</span></span>
+                <span className="font-sans text-caption text-ink-muted truncate">{pick(r.district)}, {pick(r.city)}</span>
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      <label className="flex items-center gap-sm cursor-pointer">
+        <input type="checkbox" checked={anon} onChange={(e) => setAnon(e.target.checked)} className="w-4 h-4 accent-primary" />
+        <span className="font-sans text-data text-ink-muted">{t('checkout.giftAnon')}</span>
+      </label>
+
+      <label className="flex flex-col gap-xs">
+        <span className="label">{t('checkout.giftMessage')}</span>
+        <textarea rows={2} placeholder={t('checkout.giftMessagePlaceholder')} className="input resize-none" />
+      </label>
+
+      {selected && (
+        <p className="font-sans text-caption text-ink-subtle inline-flex items-center gap-xs">
+          <Gift size={13} className="text-primary-hover" />
+          {anon
+            ? pick({ en: `Arrives to ${who} from “a well-wisher”.`, ar: `تصل إلى ${who} من «فاعل خير».` })
+            : pick({ en: `Arrives to ${who} from ${me}.`, ar: `تصل إلى ${who} باسمك.` })}
+        </p>
+      )}
+    </div>
   )
 }
 

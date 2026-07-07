@@ -1,7 +1,9 @@
 import type { Bilingual } from './types'
 
 export type OrderStatus = 'confirmed' | 'processing' | 'shipped' | 'out_for_delivery' | 'delivered' | 'cancelled'
-export type LoyaltyTier = 'taster' | 'connoisseur' | 'maison'
+// Loyalty tiers mirror the owner-side program (ownerCustomers.ts) so a customer
+// sees the same tier name/threshold the platform owner sees for them.
+export type LoyaltyTier = 'basic' | 'silver' | 'gold' | 'elite'
 
 export interface TrackStep {
   key: OrderStatus
@@ -33,13 +35,6 @@ export interface Subscription {
   priceMinor: number
 }
 
-export interface GiftCard {
-  code: string
-  initialMinor: number
-  balanceMinor: number
-  status: 'active' | 'redeemed'
-}
-
 export interface SavedAddress {
   id: string
   label: Bilingual
@@ -52,6 +47,53 @@ export interface SavedAddress {
 export interface ConsentRecord {
   purpose: 'marketing_whatsapp' | 'marketing_email' | 'profiling' | 'cookies'
   granted: boolean
+}
+
+/** Store-credit wallet — goodwill credits, refunds, and applied balances. */
+export interface WalletEntry {
+  reason: Bilingual
+  /** Always a positive integer minor-unit amount; direction is on `kind`. */
+  amountMinor: number
+  kind: 'credit' | 'debit'
+  at: string
+}
+
+export interface Wallet {
+  balanceMinor: number
+  log: WalletEntry[]
+}
+
+/** A saved favourite. Stock/price are derived live from the product variant. */
+export interface WishlistItem {
+  variantId: string
+  /** For sold-out favourites: alert me when it is back in stock. */
+  notifyOnRestock: boolean
+}
+
+export type OccasionChannel = 'whatsapp' | 'email'
+
+/** A personal reminder in the occasions diary (birthday, anniversary…). */
+export interface Occasion {
+  id: string
+  title: Bilingual
+  /** ISO yyyy-mm-dd */
+  date: string
+  /** Reminder channel, fired 7 days before. */
+  channel: OccasionChannel
+  /** Optional link to a saved gift recipient. */
+  recipientId?: string
+}
+
+/** A saved gift recipient — a re-usable "send to" identity for gifting. */
+export interface GiftRecipient {
+  id: string
+  name: Bilingual
+  relation: Bilingual
+  city: Bilingual
+  district: Bilingual
+  phone: string
+  /** When true, the gift card carries no sender name ("from a well-wisher"). */
+  anonymous: boolean
 }
 
 export interface Customer {
@@ -69,11 +111,17 @@ export interface Customer {
   }
   orders: CustomerOrder[]
   subscriptions: Subscription[]
-  giftCards: GiftCard[]
   addresses: SavedAddress[]
+  wallet: Wallet
+  wishlist: WishlistItem[]
+  occasions: Occasion[]
+  giftRecipients: GiftRecipient[]
   consents: ConsentRecord[]
   notifications: { whatsapp: boolean; email: boolean; sms: boolean; push: boolean }
 }
+
+/** Fixed demo "today" so countdowns are stable across renders (matches subscriptions). */
+export const DEMO_TODAY = '2026-06-21'
 
 const steps = (status: OrderStatus): TrackStep[] => {
   const order: OrderStatus[] = ['confirmed', 'processing', 'shipped', 'out_for_delivery', 'delivered']
@@ -94,13 +142,13 @@ export const customer: Customer = {
   memberSince: '2024-11-02',
   loyalty: {
     points: 1840,
-    tier: 'connoisseur',
-    lifetimeSpendMinor: 482000, // SAR 4,820
-    nextTier: 'maison',
-    nextTierAtMinor: 750000, // SAR 7,500 lifetime for Maison
+    tier: 'silver',
+    lifetimeSpendMinor: 482000, // SAR 4,820 → Silver (≥ SAR 2,000); same classification the owner shows for Layla
+    nextTier: 'gold',
+    nextTierAtMinor: 800000, // SAR 8,000 lifetime for Gold — matches owner tier thresholds
     history: [
       { type: 'earn', points: 320, reason: { en: 'Order JAZ-2026-118540', ar: 'طلب JAZ-2026-118540' }, at: '2026-06-14' },
-      { type: 'redeem', points: 500, reason: { en: 'SAR 25 reward redeemed', ar: 'استبدال مكافأة ٢٥ ر.س' }, at: '2026-05-28' },
+      { type: 'redeem', points: 500, reason: { en: '﷼ 25 reward redeemed', ar: 'استبدال مكافأة ٢٥ ﷼' }, at: '2026-05-28' },
       { type: 'earn', points: 210, reason: { en: 'Order JAZ-2026-104221', ar: 'طلب JAZ-2026-104221' }, at: '2026-05-12' },
       { type: 'earn', points: 140, reason: { en: 'Review bonus · Damascena Rose', ar: 'مكافأة تقييم · الورد الدمشقي' }, at: '2026-05-02' },
     ],
@@ -166,10 +214,6 @@ export const customer: Customer = {
       priceMinor: 21000,
     },
   ],
-  giftCards: [
-    { code: 'JAZ-GIFT-7741', initialMinor: 30000, balanceMinor: 12500, status: 'active' },
-    { code: 'JAZ-GIFT-2093', initialMinor: 20000, balanceMinor: 0, status: 'redeemed' },
-  ],
   addresses: [
     {
       id: 'addr-1',
@@ -188,6 +232,29 @@ export const customer: Customer = {
       isDefault: false,
     },
   ],
+  wallet: {
+    balanceMinor: 18500, // SAR 185.00 store credit
+    log: [
+      { reason: { en: 'Late-delivery goodwill credit', ar: 'رصيد تعويض تأخّر التوصيل' }, amountMinor: 3500, kind: 'credit', at: '2026-06-15' },
+      { reason: { en: 'Refund · one melted piece', ar: 'استرداد قطعة ذائبة' }, amountMinor: 5000, kind: 'credit', at: '2026-05-20' },
+      { reason: { en: 'Applied to order JAZ-2026-104221', ar: 'استُخدم في الطلب JAZ-2026-104221' }, amountMinor: 10000, kind: 'debit', at: '2026-05-12' },
+    ],
+  },
+  wishlist: [
+    { variantId: 'v-lav-90', notifyOnRestock: false },
+    { variantId: 'v-dark-90', notifyOnRestock: false },
+    { variantId: 'v-rose-180', notifyOnRestock: false },
+    { variantId: 'v-man-180', notifyOnRestock: true }, // out of stock — restock alert on
+  ],
+  occasions: [
+    { id: 'occ-1', title: { en: "Sara's birthday", ar: 'عيد ميلاد سارة' }, date: '2026-07-09', channel: 'whatsapp', recipientId: 'gr-1' },
+    { id: 'occ-2', title: { en: 'Wedding anniversary', ar: 'ذكرى الزواج' }, date: '2026-08-22', channel: 'email' },
+    { id: 'occ-3', title: { en: "Ahmad's graduation", ar: 'تخرّج أحمد' }, date: '2026-09-01', channel: 'whatsapp', recipientId: 'gr-2' },
+  ],
+  giftRecipients: [
+    { id: 'gr-1', name: { en: 'Sara Al-Ahmadi', ar: 'سارة الأحمدي' }, relation: { en: 'Sister', ar: 'أختي' }, city: { en: 'Jeddah', ar: 'جدة' }, district: { en: 'Al Shati', ar: 'الشاطئ' }, phone: '+966 50 338 7712', anonymous: false },
+    { id: 'gr-2', name: { en: 'Ahmad Al-Faifi', ar: 'أحمد الفيفي' }, relation: { en: 'Colleague', ar: 'زميل' }, city: { en: 'Sabya', ar: 'صبيا' }, district: { en: 'Al Nahda', ar: 'النهضة' }, phone: '+966 56 990 4421', anonymous: true },
+  ],
   consents: [
     { purpose: 'marketing_whatsapp', granted: true },
     { purpose: 'marketing_email', granted: true },
@@ -197,4 +264,4 @@ export const customer: Customer = {
   notifications: { whatsapp: true, email: true, sms: false, push: true },
 }
 
-export const tierOrder: LoyaltyTier[] = ['taster', 'connoisseur', 'maison']
+export const tierOrder: LoyaltyTier[] = ['basic', 'silver', 'gold', 'elite']

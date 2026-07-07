@@ -65,7 +65,8 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
       })
       const num = locale === 'ar' ? toArabicDigits(formatted) : formatted
       if (!withSymbol) return num
-      return locale === 'ar' ? `${num} ر.س` : `SAR ${num}`
+      // ﷼ (U+FDFC) renders as the official Saudi Riyal symbol via the SaudiRiyal font.
+      return locale === 'ar' ? `${num} ﷼` : `﷼ ${num}`
     },
     [locale],
   )

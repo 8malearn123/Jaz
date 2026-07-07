@@ -9,7 +9,11 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:account": "node scripts/verify-account.mjs",
+    "smoke:business": "node scripts/verify-business.mjs",
+    "smoke:owner": "node scripts/verify-owner.mjs",
+    "smoke:mega": "node scripts/verify-mega.mjs"
   },
   "dependencies": {
     "@fontsource/fraunces": "^5.0.20",

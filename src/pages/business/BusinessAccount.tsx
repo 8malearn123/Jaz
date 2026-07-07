@@ -1,19 +1,26 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
   LayoutGrid, Landmark, Package, Building2, ShieldCheck, BadgeCheck, Download,
-  ArrowUpRight, ArrowDownRight, MapPin, Plus, Lock, Plug, FileText, TrendingUp, ShoppingBag,
+  ArrowUpRight, ArrowDownRight, MapPin, Plus, Lock, FileText, TrendingUp,
+  Store, Truck, Bell, Phone,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
-import { OrgOrdersPanel, MyQuotes } from './OrderQuotePanels'
+import { WholesaleOrderProvider } from '@/state/WholesaleOrderContext'
+import { OrgOrdersPanel } from './OrderQuotePanels'
+import { CatalogPanel } from './CatalogPanel'
+import { DeliveryPanel } from './DeliveryPanel'
+import { QuickOrderMatrix } from './ordering'
+import { AccountManagerCard, LastOrderCard, NextDeliveryCard, fill } from './shared'
 import { organization, availableCreditMinor } from '@/data/organization'
 import type { CreditLedgerEntry, Bilingual } from '@/data/types'
 import {
-  members as memberData, accountOrders, orgAddresses as addressData, orgVerification, spendByMonth,
-  type OrgMember, type OrgAddress, type AccountOrder,
+  members as memberData, orgAddresses as addressData, orgVerification, spendByMonth,
+  b2bInvoices, b2bMonthSummary, orgNotificationDefaults,
+  type OrgMember, type OrgAddress,
 } from '@/data/business'
 import { AccountShell, type TabDef } from '@/components/account/AccountShell'
-import { AreaTrend, Sparkline, UtilizationGauge, TrendPill } from '@/components/charts/Charts'
+import { ToastProvider, useToast } from '@/components/account/Toast'
+import { AreaTrend, UtilizationGauge, TrendPill } from '@/components/charts/Charts'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
@@ -23,10 +30,20 @@ import { cn } from '@/lib/cn'
 const org = organization
 const roleAccent: Record<OrgMember['role'], 'gold' | 'success' | 'neutral'> = { b2b_admin: 'gold', approver: 'success', buyer: 'neutral', viewer: 'neutral' }
 
-const TABS = ['overview', 'orders', 'quotes', 'credit', 'company'] as const
+const TABS = ['overview', 'catalog', 'orders', 'delivery', 'credit', 'company'] as const
 type Tab = (typeof TABS)[number]
 
 export function BusinessAccount() {
+  return (
+    <WholesaleOrderProvider>
+      <ToastProvider>
+        <BusinessContent />
+      </ToastProvider>
+    </WholesaleOrderProvider>
+  )
+}
+
+function BusinessContent() {
   const { t, pick } = useLocale()
   const [activeRaw, setActive] = useTab('overview')
   const active = (TABS.includes(activeRaw as Tab) ? activeRaw : 'overview') as Tab
@@ -35,9 +52,10 @@ export function BusinessAccount() {
 
   const tabs: TabDef[] = [
     { id: 'overview', label: t('business.tab.overview'), icon: LayoutGrid },
+    { id: 'catalog', label: t('biz.tab.catalog'), icon: Store },
     { id: 'orders', label: t('business.tab.orders'), icon: Package },
-    { id: 'quotes', label: t('business.tab.quotes'), icon: FileText },
-    { id: 'credit', label: t('biz.tab.credit'), icon: Landmark },
+    { id: 'delivery', label: t('biz.tab.delivery'), icon: Truck },
+    { id: 'credit', label: t('biz.tab.finance'), icon: Landmark },
     { id: 'company', label: t('biz.tab.company'), icon: Building2 },
   ]
 
@@ -45,7 +63,7 @@ export function BusinessAccount() {
     <AccountShell
       eyebrow={t('biz.account')}
       title={pick(org.legalName)}
-      subtitle={`${pick(org.accountType)} · ${t('business.accountManager')}: ${pick(org.salesRep)}`}
+      subtitle={`${pick(org.accountType)} · ${org.tier.toUpperCase()} ${t('business.tier')}`}
       tone="dark"
       tabs={tabs}
       active={active}
@@ -55,103 +73,60 @@ export function BusinessAccount() {
           <BadgeCheck size={14} /> {verifiedCount}/3 {t('orgadmin.verified')}
         </span>
       }
+      navFooter={<AccountManagerCard />}
     >
       {active === 'overview' && <Overview onTab={setActive} />}
+      {active === 'catalog' && <CatalogPanel />}
       {active === 'orders' && <OrgOrdersPanel />}
-      {active === 'quotes' && <MyQuotes />}
+      {active === 'delivery' && <DeliveryPanel onTab={setActive} />}
       {active === 'credit' && <Credit />}
       {active === 'company' && <Account />}
     </AccountShell>
   )
 }
 
-/* ═══════════════ Overview — account snapshot ═══════════════ */
+/* ═══════════════ Overview — the ordering command center ═══════════════ */
 function Overview({ onTab }: { onTab: (id: string) => void }) {
-  const { t, pick, money, locale } = useLocale()
-  const available = availableCreditMinor(org)
-  const spendSeries = spendByMonth.map((p) => p.amountMinor)
-  const ytd = spendSeries.reduce((s, x) => s + x, 0)
-  const mom = Math.round(((spendByMonth[6].amountMinor - spendByMonth[5].amountMinor) / spendByMonth[5].amountMinor) * 100)
-  const recent = accountOrders.slice(0, 4)
-  const orderVariant = (s: AccountOrder['status']): 'gold' | 'success' | 'danger' | 'neutral' =>
-    s === 'delivered' ? 'success' : s === 'awaiting_approval' ? 'danger' : s === 'rejected' ? 'neutral' : 'gold'
-
   return (
     <div className="flex flex-col gap-lg">
-      {/* identity */}
-      <div className="rounded-xl bg-canvas-dark text-ink-on-dark p-xl flex flex-wrap items-center gap-md justify-between">
-        <div className="flex items-center gap-md">
-          <span className="grid place-items-center w-14 h-14 rounded-lg bg-surface-dark-1 border border-hairline-dark text-primary-bright shrink-0">
-            <Building2 size={26} />
-          </span>
-          <div>
-            <h2 className="font-serif text-headline text-ink-on-dark">{pick(org.legalName)}</h2>
-            <p className="font-sans text-caption text-ink-on-dark-muted">CR {org.crNumber} · VAT {org.vatNumber}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-sm">
-          <StatusBadge variant="gold">{org.tier.toUpperCase()}</StatusBadge>
-          <span className="inline-flex items-center gap-xxs font-sans text-caption text-success"><BadgeCheck size={14} /> {t('oa.fullyVerified')}</span>
-        </div>
+      {/* account-health at a glance — credit headroom + this-cycle spend/savings */}
+      <KpiStrip />
+
+      {/* last-order journey + next delivery, side by side */}
+      <div className="grid lg:grid-cols-2 gap-lg">
+        <LastOrderCard onTab={onTab} />
+        <NextDeliveryCard onTab={onTab} />
       </div>
 
-      {/* KPI strip */}
-      <div className="grid gap-md grid-cols-2 lg:grid-cols-4">
-        <Kpi label={t('credit.available')} value={money(available)} tone="gold" />
-        <Kpi label={t('credit.outstanding')} value={money(org.credit.outstandingMinor)} tone="danger" />
-        <Kpi label={t('oa.kpi.spendYtd')} value={money(ytd)} spark={spendSeries} />
-        <Kpi label={t('business.tab.orders')} value={String(accountOrders.length)} />
-      </div>
+      {/* merged full-width card: staples matrix on top, order summary at the bottom */}
+      <QuickOrderMatrix />
+    </div>
+  )
+}
 
-      {/* order on account */}
-      <div className="rounded-xl bg-canvas-dark text-ink-on-dark p-xl flex flex-col sm:flex-row sm:items-center justify-between gap-md">
-        <div>
-          <h2 className="font-serif text-headline text-ink-on-dark">{t('buyer.orderTitle')}</h2>
-          <p className="text-body text-ink-on-dark-muted mt-xs max-w-md">{t('buyer.orderBody')}</p>
-        </div>
-        <div className="flex items-center gap-sm shrink-0">
-          <Link to="/shop" className={buttonClass('primary', 'md')}><ShoppingBag size={16} /> {t('buyer.browseCatalogue')}</Link>
-          <button onClick={() => onTab('quotes')} className={buttonClass('secondary', 'md')}>{t('quotes.request')}</button>
-        </div>
-      </div>
+/* Account-health KPI strip — credit headroom + this-cycle orders / spend / bulk savings. */
+function KpiStrip() {
+  const { t, pick, money } = useLocale()
+  const available = availableCreditMinor(org)
+  const sar = pick({ en: '﷼', ar: '﷼' })
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-sm">
+      <StatCell tone="gold" label={pick({ en: 'Available credit', ar: 'الائتمان المتاح' })} value={money(available, { withSymbol: false })} unit={sar} sub={`${pick({ en: 'of', ar: 'من' })} ${money(org.credit.limitMinor)}`} />
+      <StatCell label={t('bmonth.orders')} value={String(b2bMonthSummary.orders)} sub={pick({ en: 'this cycle', ar: 'هذه الدورة' })} />
+      <StatCell label={t('bmonth.purchases')} value={money(b2bMonthSummary.purchasesMinor, { withSymbol: false })} unit={sar} sub={pick({ en: 'this cycle', ar: 'هذه الدورة' })} />
+      <StatCell tone="success" label={t('bmonth.saved')} value={money(b2bMonthSummary.savedMinor, { withSymbol: false })} unit={sar} sub={pick({ en: 'via volume pricing', ar: 'بأسعار الكمية' })} />
+    </div>
+  )
+}
 
-      {/* spend trend + recent orders */}
-      <div className="grid lg:grid-cols-[1.4fr_1fr] gap-lg items-start">
-        <div className="card p-lg flex flex-col gap-md">
-          <div className="flex items-center justify-between gap-sm">
-            <div>
-              <h3 className="font-serif text-card-title text-ink">{t('oa.spendTrend')}</h3>
-              <p className="font-sans text-caption text-ink-subtle">{t('oa.last8months')}</p>
-            </div>
-            <div className="text-end">
-              <span className="font-serif text-headline text-ink tabular-nums block">{money(ytd)}</span>
-              <span className="inline-flex items-center gap-xs font-sans text-caption text-ink-subtle">{t('oa.momChange')} <TrendPill delta={mom} /></span>
-            </div>
-          </div>
-          <AreaTrend points={spendSeries} labels={spendByMonth.map((p) => pick(p.month))} format={(v) => money(v)} />
-        </div>
-
-        <div className="card overflow-hidden">
-          <div className="px-lg py-md bg-surface-2 border-b border-hairline flex items-center justify-between">
-            <h3 className="font-serif text-card-title text-ink">{t('buyer.recentOrders')}</h3>
-            <button onClick={() => onTab('orders')} className="link-gold">{t('cta.viewAll')}</button>
-          </div>
-          <ul className="divide-y divide-hairline">
-            {recent.map((o) => (
-              <li key={o.orderNo} className="flex items-center gap-md px-lg py-md">
-                <div className="flex-1 min-w-0">
-                  <p className="font-sans text-data text-ink truncate">{o.orderNo}</p>
-                  <p className="font-sans text-caption text-ink-subtle truncate">
-                    {pick(o.summary)} · {new Date(o.placedAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-GB', { day: 'numeric', month: 'short' })}
-                  </p>
-                </div>
-                <span className="font-sans text-data text-ink tabular-nums shrink-0">{money(o.totalMinor)}</span>
-                <StatusBadge variant={orderVariant(o.status)}>{t(`orders.status.${o.status}`)}</StatusBadge>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
+function StatCell({ label, value, unit, sub, tone = 'plain' }: { label: string; value: string; unit?: string; sub?: string; tone?: 'plain' | 'gold' | 'success' }) {
+  return (
+    <div className="card p-md flex flex-col gap-xxs">
+      <span className="font-sans text-caption uppercase tracking-[0.1em] text-ink-subtle truncate">{label}</span>
+      <span className={cn('font-serif text-headline tabular-nums leading-none', tone === 'gold' ? 'text-primary-hover' : tone === 'success' ? 'text-success' : 'text-ink')}>
+        {value}{unit && <span className="font-sans text-caption text-ink-subtle ms-1">{unit}</span>}
+      </span>
+      {sub && <span className="font-sans text-caption text-ink-subtle truncate">{sub}</span>}
     </div>
   )
 }
@@ -163,7 +138,12 @@ function Overview({ onTab }: { onTab: (id: string) => void }) {
 /* ═══════════════ Credit ═══════════════ */
 function Credit() {
   const { t, pick, money, locale } = useLocale()
+  const { flash } = useToast()
   const available = availableCreditMinor(org)
+  const spendSeries = spendByMonth.map((p) => p.amountMinor)
+  const ytd = spendSeries.reduce((s, x) => s + x, 0)
+  const n = spendByMonth.length // latest month vs the one before (rot-proof if a month is appended)
+  const mom = n >= 2 ? Math.round(((spendByMonth[n - 1].amountMinor - spendByMonth[n - 2].amountMinor) / spendByMonth[n - 2].amountMinor) * 100) : 0
   const [reqOpen, setReqOpen] = useState(false)
   const [requested, setRequested] = useState(false)
   const utilPct = Math.round(((org.credit.outstandingMinor + org.credit.reservedMinor) / org.credit.limitMinor) * 100)
@@ -216,6 +196,21 @@ function Credit() {
         </div>
       )}
 
+      {/* spend trend (the single analytics home) */}
+      <div className="card p-lg flex flex-col gap-md">
+        <div className="flex items-center justify-between gap-sm">
+          <div>
+            <h3 className="font-serif text-card-title text-ink">{t('oa.spendTrend')}</h3>
+            <p className="font-sans text-caption text-ink-subtle">{t('oa.last8months')}</p>
+          </div>
+          <div className="text-end">
+            <span className="font-serif text-headline text-ink tabular-nums block">{money(ytd)}</span>
+            <span className="inline-flex items-center gap-xs font-sans text-caption text-ink-subtle">{t('oa.momChange')} <TrendPill delta={mom} /></span>
+          </div>
+        </div>
+        <AreaTrend points={spendSeries} labels={spendByMonth.map((p) => pick(p.month))} format={(v) => money(v)} />
+      </div>
+
       <div className="grid lg:grid-cols-[1.5fr_1fr] gap-lg items-start">
         <div className="card overflow-hidden">
           <div className="bg-surface-2 px-lg py-md border-b border-hairline flex items-center justify-between">
@@ -240,6 +235,39 @@ function Credit() {
         </div>
       </div>
 
+      {/* ZATCA invoices + this-month rollup */}
+      <div className="grid lg:grid-cols-[1.5fr_1fr] gap-lg items-start">
+        <div className="card overflow-hidden">
+          <div className="bg-surface-2 px-lg py-md border-b border-hairline flex items-center justify-between">
+            <h3 className="font-serif text-card-title text-ink">{t('binv.title')}</h3>
+            <StatusBadge variant="success">{t('binv.zatca')}</StatusBadge>
+          </div>
+          <ul className="divide-y divide-hairline">
+            {b2bInvoices.map((iv) => (
+              <li key={iv.id} className="flex items-center gap-md px-lg py-md">
+                <span className="grid place-items-center w-9 h-9 rounded-md bg-ink text-ink-on-dark shrink-0"><FileText size={16} /></span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-sm">
+                    <span className="font-sans text-data text-ink tabular-nums">{iv.id}</span>
+                    <StatusBadge variant={iv.paid ? 'success' : 'gold'}>{iv.paid ? t('binv.paid') : t('binv.net30')}</StatusBadge>
+                  </div>
+                  <p className="font-sans text-caption text-ink-subtle tabular-nums">{new Date(iv.date).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · {money(iv.amountMinor)}</p>
+                </div>
+                <button onClick={() => flash(fill(t('binv.download'), { id: iv.id }))} className="inline-flex items-center gap-xs font-sans text-caption uppercase tracking-[0.08em] text-primary-hover hover:text-ink"><Download size={15} /> PDF</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="card overflow-hidden">
+          <div className="bg-surface-2 px-lg py-md border-b border-hairline"><h3 className="font-serif text-card-title text-ink">{t('bmonth.title')}</h3></div>
+          <ul className="divide-y divide-hairline">
+            <li className="flex items-center justify-between px-lg py-md"><span className="font-sans text-data text-ink-muted">{t('bmonth.orders')}</span><span className="font-serif text-card-title text-ink tabular-nums">{b2bMonthSummary.orders}</span></li>
+            <li className="flex items-center justify-between px-lg py-md"><span className="font-sans text-data text-ink-muted">{t('bmonth.purchases')}</span><span className="font-serif text-card-title text-ink tabular-nums">{money(b2bMonthSummary.purchasesMinor)}</span></li>
+            <li className="flex items-center justify-between px-lg py-md"><span className="font-sans text-data text-ink-muted">{t('bmonth.saved')}</span><span className="font-serif text-card-title text-success tabular-nums">{money(b2bMonthSummary.savedMinor)}</span></li>
+          </ul>
+        </div>
+      </div>
+
       <RequestCreditModal open={reqOpen} onClose={() => setReqOpen(false)} onSubmit={() => { setReqOpen(false); setRequested(true) }} />
     </div>
   )
@@ -254,7 +282,7 @@ function Account() {
   const { t, pick, locale } = useLocale()
   const [addresses, setAddresses] = useState<OrgAddress[]>(addressData)
   const [addOpen, setAddOpen] = useState(false)
-  const [integrations, setIntegrations] = useState({ punchout: false, erp: true })
+  const [notif, setNotif] = useState(orgNotificationDefaults)
   const sourceLabel: Record<string, string> = { wathq: 'Wathq', zatca: 'ZATCA', nafath: 'Nafath' }
   const checkLabel: Record<string, Bilingual> = {
     commercial_registration: { en: 'Commercial Registration', ar: 'السجل التجاري' },
@@ -262,6 +290,11 @@ function Account() {
     authorized_signatory: { en: 'Authorized signatory', ar: 'المفوّض بالتوقيع' },
   }
   const signatories = memberData.filter((m) => m.role === 'b2b_admin' || m.role === 'approver')
+  const verifBadge: Record<string, { variant: 'success' | 'gold' | 'danger'; label: Bilingual }> = {
+    approved: { variant: 'success', label: { en: 'Verified', ar: 'موثّق' } },
+    in_review: { variant: 'gold', label: { en: 'In review', ar: 'قيد المراجعة' } },
+    expired: { variant: 'danger', label: { en: 'Expired', ar: 'منتهٍ' } },
+  }
 
   return (
     <div className="flex flex-col gap-lg">
@@ -274,8 +307,40 @@ function Account() {
           <Detail label={t('oa.tier')} value={org.tier.toUpperCase()} />
           <Detail label="CR" value={org.crNumber} />
           <Detail label="VAT" value={org.vatNumber} />
-          <Detail label={t('business.accountManager')} value={pick(org.salesRep)} />
+          <Detail label={t('credit.terms')} value={pick({ en: 'Net 30', ar: 'صافي ٣٠' })} />
         </div>
+      </div>
+
+      {/* addresses */}
+      <div className="flex items-center justify-between gap-md">
+        <h3 className="font-serif text-card-title text-ink">{t('orgadmin.addresses')}</h3>
+        <button onClick={() => setAddOpen(true)} className={buttonClass('secondary', 'sm')}><Plus size={15} /> {t('addr.add')}</button>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-md">
+        {addresses.map((a) => (
+          <div key={a.id} className={cn('card p-lg flex flex-col gap-sm', a.isDefault && 'ring-1 ring-primary/30')}>
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-xs font-serif text-card-title text-ink"><MapPin size={16} className="text-primary-hover" /> {pick(a.label)}</span>
+              <StatusBadge variant="neutral">{a.type === 'billing' ? t('addr.billing') : t('addr.shipping')}</StatusBadge>
+            </div>
+            <p className="font-sans text-data text-ink-muted">{pick(a.district)}, {pick(a.city)} · {a.shortAddress}</p>
+            {a.phone && <p className="font-sans text-caption text-ink-subtle inline-flex items-center gap-xxs tabular-nums" dir="ltr"><Phone size={12} /> {a.phone}</p>}
+            {a.isDefault && <StatusBadge variant="gold" className="self-start">{t('addr.default')}</StatusBadge>}
+          </div>
+        ))}
+      </div>
+
+      {/* notification preferences */}
+      <div className="card p-lg flex flex-col gap-md">
+        <h3 className="font-serif text-card-title text-ink inline-flex items-center gap-sm"><Bell size={18} className="text-primary-hover" /> {t('bizsettings.notifs')}</h3>
+        {([
+          ['orders', t('bizsettings.notif.orders'), t('bizsettings.notif.ordersDesc')],
+          ['invoices', t('bizsettings.notif.invoices'), t('bizsettings.notif.invoicesDesc')],
+          ['lowStock', t('bizsettings.notif.lowStock'), t('bizsettings.notif.lowStockDesc')],
+          ['marketing', t('bizsettings.notif.marketing'), t('bizsettings.notif.marketingDesc')],
+        ] as const).map(([key, label, hint]) => (
+          <Toggle key={key} label={label} hint={hint} on={notif[key]} onToggle={() => setNotif((s) => ({ ...s, [key]: !s[key] }))} />
+        ))}
       </div>
 
       {/* verification */}
@@ -287,12 +352,12 @@ function Account() {
         <ul className="divide-y divide-hairline">
           {orgVerification.map((v) => (
             <li key={v.check} className="flex items-center gap-md px-lg py-md">
-              <BadgeCheck size={18} className="text-success shrink-0" />
+              <BadgeCheck size={18} className={cn('shrink-0', v.status === 'approved' ? 'text-success' : v.status === 'expired' ? 'text-danger' : 'text-primary-hover')} />
               <div className="flex-1 min-w-0">
                 <p className="font-sans text-data text-ink">{pick(checkLabel[v.check])}</p>
                 <p className="font-sans text-caption text-ink-subtle">{sourceLabel[v.source]} · {t('accuracy.expires')} {new Date(v.expiresAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-GB', { month: 'short', year: 'numeric' })}</p>
               </div>
-              <StatusBadge variant="success">{t('inv.zatca.cleared')}</StatusBadge>
+              <StatusBadge variant={verifBadge[v.status].variant}>{pick(verifBadge[v.status].label)}</StatusBadge>
             </li>
           ))}
         </ul>
@@ -315,31 +380,6 @@ function Account() {
         </ul>
       </div>
 
-      {/* addresses */}
-      <div className="flex items-center justify-between gap-md">
-        <h3 className="font-serif text-card-title text-ink">{t('orgadmin.addresses')}</h3>
-        <button onClick={() => setAddOpen(true)} className={buttonClass('secondary', 'sm')}><Plus size={15} /> {t('addr.add')}</button>
-      </div>
-      <div className="grid sm:grid-cols-2 gap-md">
-        {addresses.map((a) => (
-          <div key={a.id} className={cn('card p-lg flex flex-col gap-sm', a.isDefault && 'ring-1 ring-primary/30')}>
-            <div className="flex items-center justify-between">
-              <span className="inline-flex items-center gap-xs font-serif text-card-title text-ink"><MapPin size={16} className="text-primary-hover" /> {pick(a.label)}</span>
-              <StatusBadge variant="neutral">{a.type === 'billing' ? t('addr.billing') : t('addr.shipping')}</StatusBadge>
-            </div>
-            <p className="font-sans text-data text-ink-muted">{pick(a.district)}, {pick(a.city)} · {a.shortAddress}</p>
-            {a.isDefault && <StatusBadge variant="gold" className="self-start">{t('addr.default')}</StatusBadge>}
-          </div>
-        ))}
-      </div>
-
-      {/* integrations */}
-      <div className="card p-lg flex flex-col gap-md">
-        <h3 className="font-serif text-card-title text-ink inline-flex items-center gap-sm"><Plug size={18} className="text-primary-hover" /> {t('oa.integrations')}</h3>
-        <Toggle label={t('oa.punchout')} hint={t('oa.punchoutHint')} on={integrations.punchout} onToggle={() => setIntegrations((s) => ({ ...s, punchout: !s.punchout }))} />
-        <Toggle label={t('oa.erp')} hint={t('oa.erpHint')} on={integrations.erp} onToggle={() => setIntegrations((s) => ({ ...s, erp: !s.erp }))} />
-      </div>
-
       <AddAddressModal open={addOpen} onClose={() => setAddOpen(false)} onAdd={(a) => setAddresses((p) => [...p, a])} />
     </div>
   )
@@ -348,16 +388,16 @@ function Account() {
 /* ═══════════════ Modals ═══════════════ */
 
 function AddAddressModal({ open, onClose, onAdd }: { open: boolean; onClose: () => void; onAdd: (a: OrgAddress) => void }) {
-  const { t } = useLocale()
-  const [form, setForm] = useState({ type: 'shipping' as OrgAddress['type'], label: '', city: '', district: '', shortAddress: '', isDefault: false })
-  const valid = form.label.trim() && form.city.trim() && form.shortAddress.trim()
+  const { t, pick } = useLocale()
+  const [form, setForm] = useState({ type: 'shipping' as OrgAddress['type'], label: '', city: '', district: '', shortAddress: '', phone: '', isDefault: false })
+  const valid = form.label.trim() && form.city.trim() && form.shortAddress.trim() && form.phone.trim()
   const submit = () => {
     onAdd({
       id: `oa-${Date.now()}`, type: form.type,
       label: { en: form.label, ar: form.label }, city: { en: form.city, ar: form.city }, district: { en: form.district, ar: form.district },
-      shortAddress: form.shortAddress.toUpperCase(), isDefault: form.isDefault,
+      shortAddress: form.shortAddress.toUpperCase(), isDefault: form.isDefault, phone: form.phone.trim(),
     })
-    setForm({ type: 'shipping', label: '', city: '', district: '', shortAddress: '', isDefault: false })
+    setForm({ type: 'shipping', label: '', city: '', district: '', shortAddress: '', phone: '', isDefault: false })
     onClose()
   }
   return (
@@ -380,6 +420,7 @@ function AddAddressModal({ open, onClose, onAdd }: { open: boolean; onClose: () 
           <Field label={t('checkout.district')} value={form.district} onChange={(v) => setForm((f) => ({ ...f, district: v }))} />
         </div>
         <Field label={t('checkout.shortAddress')} value={form.shortAddress} onChange={(v) => setForm((f) => ({ ...f, shortAddress: v }))} placeholder="RWAB1234" />
+        <Field label={pick({ en: 'Contact number', ar: 'رقم التواصل' })} value={form.phone} onChange={(v) => setForm((f) => ({ ...f, phone: v }))} placeholder="+9665XXXXXXXX" type="tel" />
         <label className="flex items-center gap-sm cursor-pointer">
           <input type="checkbox" checked={form.isDefault} onChange={(e) => setForm((f) => ({ ...f, isDefault: e.target.checked }))} className="w-4 h-4 accent-primary" />
           <span className="font-sans text-data text-ink-muted">{t('addr.setDefault')}</span>
@@ -405,7 +446,7 @@ function RequestCreditModal({ open, onClose, onSubmit }: { open: boolean; onClos
           <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{t('oa.currentLimit')}</span>
           <span className="font-serif text-card-title text-ink tabular-nums">{money(org.credit.limitMinor)}</span>
         </div>
-        <Field label={`${t('oa.requestedLimit')} (SAR)`} value={amount} onChange={(v) => setAmount(v.replace(/\D/g, ''))} placeholder="200000" />
+        <Field label={`${t('oa.requestedLimit')} (﷼)`} value={amount} onChange={(v) => setAmount(v.replace(/\D/g, ''))} placeholder="200000" />
         <label className="flex flex-col gap-xs">
           <span className="label">{t('oa.justification')}</span>
           <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} className="input resize-none" placeholder={t('oa.justificationHint')} />
@@ -417,17 +458,6 @@ function RequestCreditModal({ open, onClose, onSubmit }: { open: boolean; onClos
 }
 
 /* ═══════════════ shared pieces ═══════════════ */
-function Kpi({ label, value, tone = 'ink', alert, spark, small }: { label: string; value: string; tone?: 'ink' | 'gold' | 'danger'; alert?: boolean; spark?: number[]; small?: boolean }) {
-  const color = alert ? 'text-danger' : tone === 'gold' ? 'text-primary-hover' : tone === 'danger' ? 'text-danger' : 'text-ink'
-  return (
-    <div className={cn('card p-lg flex flex-col gap-xs', tone === 'gold' && 'ring-1 ring-primary/30 bg-primary/[0.04]', alert && 'ring-1 ring-danger/30')}>
-      <span className="font-sans text-caption uppercase tracking-[0.12em] text-ink-subtle">{label}</span>
-      <span className={cn('font-serif tabular-nums', small ? 'text-card-title' : 'text-headline', color)}>{value}</span>
-      {spark && <span className="text-primary-hover/70 mt-xxs"><Sparkline points={spark} /></span>}
-    </div>
-  )
-}
-
 function LegendStat({ color, label, value }: { color?: string; label: string; value: string }) {
   return (
     <div className="flex flex-col gap-xxs">

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { variantById } from '@/data/products'
+import { wholesaleBySku, wholesaleUnitPrice } from '@/data/wholesale'
 import { useChannel } from './ChannelContext'
 
 export interface CartLine {
@@ -16,8 +17,8 @@ interface CartContextValue {
   remove: (variantId: string) => void
   clear: () => void
   toggleGift: (variantId: string, isGift: boolean) => void
-  /** Unit price for a variant in the active channel (B2C retail vs B2B account). */
-  unitPrice: (variantId: string) => number
+  /** Unit price for a variant in the active channel (B2C retail vs B2B account). Wholesale SKUs price by quantity tier. */
+  unitPrice: (variantId: string, qty?: number) => number
   subtotalMinor: number
   discountMinor: number
   vatMinor: number
@@ -107,10 +108,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const unitPrice = useCallback(
-    (variantId: string) => {
+    (variantId: string, qty: number = 1) => {
       const found = variantById(variantId)
-      if (!found) return 0
-      return channel === 'b2b' ? found.variant.b2bPriceMinor : found.variant.retailPriceMinor
+      if (found) return channel === 'b2b' ? found.variant.b2bPriceMinor : found.variant.retailPriceMinor
+      // Wholesale foodservice SKUs (B2B only) price by quantity tier.
+      const w = wholesaleBySku(variantId)
+      if (w) return wholesaleUnitPrice(w, qty)
+      return 0
     },
     [channel],
   )
@@ -120,9 +124,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
     let cold = false
     for (const line of lines) {
       const found = variantById(line.variantId)
-      if (!found) continue
-      subtotal += unitPrice(line.variantId) * line.qty
-      if (found.variant.requiresColdChain) cold = true
+      if (found) {
+        subtotal += unitPrice(line.variantId, line.qty) * line.qty
+        if (found.variant.requiresColdChain) cold = true
+        continue
+      }
+      // Wholesale line — tiered price by this line's quantity; ships cold-chain.
+      if (wholesaleBySku(line.variantId)) {
+        subtotal += unitPrice(line.variantId, line.qty) * line.qty
+        cold = true
+      }
     }
     return { subtotalMinor: subtotal, hasColdChain: cold }
   }, [lines, unitPrice])

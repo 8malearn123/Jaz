@@ -54,11 +54,13 @@ export default {
         'flavor-papaya': '#d0c6b5',
       },
       fontFamily: {
+        // 'SaudiRiyal' first: it only carries the ﷼ (U+FDFC) glyph, so every other
+        // character falls through to the real families below.
         // Canela (Latin) + Greta Arabic — one continuous editorial voice
-        serif: ['Fraunces', 'IBM Plex Sans Arabic', 'Georgia', 'serif'],
+        serif: ['SaudiRiyal', 'Fraunces', 'IBM Plex Sans Arabic', 'Georgia', 'serif'],
         // Gotham — function: labels, data, buttons
-        sans: ['Montserrat', 'IBM Plex Sans Arabic', 'system-ui', 'sans-serif'],
-        arabic: ['IBM Plex Sans Arabic', 'sans-serif'],
+        sans: ['SaudiRiyal', 'Montserrat', 'IBM Plex Sans Arabic', 'system-ui', 'sans-serif'],
+        arabic: ['SaudiRiyal', 'IBM Plex Sans Arabic', 'sans-serif'],
       },
       fontSize: {
         'display-xl': ['72px', { lineHeight: '1.08', letterSpacing: '-1.5px', fontWeight: '400' }],

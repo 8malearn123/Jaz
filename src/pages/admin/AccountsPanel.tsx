@@ -156,7 +156,7 @@ function AccountDetailModal({ account, requests, onClose, onRequest }: {
             <div className="flex flex-col gap-sm rounded-md bg-surface-2 border border-hairline p-md">
               <div className="flex flex-col sm:flex-row gap-sm">
                 <label className="flex flex-col gap-xs flex-1">
-                  <span className="label">{t('accts.newLimit')} (SAR)</span>
+                  <span className="label">{t('accts.newLimit')} (﷼)</span>
                   <input value={newLimit} onChange={(e) => setNewLimit(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder={String(Math.round(account.limitMinor / 100) * 2)} className="input" />
                 </label>
               </div>
