@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   LayoutGrid, Wallet, FileText, Building2, Headset, PenTool, ScrollText, Users, Workflow,
   X, Check, RefreshCw, QrCode, Lock, ArrowRight, ShieldCheck, ShieldAlert, Target,
@@ -14,13 +14,13 @@ import {
   type CreditApplication, type Invoice, type AuditEvent,
 } from '@/data/staff'
 import { products } from '@/data/products'
+import { prodChannelMeta, type ProdChannel } from '@/data/ownerProducts'
 import { AccountShell, type TabDef } from '@/components/account/AccountShell'
 import { StepUpGate } from '@/components/account/StepUpGate'
 import { ToastProvider } from '@/components/account/Toast'
 import { OwnerStateProvider } from '@/state/OwnerStateContext'
 import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
-import { useTab } from '@/lib/useTab'
 import { cn } from '@/lib/cn'
 import { SupportDesk } from './admin/SupportDesk'
 import { SalesPipeline } from './admin/SalesPipeline'
@@ -41,7 +41,7 @@ type Section =
   // Owner operational sections (owner role only)
   | 'owner_exec' | 'owner_orders' | 'owner_supply' | 'owner_products' | 'owner_customers' | 'owner_catalog' | 'owner_vendors' | 'owner_export' | 'owner_fin'
 
-const SECTION_META: Record<Section, { key: string; icon: TabDef['icon'] }> = {
+const SECTION_META: Record<Section, { key: string; icon: NonNullable<TabDef['icon']> }> = {
   overview: { key: 'admin.section.overview', icon: LayoutGrid },
   credit: { key: 'admin.section.credit', icon: Wallet },
   invoicing: { key: 'admin.section.invoicing', icon: FileText },
@@ -65,6 +65,32 @@ const SECTION_META: Record<Section, { key: string; icon: TabDef['icon'] }> = {
 
 const OWNER_SECTIONS: Section[] = ['owner_exec', 'owner_orders', 'owner_supply', 'owner_products', 'owner_customers', 'owner_catalog', 'owner_vendors', 'owner_export', 'owner_fin']
 
+// Owner sections that expand into nested sidebar sub-tabs, mapped to their sub-views (id + bilingual label).
+// The active sub-view is carried in a shared `?sub=` URL param and passed down to the panel as `view`.
+type SubView = { id: string; label: { en: string; ar: string } }
+export type SupplyView = 'po' | 'raw' | 'finished' | 'suppliers'
+const SUPPLY_VIEWS: SubView[] = [
+  { id: 'po', label: { en: 'Purchases', ar: 'المشتريات' } },
+  { id: 'raw', label: { en: 'Raw materials', ar: 'المواد الخام' } },
+  { id: 'finished', label: { en: 'Finished goods', ar: 'المواد المصنعة' } },
+  { id: 'suppliers', label: { en: 'Suppliers directory', ar: 'دليل المورّدين' } },
+]
+// Products & Catalog both pivot on the three sales channels — reuse the shared channel labels.
+const CHANNEL_VIEWS: SubView[] = (['b2c', 'b2b', 'mega'] as ProdChannel[]).map((c) => ({ id: c, label: prodChannelMeta[c].label }))
+export type FinView = 'overview' | 'cost' | 'tax' | 'waste'
+const FIN_VIEWS: SubView[] = [
+  { id: 'overview', label: { en: 'Financial overview', ar: 'نظرة مالية' } },
+  { id: 'cost', label: { en: 'Cost recalibration', ar: 'إعادة معايرة التكلفة' } },
+  { id: 'tax', label: { en: 'Collection & tax', ar: 'التحصيل والضريبة' } },
+  { id: 'waste', label: { en: 'Waste log', ar: 'سجل الهدر' } },
+]
+const SUB_NAVS: Partial<Record<Section, SubView[]>> = {
+  owner_supply: SUPPLY_VIEWS,
+  owner_products: CHANNEL_VIEWS,
+  owner_catalog: CHANNEL_VIEWS,
+  owner_fin: FIN_VIEWS,
+}
+
 const ACCESS: Record<RoleId, Section[]> = {
   admin: ['overview', 'credit', 'invoicing', 'accounts', 'pipeline', 'performance', 'support', 'catalogue', 'audit', 'users'],
   finance: ['overview', 'credit', 'invoicing'],
@@ -72,8 +98,8 @@ const ACCESS: Record<RoleId, Section[]> = {
   support_agent: ['overview', 'support'],
   content_editor: ['overview', 'catalogue'],
   auditor: ['overview', 'audit'],
-  // Owner: the shared overview launcher + its 9 operational sections (owner-exclusive).
-  owner: ['overview', ...OWNER_SECTIONS],
+  // Owner: its operational sections only (owner-exclusive). No shared overview — its KPIs live in Executive overview.
+  owner: [...OWNER_SECTIONS],
   customer: [],
   b2b: [],
   mega_business: [],
@@ -83,12 +109,46 @@ export function AdminConsole() {
   const { t, pick } = useLocale()
   const { role, persona, isStaff, isPrivileged } = useChannel()
   const allowed = ACCESS[role]
-  const [activeRaw, setActive] = useTab('overview', 'section')
+  const [params, setParams] = useSearchParams()
 
   if (!isStaff) return <Restricted />
 
-  const active = (allowed.includes(activeRaw as Section) ? activeRaw : 'overview') as Section
-  const tabs: TabDef[] = allowed.map((s) => ({ id: s, label: t(SECTION_META[s].key), icon: SECTION_META[s].icon }))
+  // Each role's landing section is its first allowed one (owner has no shared overview → lands on owner_exec).
+  const defaultSection = (allowed[0] ?? 'overview') as Section
+  const activeRaw = params.get('section') ?? defaultSection
+  const active = (allowed.includes(activeRaw as Section) ? activeRaw : defaultSection) as Section
+  // Resolve the active section's sub-view (if it has a sub-nav) from the shared `?sub=` param.
+  const subViews = SUB_NAVS[active]
+  const subRaw = params.get('sub')
+  const sub = subViews ? (subViews.some((v) => v.id === subRaw) ? (subRaw as string) : subViews[0].id) : undefined
+
+  // Navigate to a top-level section (clears any sub-view).
+  const setActive = (id: string) => {
+    const next = new URLSearchParams(params)
+    if (id === defaultSection) next.delete('section')
+    else next.set('section', id)
+    next.delete('sub')
+    setParams(next, { replace: false })
+  }
+  // Nested nav select — a `<section>:<view>` id switches that section's sub-view; anything else is a plain section.
+  const setNav = (id: string) => {
+    const [sec, view] = id.split(':')
+    if (view && SUB_NAVS[sec as Section]) {
+      const next = new URLSearchParams(params)
+      next.set('section', sec)
+      next.set('sub', view)
+      setParams(next, { replace: false })
+    } else setActive(id)
+  }
+
+  // On a section with a sub-nav, the active nav id is its current sub-view child.
+  const navActive = subViews ? `${active}:${sub}` : active
+  const tabs: TabDef[] = allowed.map((s) => {
+    const base: TabDef = { id: s, label: t(SECTION_META[s].key), icon: SECTION_META[s].icon }
+    const sv = SUB_NAVS[s]
+    if (sv) return { ...base, children: sv.map((v) => ({ id: `${s}:${v.id}`, label: pick(v.label) })) }
+    return base
+  })
 
   return (
     <StepUpGate id={role} required={isPrivileged}>
@@ -100,8 +160,8 @@ export function AdminConsole() {
         subtitle={`${t('ov.signedInAs')}: ${pick(persona.name)} · ${pick(persona.roleLabel)}`}
         tone="dark"
         tabs={tabs}
-        active={active}
-        onSelect={setActive}
+        active={navActive}
+        onSelect={setNav}
       >
         {active === 'overview' && <OverviewPanel role={role} onSection={setActive} allowed={allowed} />}
         {active === 'credit' && <CreditPanel />}
@@ -115,13 +175,13 @@ export function AdminConsole() {
         {active === 'users' && <UsersPanel />}
         {active === 'owner_exec' && <OwnerExec />}
         {active === 'owner_orders' && <OwnerOrders />}
-        {active === 'owner_supply' && <OwnerSupply />}
-        {active === 'owner_products' && <OwnerProducts />}
+        {active === 'owner_supply' && <OwnerSupply view={(sub ?? 'po') as SupplyView} />}
+        {active === 'owner_products' && <OwnerProducts view={(sub ?? 'b2c') as ProdChannel} />}
         {active === 'owner_customers' && <OwnerCustomers />}
-        {active === 'owner_catalog' && <OwnerCatalog />}
+        {active === 'owner_catalog' && <OwnerCatalog view={(sub ?? 'b2c') as ProdChannel} />}
         {active === 'owner_vendors' && <OwnerVendors />}
         {active === 'owner_export' && <OwnerExport />}
-        {active === 'owner_fin' && <OwnerFinance />}
+        {active === 'owner_fin' && <OwnerFinance view={(sub ?? 'overview') as FinView} />}
       </AccountShell>
       </OwnerStateProvider>
      </ToastProvider>

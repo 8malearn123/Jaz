@@ -1,11 +1,11 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import type { Bilingual } from '@/data/types'
 import { ownerOrdersSeed, ownerOrderStatuses, type OwnerOrder, type OwnerChannel, type OwnerOrderStage } from '@/data/ownerOrders'
-import { rawMaterials, finishedBatches, bomBySku, purchaseInvoices, type RawKey, type FinishedBatch, type PurchaseInvoice } from '@/data/ownerSupply'
+import { rawMaterials, finishedBatches, bomBySku, purchaseInvoices, suppliers as suppliersSeed, type RawKey, type FinishedBatch, type PurchaseInvoice, type ExtraRaw, type Supplier } from '@/data/ownerSupply'
 import { ownerProductsByChannel, type OwnerProduct, type ProdChannel } from '@/data/ownerProducts'
 import { ownerCustomers, ownerTiers, type OwnerCustomer, type OwnerTier } from '@/data/ownerCustomers'
 import { wasteLog as wasteSeed, finNetMinor, finBase, type WasteEntry } from '@/data/ownerFinance'
-import { contracts as contractsSeed, b2cCatalog, stdCatalog, catTree, type Contract, type CatNode } from '@/data/ownerCatalog'
+import { contracts as contractsSeed, b2cCatalog, stdCatalog, catTree, storeProductsSeed, type Contract, type CatNode, type StoreProduct } from '@/data/ownerCatalog'
 import { approvalStages as approvalSeed, type ApprovalStage } from '@/data/ownerVendors'
 
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
@@ -47,6 +47,12 @@ interface OwnerStateValue {
   reorderRaw: (key: RawKey) => void
   finalizeStockTake: (counts: Partial<Record<RawKey, number>>) => void
   lowRaw: RawKey[]
+  // owner-added stock items (inventory overlay — not part of the production BOM/buildable system)
+  extraRaws: ExtraRaw[]
+  extraCats: Bilingual[]
+  addRawMaterial: (m: Omit<ExtraRaw, 'id'>) => void
+  addRawCategory: (name: Bilingual) => boolean
+  reorderExtra: (id: string) => void
   buildable: (sku: string) => { qty: number; bottleneck: RawKey | null }
   bomOf: (sku: string) => BOM
   // products (live, editable)
@@ -57,9 +63,16 @@ interface OwnerStateValue {
   // production / finished goods
   finished: FinishedBatch[]
   produceBatch: (sku: string, qty: number) => boolean
+  addFinishedBatch: (b: { product: Bilingual; systemQty: number; unitMinor: number; color: string; expiryDays: number }) => void
+  recordFinishedCount: (counts: Record<string, number>) => void
+  finishedStockTakeDate: Bilingual
+  // suppliers directory (auto-scored)
+  suppliers: Supplier[]
+  addSupplier: (s: { name: Bilingual; country: Bilingual; material: Bilingual; leadDays: number; onTimePct: number }) => void
   // purchase invoices (3-way match)
   invoices: PurchaseInvoice[]
   reconcileInvoice: (id: string) => void
+  addPurchaseInvoice: (inv: { supplier: Bilingual; material: Bilingual; date: Bilingual; totalMinor: number; po?: string; rawKey: RawKey; qty: number }) => void
   // waste → finance
   wasteLog: WasteEntry[]
   logWaste: (e: { item: Bilingual; reason: Bilingual; lossMinor: number }) => void
@@ -87,6 +100,11 @@ interface OwnerStateValue {
   addCategory: (chan: ProdChannel, label: Bilingual) => void
   moveCategory: (chan: ProdChannel, fromId: string, toId: string) => void
   catNodes: (chan: ProdChannel) => CatNode[]
+  // storefront products (owner "Products" tab — customer-facing appearance, per channel)
+  storeProducts: Record<ProdChannel, StoreProduct[]>
+  addStoreProduct: (chan: ProdChannel, p: Omit<StoreProduct, 'id' | 'visible'>) => string
+  updateStoreProduct: (chan: ProdChannel, id: string, patch: Partial<Omit<StoreProduct, 'id'>>) => void
+  toggleStoreVisible: (chan: ProdChannel, id: string) => void
   // exec alerts
   dismissedExpiry: string[]
   dismissExpiry: (key: string) => void
@@ -103,10 +121,17 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   const [rawQty, setRawQty] = useState<Record<RawKey, number>>(() => rawMaterials.reduce((a, m) => { a[m.key] = m.systemQty; return a }, {} as Record<RawKey, number>))
   const [finished, setFinished] = useState<FinishedBatch[]>(() => clone(finishedBatches))
   const [batchSeq, setBatchSeq] = useState(100)
+  const [finishedStockTakeDate, setFinishedStockTakeDate] = useState<Bilingual>({ en: '03 Jul 2026', ar: '٢٠٢٦-٠٧-٠٣' })
+  const [suppliers, setSuppliers] = useState<Supplier[]>(() => clone(suppliersSeed))
+  const [supplierSeq, setSupplierSeq] = useState(5)
   const [products, setProducts] = useState<Record<ProdChannel, OwnerProduct[]>>(() => clone(ownerProductsByChannel))
   const [prodSeq, setProdSeq] = useState(1)
   const [bomOverride, setBomOverride] = useState<Record<string, BOM>>({})
   const [invoices, setInvoices] = useState<PurchaseInvoice[]>(() => clone(purchaseInvoices))
+  const [invSeq, setInvSeq] = useState(3313)
+  const [extraRaws, setExtraRaws] = useState<ExtraRaw[]>([])
+  const [extraCats, setExtraCats] = useState<Bilingual[]>([])
+  const [extraSeq, setExtraSeq] = useState(1)
   const [wasteLog, setWasteLog] = useState<WasteEntry[]>(() => clone(wasteSeed))
   const [wasteSeq, setWasteSeq] = useState(100)
   const [customers, setCustomers] = useState<OwnerCustomer[]>(() => clone(ownerCustomers))
@@ -123,6 +148,8 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     order: clone(catIds),
     added: {},
   }))
+  const [storeProducts, setStoreProducts] = useState<Record<ProdChannel, StoreProduct[]>>(() => clone(storeProductsSeed))
+  const [storeSeq, setStoreSeq] = useState(1)
   const [dismissedExpiry, setDismissedExpiry] = useState<string[]>([])
   const [cocoaDelta, setCocoa] = useState(8)
 
@@ -147,8 +174,24 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
 
   /* ── raw inventory ── */
   const rawPct = useCallback((key: RawKey) => Math.min(100, Math.round((rawQty[key] / rawCapacity[key]) * 100)), [rawQty])
-  const reorderRaw = useCallback((key: RawKey) => setRawQty((prev) => ({ ...prev, [key]: rawCapacity[key] })), [])
+  // Top up to at least capacity — never reduce stock that a purchase already pushed above capacity.
+  const reorderRaw = useCallback((key: RawKey) => setRawQty((prev) => ({ ...prev, [key]: Math.max(prev[key], rawCapacity[key]) })), [])
   const finalizeStockTake = useCallback((counts: Partial<Record<RawKey, number>>) => setRawQty((prev) => ({ ...prev, ...counts })), [])
+  const addRawMaterial = useCallback((m: Omit<ExtraRaw, 'id'>) => {
+    const id = `xr-${extraSeq}`
+    setExtraSeq((s) => s + 1)
+    setExtraRaws((prev) => [{ ...m, id }, ...prev])
+  }, [extraSeq])
+  // Dedup against every known category in BOTH languages (seed materials + extras + added cats) so a name
+  // matching a seed category in one locale doesn't spawn a phantom empty group in the other. Returns whether it added.
+  const addRawCategory = useCallback((name: Bilingual): boolean => {
+    const known = new Set<string>()
+    for (const c of [...rawMaterials.map((m) => m.category), ...extraRaws.map((r) => r.category), ...extraCats]) { known.add(c.en); known.add(c.ar) }
+    if (known.has(name.en) || known.has(name.ar)) return false
+    setExtraCats((prev) => [...prev, name])
+    return true
+  }, [extraRaws, extraCats])
+  const reorderExtra = useCallback((id: string) => setExtraRaws((prev) => prev.map((r) => (r.id === id ? { ...r, qty: r.reorderQty * 2 } : r))), [])
   const lowRaw = (Object.keys(rawQty) as RawKey[]).filter((k) => {
     const m = rawMaterials.find((x) => x.key === k)!
     return rawPct(k) < m.reorderPct
@@ -169,7 +212,7 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   }, [rawQty, bomOf])
 
   /* ── production ── */
-  const productNameBySku = useMemo(() => Object.values(products).flat().reduce((acc, p) => { acc[p.sku] = p.name; return acc }, {} as Record<string, Bilingual>), [products])
+  const productMetaBySku = useMemo(() => Object.values(products).flat().reduce((acc, p) => { acc[p.sku] = { name: p.name, priceMinor: p.priceMinor, color: p.color }; return acc }, {} as Record<string, { name: Bilingual; priceMinor: number; color: string }>), [products])
   const produceBatch = useCallback((sku: string, qty: number): boolean => {
     const bom = bomOf(sku)
     if (Object.keys(bom).length === 0 || qty <= 0) return false
@@ -181,9 +224,28 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     })
     const code = `BATCH-FG-${batchSeq}`
     setBatchSeq((s) => s + 1)
-    setFinished((prev) => [{ code, product: productNameBySku[sku] ?? { en: sku, ar: sku }, systemQty: qty, countedQty: qty, expiryDays: 90 }, ...prev])
+    const meta = productMetaBySku[sku]
+    setFinished((prev) => [{ code, product: meta?.name ?? { en: sku, ar: sku }, systemQty: qty, countedQty: qty, expiryDays: 90, unitMinor: meta?.priceMinor ?? 0, color: meta?.color ?? '#8a6b3f' }, ...prev])
     return true
-  }, [rawQty, batchSeq, bomOf, productNameBySku])
+  }, [rawQty, batchSeq, bomOf, productMetaBySku])
+  // Record a production batch straight into finished goods (matched: counted = system on entry).
+  const addFinishedBatch = useCallback((b: { product: Bilingual; systemQty: number; unitMinor: number; color: string; expiryDays: number }) => {
+    const code = `BATCH-FG-${batchSeq}`
+    setBatchSeq((s) => s + 1)
+    setFinished((prev) => [{ code, product: b.product, systemQty: b.systemQty, countedQty: b.systemQty, expiryDays: b.expiryDays, unitMinor: b.unitMinor, color: b.color }, ...prev])
+  }, [batchSeq])
+  // Stock-take: record the physical count per batch (updates countedQty → variance) and stamp the date.
+  const recordFinishedCount = useCallback((counts: Record<string, number>) => {
+    setFinished((prev) => prev.map((b) => (counts[b.code] != null ? { ...b, countedQty: counts[b.code] } : b)))
+    setFinishedStockTakeDate({ en: 'Today', ar: 'اليوم' })
+  }, [])
+  // Auto-score a new supplier from on-time compliance, penalised by long lead times.
+  const addSupplier = useCallback((s: { name: Bilingual; country: Bilingual; material: Bilingual; leadDays: number; onTimePct: number }) => {
+    const score = Math.max(0, Math.min(100, Math.round(s.onTimePct - Math.max(0, s.leadDays - 7) * 0.8)))
+    const id = `S-${String(supplierSeq).padStart(2, '0')}`
+    setSupplierSeq((n) => n + 1)
+    setSuppliers((prev) => [{ id, name: s.name, country: s.country, material: s.material, leadDays: s.leadDays, onTimePct: s.onTimePct, score }, ...prev])
+  }, [supplierSeq])
 
   /* ── products ── */
   const addProduct = useCallback((chan: ProdChannel, p: { name: Bilingual; category: Bilingual; priceMinor: number; moq: number }) => {
@@ -201,6 +263,13 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
 
   /* ── purchase invoices ── */
   const reconcileInvoice = useCallback((id: string) => setInvoices((prev) => prev.map((iv) => (iv.id === id ? { ...iv, match: 'matched' } : iv))), [])
+  // Entering a supplier invoice restocks its raw material automatically (rawQty) and records the imported cost.
+  const addPurchaseInvoice = useCallback((inv: { supplier: Bilingual; material: Bilingual; date: Bilingual; totalMinor: number; po?: string; rawKey: RawKey; qty: number }) => {
+    const id = `PINV-${invSeq}`
+    setInvSeq((s) => s + 1)
+    setInvoices((prev) => [{ id, supplier: inv.supplier, material: inv.material, date: inv.date, totalMinor: inv.totalMinor, match: inv.po ? 'pending' : 'flagged', po: inv.po, rawKey: inv.rawKey, qty: inv.qty }, ...prev])
+    setRawQty((prev) => ({ ...prev, [inv.rawKey]: prev[inv.rawKey] + inv.qty }))
+  }, [invSeq])
 
   /* ── waste → finance ── */
   const logWaste = useCallback((e: { item: Bilingual; reason: Bilingual; lossMinor: number }) => {
@@ -265,21 +334,36 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
       .map((n) => (catalog.catName[n.id] ? { ...n, label: catalog.catName[n.id] } : n))
   }, [catalog])
 
+  /* ── storefront products (per channel) ── */
+  const addStoreProduct = useCallback((chan: ProdChannel, p: Omit<StoreProduct, 'id' | 'visible'>) => {
+    const id = `sp-new-${storeSeq}`
+    setStoreSeq((s) => s + 1)
+    setStoreProducts((prev) => ({ ...prev, [chan]: [{ ...p, id, visible: true }, ...prev[chan]] }))
+    return id
+  }, [storeSeq])
+  const updateStoreProduct = useCallback((chan: ProdChannel, id: string, patch: Partial<Omit<StoreProduct, 'id'>>) =>
+    setStoreProducts((prev) => ({ ...prev, [chan]: prev[chan].map((sp) => (sp.id === id ? { ...sp, ...patch } : sp)) })), [])
+  const toggleStoreVisible = useCallback((chan: ProdChannel, id: string) =>
+    setStoreProducts((prev) => ({ ...prev, [chan]: prev[chan].map((sp) => (sp.id === id ? { ...sp, visible: !sp.visible } : sp)) })), [])
+
   const value = useMemo<OwnerStateValue>(() => ({
     orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor,
     rawQty, rawCapacity, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf,
+    extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra,
     products, addProduct, updateProduct, addBomComponent,
-    finished, produceBatch,
-    invoices, reconcileInvoice,
+    finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate,
+    suppliers, addSupplier,
+    invoices, reconcileInvoice, addPurchaseInvoice,
     wasteLog, logWaste, wasteTotalMinor, netProfitMinor,
     customers, rewardCustomer,
     creditLimits, setCreditLimit,
     contracts, renewContract,
     approvals, advanceApproval,
     catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes,
+    storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible,
     dismissedExpiry, dismissExpiry,
     cocoaDelta, setCocoa,
-  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, invoices, reconcileInvoice, wasteLog, logWaste, wasteTotalMinor, netProfitMinor, customers, rewardCustomer, creditLimits, setCreditLimit, contracts, renewContract, approvals, advanceApproval, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, dismissedExpiry, dismissExpiry, cocoaDelta])
+  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, wasteLog, logWaste, wasteTotalMinor, netProfitMinor, customers, rewardCustomer, creditLimits, setCreditLimit, contracts, renewContract, approvals, advanceApproval, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, dismissedExpiry, dismissExpiry, cocoaDelta])
 
   return <OwnerStateContext.Provider value={value}>{children}</OwnerStateContext.Provider>
 }

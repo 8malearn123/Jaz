@@ -9,29 +9,22 @@ import {
 } from '@/data/ownerFinance'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { cn } from '@/lib/cn'
-import { PanelHead, StatCard, SegTabs, UtilBar } from './_shared'
+import { PanelHead, StatCard, UtilBar } from './_shared'
 
 type FinTab = 'overview' | 'cost' | 'tax' | 'waste'
 
-export function OwnerFinance() {
+/** Finance panel. The active sub-view is driven by the sidebar sub-nav (see AdminConsole). */
+export function OwnerFinance({ view = 'overview' }: { view?: FinTab }) {
   const { pick, money } = useLocale()
   const { cocoaDelta: cocoa, setCocoa, netProfitMinor, wasteTotalMinor } = useOwnerState()
-  const [tab, setTab] = useState<FinTab>('overview')
 
-  const tabs: { id: FinTab; label: string }[] = [
-    { id: 'overview', label: pick({ en: 'Overview', ar: 'نظرة مالية' }) },
-    { id: 'cost', label: pick({ en: 'Cost recalibration', ar: 'إعادة معايرة التكلفة' }) },
-    { id: 'tax', label: pick({ en: 'Collection & tax', ar: 'التحصيل والضريبة' }) },
-    { id: 'waste', label: pick({ en: 'Waste log', ar: 'سجل الهدر' }) },
-  ]
   const pctOfRev = (m: number) => `${Math.round((m / finBase.revenueMinor) * 100)}%`
 
   return (
     <div className="flex flex-col gap-lg">
       <PanelHead title={pick({ en: 'Finance & costs', ar: 'المالية والتكاليف' })} subtitle={pick({ en: 'P&L, cocoa-driven COGS, collection and waste', ar: 'الأرباح، تكلفة الكاكاو، التحصيل والهدر' })} />
-      <SegTabs tabs={tabs} active={tab} onChange={setTab} />
 
-      {tab === 'overview' && (
+      {view === 'overview' && (
         <div className="flex flex-col gap-lg">
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-sm">
             <StatCard label={pick({ en: 'Revenue', ar: 'الإيراد' })} value={money(finBase.revenueMinor, { withSymbol: false })} sub="100%" tone="dark" />
@@ -58,7 +51,7 @@ export function OwnerFinance() {
         </div>
       )}
 
-      {tab === 'cost' && (() => {
+      {view === 'cost' && (() => {
         const factor = 1 + cocoa / 100
         const oldCogs = recalIngredients.reduce((a, r) => a + r.costMinor, 0)
         const newCogs = recalIngredients.reduce((a, r) => a + (r.cocoaLinked ? Math.round(r.costMinor * factor) : r.costMinor), 0)
@@ -115,7 +108,7 @@ export function OwnerFinance() {
         )
       })()}
 
-      {tab === 'tax' && (
+      {view === 'tax' && (
         <div className="grid lg:grid-cols-[1.5fr_1fr] gap-lg items-start">
           <div className="card p-lg flex flex-col gap-md">
             <h3 className="font-serif text-card-title text-ink">{pick({ en: 'Collection by channel', ar: 'التحصيل حسب القناة' })}</h3>
@@ -136,7 +129,7 @@ export function OwnerFinance() {
         </div>
       )}
 
-      {tab === 'waste' && <WasteTab />}
+      {view === 'waste' && <WasteTab />}
     </div>
   )
 }

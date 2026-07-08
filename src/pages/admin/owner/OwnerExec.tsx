@@ -4,14 +4,26 @@ import { useToast } from '@/components/account/Toast'
 import { AreaTrend, UtilizationGauge, TrendPill } from '@/components/charts/Charts'
 import { execKpis, execChannels, execRevenueTotalMinor, factoryUtilPct, factoryLines, execTrend } from '@/data/ownerExec'
 import { rawMaterials } from '@/data/ownerSupply'
+import { platformKpis } from '@/data/staff'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { cn } from '@/lib/cn'
 import { PanelHead, UtilBar } from './_shared'
 
 export function OwnerExec() {
-  const { pick, money } = useLocale()
+  const { t, pick, money } = useLocale()
   const { flash } = useToast()
   const { pendingOrders, lowRaw, rawQty, reorderRaw, dismissedExpiry, dismissExpiry } = useOwnerState()
+
+  // Daily platform pulse — migrated from the former shared Overview tab (removed for the owner role).
+  const k = platformKpis
+  const todayKpis: { label: string; value: string; alert?: boolean }[] = [
+    { label: t('ov.gmv'), value: money(k.gmvTodayMinor) },
+    { label: t('ov.orders'), value: String(k.ordersToday) },
+    { label: t('ov.b2bAccounts'), value: String(k.b2bAccounts) },
+    { label: t('ov.pendingCredit'), value: String(k.pendingCreditApps), alert: k.pendingCreditApps > 0 },
+    { label: t('ov.openTickets'), value: String(k.openTickets), alert: k.openTickets > 0 },
+    { label: t('ov.zatcaPending'), value: String(k.zatcaPending), alert: k.zatcaPending > 0 },
+  ]
 
   // Stock alerts derive from live inventory; reordering clears them. Plus batch-expiry warnings that Review acknowledges.
   const stockAlerts = lowRaw.map((key) => {
@@ -41,6 +53,19 @@ export function OwnerExec() {
             <span className={cn('font-sans text-caption', k.tone === 'dark' ? 'text-ink-on-dark-muted' : 'text-ink-subtle')}>{pick(k.sub)}</span>
           </div>
         ))}
+      </div>
+
+      {/* daily platform pulse (folded in from the former Overview tab) */}
+      <div className="flex flex-col gap-sm">
+        <h3 className="font-sans text-caption uppercase tracking-[0.14em] text-ink-subtle">{pick({ en: 'Today · platform', ar: 'اليوم · المنصة' })}</h3>
+        <div className="grid gap-sm grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+          {todayKpis.map((kpi, i) => (
+            <div key={i} className={cn('card p-md flex flex-col gap-xxs', kpi.alert && 'ring-1 ring-danger/30')}>
+              <span className="font-sans text-caption uppercase tracking-[0.1em] text-ink-subtle leading-tight">{kpi.label}</span>
+              <span className={cn('font-serif text-card-title tabular-nums', kpi.alert ? 'text-danger' : 'text-ink')}>{kpi.value}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="grid lg:grid-cols-[1.6fr_1fr] gap-lg items-start">

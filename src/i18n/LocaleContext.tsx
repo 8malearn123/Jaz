@@ -24,6 +24,10 @@ const arabicDigits = '٠١٢٣٤٥٦٧٨٩'
 function toArabicDigits(s: string): string {
   return s.replace(/\d/g, (d) => arabicDigits[Number(d)])
 }
+// Inverse: normalize Eastern-Arabic (٠-٩) and Persian (۰-۹) numerals to ASCII for parsing user input.
+export function toAsciiDigits(s: string): string {
+  return s.replace(/[٠-٩۰-۹]/g, (d) => String(d.charCodeAt(0) & 0xf))
+}
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(() => {

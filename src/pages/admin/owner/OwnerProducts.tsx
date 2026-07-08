@@ -9,29 +9,27 @@ import { prodChannelMeta, type ProdChannel, type OwnerProduct } from '@/data/own
 import { rawMaterials, type RawKey } from '@/data/ownerSupply'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { cn } from '@/lib/cn'
-import { PanelHead, SegTabs, Pill } from './_shared'
+import { PanelHead, Pill } from './_shared'
 
 const rawName = (k: string) => rawMaterials.find((m) => m.key === k)?.name ?? { en: k, ar: k }
 
-export function OwnerProducts() {
+/** Product management panel. The active sales channel is driven by the sidebar sub-nav (see AdminConsole). */
+export function OwnerProducts({ view: chan }: { view: ProdChannel }) {
   const { pick, money } = useLocale()
   const { flash } = useToast()
   const { products, buildable, addProduct } = useOwnerState()
-  const [chan, setChan] = useState<ProdChannel>('b2c')
   const [sel, setSel] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState<{ category?: string } | null>(null)
 
   const meta = prodChannelMeta[chan]
   const list = products[chan]
   const categories = [...new Set(list.map((p) => pick(p.category)))]
-  const tabs = (['b2c', 'b2b', 'mega'] as ProdChannel[]).map((c) => ({ id: c, label: pick(prodChannelMeta[c].label) }))
   const selected = list.find((p) => p.sku === sel) ?? null
 
   return (
     <div className="flex flex-col gap-lg">
-      <PanelHead title={pick({ en: 'Product management', ar: 'إدارة المنتجات' })} subtitle={pick({ en: 'By sales channel · buildable qty from raw stock', ar: 'حسب قناة البيع · القابلية للإنتاج من المخزون الخام' })}
+      <PanelHead title={pick({ en: 'Production', ar: 'الإنتاج' })} subtitle={pick({ en: 'By sales channel · buildable qty from raw stock', ar: 'حسب قناة البيع · القابلية للإنتاج من المخزون الخام' })}
         action={<button onClick={() => setAddOpen({})} className={buttonClass('secondary', 'sm')}><Plus size={15} /> {pick({ en: 'Add product', ar: 'أضف منتجًا' })}</button>} />
-      <SegTabs tabs={tabs} active={chan} onChange={setChan} />
 
       <div className="flex items-center gap-sm">
         <span className="inline-flex items-center gap-xs font-sans text-caption text-ink-muted"><span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: meta.color }} /> {pick(meta.label)}</span>
@@ -66,7 +64,8 @@ export function OwnerProducts() {
       ))}
 
       {selected && <ProductModal key={selected.sku} chan={chan} product={selected} onClose={() => setSel(null)} />}
-      <AddProductModal open={!!addOpen} category={addOpen?.category} chan={chan} onClose={() => setAddOpen(null)}
+      {/* key={chan} → remounts so MOQ/defaults re-init from the current channel's meta */}
+      <AddProductModal key={chan} open={!!addOpen} category={addOpen?.category} chan={chan} onClose={() => setAddOpen(null)}
         onCreate={(p) => { addProduct(chan, p); flash(`${pick({ en: 'Product created', ar: 'أُنشئ المنتج' })} · ${pick(p.name)}`) }} />
     </div>
   )
