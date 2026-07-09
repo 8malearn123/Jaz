@@ -48,12 +48,22 @@ export const collectionRows: CollectionRow[] = [
 
 export const taxCard = { outputMinor: 4271200, inputMinor: 2798400, netMinor: 1472800, dueDate: { en: '31 Jul 2026', ar: '٣١ يوليو ٢٠٢٦' } }
 
-export interface WasteEntry { id: string; item: Bilingual; reason: Bilingual; lossMinor: number; at: Bilingual }
+export interface WasteEntry {
+  id: string
+  item: Bilingual
+  reason: Bilingual // justification for the waste
+  lossMinor: number
+  at: Bilingual
+  by?: Bilingual // account that recorded the waste
+  qty?: number
+  unit?: Bilingual
+  scope?: 'raw' | 'finished'
+}
 export const wasteLog: WasteEntry[] = [
-  { id: 'w-1', item: { en: 'Rose box · BATCH-FG-091', ar: 'بوكس الورد · BATCH-FG-091' }, reason: { en: 'Near expiry', ar: 'قرب الانتهاء' }, lossMinor: 372000, at: { en: '05 Jul', ar: '٠٥ يوليو' } },
-  { id: 'w-2', item: { en: 'Milk bars', ar: 'ألواح حليب' }, reason: { en: 'Melted in transit', ar: 'ذابت أثناء النقل' }, lossMinor: 186000, at: { en: '04 Jul', ar: '٠٤ يوليو' } },
-  { id: 'w-3', item: { en: 'Cocoa mass', ar: 'كتلة كاكاو' }, reason: { en: 'Processing loss', ar: 'فاقد تصنيع' }, lossMinor: 164000, at: { en: '03 Jul', ar: '٠٣ يوليو' } },
-  { id: 'w-4', item: { en: 'Gold foil', ar: 'ورق ذهبي' }, reason: { en: 'Print defects', ar: 'عيوب طباعة' }, lossMinor: 112000, at: { en: '02 Jul', ar: '٠٢ يوليو' } },
+  { id: 'w-1', item: { en: 'Rose box · BATCH-FG-091', ar: 'بوكس الورد · BATCH-FG-091' }, reason: { en: 'Near expiry', ar: 'قرب الانتهاء' }, lossMinor: 372000, at: { en: '05 Jul', ar: '٠٥ يوليو' }, by: { en: 'Hind Al-Asiri — production', ar: 'هند العسيري — الإنتاج' }, qty: 12, unit: { en: 'unit', ar: 'وحدة' }, scope: 'finished' },
+  { id: 'w-2', item: { en: 'Milk bars', ar: 'ألواح حليب' }, reason: { en: 'Melted in transit', ar: 'ذابت أثناء النقل' }, lossMinor: 186000, at: { en: '04 Jul', ar: '٠٤ يوليو' }, by: { en: 'Salem Al-Ghamdi — warehouse', ar: 'سالم الغامدي — أمين المستودع' }, qty: 49, unit: { en: 'unit', ar: 'وحدة' }, scope: 'finished' },
+  { id: 'w-3', item: { en: 'Cocoa mass', ar: 'كتلة كاكاو' }, reason: { en: 'Processing loss', ar: 'فاقد تصنيع' }, lossMinor: 164000, at: { en: '03 Jul', ar: '٠٣ يوليو' }, by: { en: 'Hind Al-Asiri — production', ar: 'هند العسيري — الإنتاج' }, qty: 36, unit: { en: 'kg', ar: 'كجم' }, scope: 'raw' },
+  { id: 'w-4', item: { en: 'Gold foil', ar: 'ورق ذهبي' }, reason: { en: 'Print defects', ar: 'عيوب طباعة' }, lossMinor: 112000, at: { en: '02 Jul', ar: '٠٢ يوليو' }, by: { en: 'Salem Al-Ghamdi — warehouse', ar: 'سالم الغامدي — أمين المستودع' }, qty: 350, unit: { en: 'roll', ar: 'لفة' }, scope: 'raw' },
 ]
 
 export const wasteReasons: Bilingual[] = [
