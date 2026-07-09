@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Eye, ArrowRight, Check, X, AlertTriangle } from 'lucide-react'
+import { Eye, ArrowRight, Check, X, AlertTriangle, Plus } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
@@ -168,12 +168,16 @@ export function OwnerOrders() {
 }
 
 const chanToProd: Record<OwnerChannel, ProdChannel> = { B2C: 'b2c', B2B: 'b2b', MEGA: 'mega' }
+const norm = (s: string) => s.trim().toLowerCase()
+const nameMatches = (q: string, name: { en: string; ar: string }) => norm(name.ar).includes(norm(q)) || norm(name.en).includes(norm(q))
 
 function ManualOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (o: { customer: { en: string; ar: string }; chan: OwnerChannel; items: { en: string; ar: string }; qty: number; amountMinor: number }) => void }) {
   const { pick, money } = useLocale()
   const { customers, products } = useOwnerState()
   const [chan, setChan] = useState<OwnerChannel>('B2C')
   const [customerId, setCustomerId] = useState('')
+  const [custQ, setCustQ] = useState('')
+  const [prodQ, setProdQ] = useState('')
   const [lines, setLines] = useState<Record<string, number>>({}) // sku → qty
 
   const chanProducts = products[chanToProd[chan]]
@@ -181,21 +185,20 @@ function ManualOrderModal({ open, onClose, onCreate }: { open: boolean; onClose:
   const customer = chanCustomers.find((c) => c.id === customerId) ?? null
   const picked = chanProducts.filter((p) => lines[p.sku] != null)
 
+  const custMatches = !customer && custQ.trim() !== '' ? chanCustomers.filter((c) => nameMatches(custQ, c.name)).slice(0, 6) : []
+  const prodMatches = prodQ.trim() !== '' ? chanProducts.filter((p) => lines[p.sku] == null && nameMatches(prodQ, p.name)).slice(0, 6) : []
+
   const minQty = (p: OwnerProduct) => Math.max(1, p.moq)
   const totalQty = picked.reduce((a, p) => a + lines[p.sku], 0)
   const totalMinor = picked.reduce((a, p) => a + lines[p.sku] * p.priceMinor, 0)
   const valid = !!customer && picked.length > 0 && picked.every((p) => lines[p.sku] >= minQty(p))
 
-  const switchChan = (c: OwnerChannel) => { setChan(c); setCustomerId(''); setLines({}) }
-  const toggle = (p: OwnerProduct) => setLines((prev) => {
-    const next = { ...prev }
-    if (next[p.sku] != null) delete next[p.sku]
-    else next[p.sku] = minQty(p)
-    return next
-  })
+  const switchChan = (c: OwnerChannel) => { setChan(c); setCustomerId(''); setCustQ(''); setProdQ(''); setLines({}) }
+  const addLine = (p: OwnerProduct) => { setLines((prev) => ({ ...prev, [p.sku]: minQty(p) })); setProdQ('') }
+  const removeLine = (sku: string) => setLines((prev) => { const next = { ...prev }; delete next[sku]; return next })
   const setQty = (sku: string, raw: string) => setLines((prev) => ({ ...prev, [sku]: Math.max(0, parseInt(raw.replace(/\D/g, ''), 10) || 0) }))
 
-  const reset = () => { setChan('B2C'); setCustomerId(''); setLines({}) }
+  const reset = () => { setChan('B2C'); setCustomerId(''); setCustQ(''); setProdQ(''); setLines({}) }
   const submit = () => {
     if (!customer) return
     onCreate({
@@ -219,38 +222,67 @@ function ManualOrderModal({ open, onClose, onCreate }: { open: boolean; onClose:
             {(['B2C', 'B2B', 'MEGA'] as OwnerChannel[]).map((c) => <option key={c} value={c}>{pick(ownerChannelMeta[c].label)}</option>)}
           </select>
         </label>
-        <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Customer', ar: 'العميل' })}</span>
-          <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="input cursor-pointer">
-            <option value="">{pick({ en: 'Select a customer…', ar: 'اختر عميلًا…' })}</option>
-            {chanCustomers.map((c) => <option key={c.id} value={c.id}>{pick(c.name)}</option>)}
-          </select>
-        </label>
+        <div className="flex flex-col gap-xs">
+          <span className="label">{pick({ en: 'Customer', ar: 'العميل' })}</span>
+          <input
+            value={customer ? pick(customer.name) : custQ}
+            onChange={(e) => { setCustomerId(''); setCustQ(e.target.value) }}
+            placeholder={pick({ en: 'Type a customer name…', ar: 'اكتب اسم العميل…' })}
+            className="input"
+          />
+          {custMatches.length > 0 && (
+            <div className="rounded-md border border-hairline bg-surface-1 shadow-soft max-h-44 overflow-y-auto divide-y divide-hairline">
+              {custMatches.map((c) => (
+                <button key={c.id} type="button" onClick={() => { setCustomerId(c.id); setCustQ('') }} className="w-full flex items-center justify-between gap-sm px-3 py-2 text-start hover:bg-surface-2 transition-colors">
+                  <span className="font-sans text-data text-ink truncate">{pick(c.name)}</span>
+                  <span className="font-sans text-caption text-ink-subtle shrink-0 tabular-nums">{c.orders} {pick({ en: 'orders', ar: 'طلب' })}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {!customer && custQ.trim() !== '' && custMatches.length === 0 && (
+            <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'No matching customer for this channel', ar: 'لا يوجد عميل مطابق لهذه القناة' })}</p>
+          )}
+        </div>
         <div className="flex flex-col gap-xs">
           <span className="label">{pick({ en: 'Items', ar: 'الأصناف' })}{picked.length > 0 && <span className="text-ink-subtle"> · {picked.length}</span>}</span>
-          <div className="rounded-md border border-hairline-strong divide-y divide-hairline max-h-64 overflow-y-auto">
-            {chanProducts.map((p) => {
-              const on = lines[p.sku] != null
-              const below = on && lines[p.sku] < minQty(p)
-              return (
-                <div key={p.sku} className={cn('flex items-center gap-sm px-3 py-2', on && 'bg-primary/[0.06]')}>
-                  <button type="button" onClick={() => toggle(p)} className="flex items-center gap-sm flex-1 min-w-0 text-start">
-                    <span className={cn('grid place-items-center w-5 h-5 rounded border shrink-0 transition-colors', on ? 'bg-primary border-primary text-on-primary' : 'border-hairline-strong')}>{on && <Check size={13} />}</span>
+          <input value={prodQ} onChange={(e) => setProdQ(e.target.value)} placeholder={pick({ en: 'Type a product name…', ar: 'اكتب اسم المنتج…' })} className="input" />
+          {prodMatches.length > 0 && (
+            <div className="rounded-md border border-hairline bg-surface-1 shadow-soft max-h-44 overflow-y-auto divide-y divide-hairline">
+              {prodMatches.map((p) => (
+                <button key={p.sku} type="button" onClick={() => addLine(p)} className="w-full flex items-center gap-sm px-3 py-2 text-start hover:bg-surface-2 transition-colors">
+                  <span className="w-3 h-3 rounded-pill shrink-0" style={{ background: p.color }} aria-hidden />
+                  <span className="flex-1 min-w-0">
+                    <span className="block font-sans text-data text-ink truncate">{pick(p.name)}</span>
+                    <span className="block font-sans text-caption text-ink-subtle truncate">{pick(p.category)} · {money(p.priceMinor)}{p.moq > 0 && ` · ${pick({ en: 'MOQ', ar: 'حد أدنى' })} ${p.moq}`}</span>
+                  </span>
+                  <Plus size={15} className="text-ink-subtle shrink-0" />
+                </button>
+              ))}
+            </div>
+          )}
+          {prodQ.trim() !== '' && prodMatches.length === 0 && (
+            <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'No matching product for this channel', ar: 'لا يوجد منتج مطابق لهذه القناة' })}</p>
+          )}
+          {picked.length > 0 && (
+            <div className="rounded-md border border-hairline-strong divide-y divide-hairline">
+              {picked.map((p) => {
+                const below = lines[p.sku] < minQty(p)
+                return (
+                  <div key={p.sku} className="flex items-center gap-sm px-3 py-2">
                     <span className="w-3 h-3 rounded-pill shrink-0" style={{ background: p.color }} aria-hidden />
                     <span className="flex-1 min-w-0">
                       <span className="block font-sans text-data text-ink truncate">{pick(p.name)}</span>
-                      <span className="block font-sans text-caption text-ink-subtle truncate">{pick(p.category)} · {money(p.priceMinor)}{p.moq > 0 && ` · ${pick({ en: 'MOQ', ar: 'حد أدنى' })} ${p.moq}`}</span>
+                      <span className="block font-sans text-caption text-ink-subtle truncate">{money(p.priceMinor)}{p.moq > 0 && ` · ${pick({ en: 'MOQ', ar: 'حد أدنى' })} ${p.moq}`}</span>
                     </span>
-                  </button>
-                  {on && (
-                    <div className="flex items-center gap-sm shrink-0">
-                      <input value={lines[p.sku]} onChange={(e) => setQty(p.sku, e.target.value)} className={cn('input w-20 py-1.5 text-center tabular-nums', below && 'border-danger')} inputMode="numeric" aria-label={pick({ en: 'Qty', ar: 'الكمية' })} />
-                      <span className="font-sans text-data text-ink tabular-nums w-24 text-end">{money(lines[p.sku] * p.priceMinor)}</span>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+                    <input value={lines[p.sku]} onChange={(e) => setQty(p.sku, e.target.value)} className={cn('input w-20 py-1.5 text-center tabular-nums', below && 'border-danger')} inputMode="numeric" aria-label={pick({ en: 'Qty', ar: 'الكمية' })} />
+                    <span className="font-sans text-data text-ink tabular-nums w-24 text-end">{money(lines[p.sku] * p.priceMinor)}</span>
+                    <button type="button" onClick={() => removeLine(p.sku)} className="grid place-items-center w-7 h-7 rounded-md text-ink-subtle hover:text-danger shrink-0" aria-label={pick({ en: 'Remove', ar: 'إزالة' })}><X size={14} /></button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
         <div className="flex items-center justify-between rounded-lg bg-surface-2 border border-hairline px-md py-sm">
           <span className="font-sans text-caption text-ink-subtle">{totalQty.toLocaleString()} {pick({ en: 'units', ar: 'وحدة' })}</span>
