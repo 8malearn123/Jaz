@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import type { Bilingual } from '@/data/types'
 import {
-  megaOrdersSeed, megaCatalog, megaCredit, volumeDiscount, SHIP_LAST,
+  megaOrdersSeed, megaCatalog, megaCredit, volumeDiscount, SHIP_LAST, megaPickup,
   type MegaOrder, type ShipStage,
 } from '@/data/mega'
 
@@ -24,7 +24,7 @@ interface MegaStateValue {
   draftCbm: number
   draftValueMinor: number
   lineValueMinor: (sku: string, pallets: number) => number
-  placeOrder: (destination: Bilingual) => string | null
+  placeOrder: () => string | null // fulfilment is fixed: pickup at the site (EXW) — no branch delivery
   // credit
   availableMinor: number
   reserveMinor: number
@@ -70,7 +70,7 @@ export function MegaStateProvider({ children }: { children: ReactNode }) {
   const draftCbm = Object.entries(draft).reduce((a, [sku, n]) => a + (megaCatalog.find((x) => x.sku === sku)?.cbm ?? 0) * n, 0)
   const draftValueMinor = Object.entries(draft).reduce((a, [sku, n]) => a + lineValueMinor(sku, n), 0)
 
-  const placeOrder = useCallback((destination: Bilingual): string | null => {
+  const placeOrder = useCallback((): string | null => {
     const entries = Object.entries(draft).filter(([, n]) => n > 0)
     if (entries.length === 0) return null
     const pallets = entries.reduce((a, [, n]) => a + n, 0)
@@ -81,7 +81,7 @@ export function MegaStateProvider({ children }: { children: ReactNode }) {
       : { en: `${names.length} lines · ${pallets} pallets`, ar: `${names.length} أصناف · ${pallets} طبلية` }
     const id = `MEX-${seq}`
     setSeq((s) => s + 1)
-    setOrders((prev) => [{ id, items, pallets, destination, valueMinor, placedAt: { en: 'Now', ar: 'الآن' }, stage: 0, incoterm: 'CIF', placedTs: Date.now() }, ...prev])
+    setOrders((prev) => [{ id, items, pallets, destination: megaPickup, valueMinor, placedAt: { en: 'Now', ar: 'الآن' }, stage: 0, incoterm: 'EXW', placedTs: Date.now() }, ...prev])
     setReserve((r) => r + valueMinor) // reserve credit against the new order
     setDraft({})
     return id
