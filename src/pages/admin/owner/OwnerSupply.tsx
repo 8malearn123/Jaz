@@ -110,34 +110,46 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
 }
 
 /** Enter a supplier invoice with line items — each line is assigned to a stock product
- *  and restocks it on entry; totals (subtotal, VAT, extra cost) are computed live. */
+ *  (search-as-you-type), bought in a chosen unit with automatic conversion to the
+ *  product's stock unit; totals (subtotal, VAT, extra cost) are computed live. */
 function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[] }) => void }) {
   const { pick, money } = useLocale()
-  const { suppliers, extraRaws } = useOwnerState()
-  type Line = { itemId: string; qty: number; cost: number }
+  const { suppliers, extraRaws, rawQty } = useOwnerState()
+  type Line = { itemId: string; q: string; buyUnit: string; qtyStr: string; cost: number }
+  const emptyLine: Line = { itemId: '', q: '', buyUnit: 'kg', qtyStr: '', cost: 0 }
   const [supplierId, setSupplierId] = useState(suppliers[0]?.id ?? '')
   const [po, setPo] = useState('')
   const [extraCost, setExtraCost] = useState(0)
-  const [lines, setLines] = useState<Line[]>([{ itemId: 'cacao', qty: 0, cost: 0 }])
+  const [lines, setLines] = useState<Line[]>([emptyLine])
 
   const items = [
-    ...rawMaterials.map((r) => ({ id: r.key as string, name: r.name, unit: r.unit })),
-    ...extraRaws.map((x) => ({ id: x.id, name: x.name, unit: x.unit })),
+    ...rawMaterials.map((r) => ({ id: r.key as string, name: r.name, unit: r.unit, category: r.category, balance: rawQty[r.key] })),
+    ...extraRaws.map((x) => ({ id: x.id, name: x.name, unit: x.unit, category: x.category, balance: x.qty })),
   ]
+  type Item = (typeof items)[number]
   const itemOf = (id: string) => items.find((i) => i.id === id)
+  const unitKeyOf = (it: Item) => stockUnits.find((u) => u.label.en === it.unit.en || u.label.ar === it.unit.ar)
+  const lineFactor = (l: Line) => {
+    const it = itemOf(l.itemId)
+    const su = it ? unitKeyOf(it) : undefined
+    return su ? unitFactor(l.buyUnit, su.key) : 1
+  }
+  const lineStockQty = (l: Line) => Math.round(parseDec(l.qtyStr) * lineFactor(l) * 100) / 100
+
   const supplier = suppliers.find((s) => s.id === supplierId) ?? null
   const subtotal = lines.reduce((a, l) => a + l.cost, 0)
   const vat = Math.round(subtotal * 0.15)
   const total = subtotal + vat + extraCost
-  const valid = !!supplier && lines.length > 0 && lines.every((l) => itemOf(l.itemId) && l.qty > 0 && l.cost > 0)
+  const valid = !!supplier && lines.length > 0 && lines.every((l) => itemOf(l.itemId) && parseDec(l.qtyStr) > 0 && l.cost > 0)
 
   const setLine = (i: number, patch: Partial<Line>) => setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
-  const addLine = () => setLines((prev) => [...prev, { itemId: items[0].id, qty: 0, cost: 0 }])
+  const pickItem = (i: number, it: Item) => setLine(i, { itemId: it.id, q: '', buyUnit: unitKeyOf(it)?.key ?? 'kg' })
+  const addLine = () => setLines((prev) => [...prev, emptyLine])
   const removeLine = (i: number) => setLines((prev) => prev.filter((_, idx) => idx !== i))
 
   const submit = () => {
     if (!supplier) return
-    onSubmit({ supplier: supplier.name, po: po.trim() || undefined, totalMinor: total * 100, lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty, costMinor: l.cost * 100 })) })
+    onSubmit({ supplier: supplier.name, po: po.trim() || undefined, totalMinor: total * 100, lines: lines.map((l) => ({ itemId: l.itemId, qty: Math.round(lineStockQty(l)), costMinor: l.cost * 100 })) })
     onClose()
   }
 
@@ -166,20 +178,49 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
           <div className="rounded-md border border-hairline-strong divide-y divide-hairline">
             {lines.map((l, i) => {
               const it = itemOf(l.itemId)
+              const su = it ? unitKeyOf(it) : undefined
+              const unitOptions = su ? stockUnits.filter((u) => u.dim === su.dim) : stockUnits
+              const factor = lineFactor(l)
+              const stockQty = lineStockQty(l)
+              const sugg = !it && l.q.trim() !== '' ? items.filter((x) => productMatches(l.q, x.name) && !lines.some((o, oi) => oi !== i && o.itemId === x.id)).slice(0, 6) : []
               return (
-                <div key={i} className="flex flex-wrap items-end gap-sm px-3 py-2">
-                  <label className="flex flex-col gap-xxs flex-1 min-w-[160px]"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Assigned to stock product', ar: 'مُسكَّن على منتج المخزون' })}</span>
-                    <select value={l.itemId} onChange={(e) => setLine(i, { itemId: e.target.value })} className="input py-1.5 cursor-pointer">
-                      {items.map((it2) => <option key={it2.id} value={it2.id}>{pick(it2.name)}</option>)}
-                    </select>
-                  </label>
-                  <label className="flex flex-col gap-xxs w-24"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Qty', ar: 'الكمية' })}{it && ` (${pick(it.unit)})`}</span>
-                    <input value={l.qty || ''} onChange={(e) => setLine(i, { qty: parseNum(e.target.value) })} className="input py-1.5 tabular-nums" inputMode="numeric" placeholder="0" />
-                  </label>
-                  <label className="flex flex-col gap-xxs w-28"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Cost (﷼)', ar: 'التكلفة (﷼)' })}</span>
-                    <input value={l.cost || ''} onChange={(e) => setLine(i, { cost: parseNum(e.target.value) })} className="input py-1.5 tabular-nums" inputMode="numeric" placeholder="0" />
-                  </label>
-                  <button type="button" onClick={() => removeLine(i)} disabled={lines.length === 1} className="grid place-items-center w-8 h-8 rounded-md text-ink-subtle hover:text-danger disabled:opacity-30 shrink-0 mb-0.5" aria-label={pick({ en: 'Remove line', ar: 'إزالة الصنف' })}><X size={15} /></button>
+                <div key={i} className="flex flex-col gap-xs px-3 py-2">
+                  <div className="flex flex-wrap items-end gap-sm">
+                    <label className="flex flex-col gap-xxs flex-1 min-w-[170px]"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Assigned to stock product', ar: 'مُسكَّن على منتج المخزون' })}</span>
+                      <input value={it ? pick(it.name) : l.q} onChange={(e) => setLine(i, { itemId: '', q: e.target.value })} className="input py-1.5" placeholder={pick({ en: 'Type to search…', ar: 'اكتب للبحث…' })} />
+                    </label>
+                    <label className="flex flex-col gap-xxs w-24"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Unit', ar: 'الوحدة' })}</span>
+                      <select value={l.buyUnit} onChange={(e) => setLine(i, { buyUnit: e.target.value })} className="input py-1.5 cursor-pointer" disabled={!it}>
+                        {unitOptions.map((u) => <option key={u.key} value={u.key}>{pick(u.label)}</option>)}
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-xxs w-24"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Qty', ar: 'الكمية' })}</span>
+                      <input value={l.qtyStr} onChange={(e) => setLine(i, { qtyStr: e.target.value })} className="input py-1.5 tabular-nums" inputMode="decimal" placeholder="0" disabled={!it} />
+                    </label>
+                    <label className="flex flex-col gap-xxs w-28"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Cost (﷼)', ar: 'التكلفة (﷼)' })}</span>
+                      <input value={l.cost || ''} onChange={(e) => setLine(i, { cost: parseNum(e.target.value) })} className="input py-1.5 tabular-nums" inputMode="numeric" placeholder="0" disabled={!it} />
+                    </label>
+                    <button type="button" onClick={() => removeLine(i)} disabled={lines.length === 1} className="grid place-items-center w-8 h-8 rounded-md text-ink-subtle hover:text-danger disabled:opacity-30 shrink-0 mb-0.5" aria-label={pick({ en: 'Remove line', ar: 'إزالة الصنف' })}><X size={15} /></button>
+                  </div>
+                  {sugg.length > 0 && (
+                    <div className="rounded-md border border-hairline bg-surface-1 shadow-soft max-h-40 overflow-y-auto divide-y divide-hairline">
+                      {sugg.map((x) => (
+                        <button key={x.id} type="button" onClick={() => pickItem(i, x)} className="w-full flex items-center justify-between gap-sm px-3 py-2 text-start hover:bg-surface-2 transition-colors">
+                          <span className="min-w-0">
+                            <span className="block font-sans text-data text-ink truncate">{pick(x.name)}</span>
+                            <span className="block font-sans text-caption text-ink-subtle truncate">{pick(x.category)}</span>
+                          </span>
+                          <span className="font-sans text-caption text-ink-subtle shrink-0 tabular-nums">{pick({ en: 'balance', ar: 'الرصيد' })} {x.balance.toLocaleString()} {pick(x.unit)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {!it && l.q.trim() !== '' && sugg.length === 0 && (
+                    <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'No matching stock product', ar: 'لا يوجد منتج مخزون مطابق' })}</p>
+                  )}
+                  {it && factor !== 1 && parseDec(l.qtyStr) > 0 && (
+                    <p className="font-sans text-caption text-ink-subtle tabular-nums">{pick({ en: 'Converted', ar: 'بعد التحويل' })}: {parseDec(l.qtyStr).toLocaleString()} {pick(stockUnits.find((u) => u.key === l.buyUnit)!.label)} = {stockQty.toLocaleString()} {pick(it.unit)}</p>
+                  )}
                 </div>
               )
             })}
