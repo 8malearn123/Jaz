@@ -177,6 +177,8 @@ function ProductEditor({ product, catOptions, onClose, onSave }: { product: Stor
   const [desc, setDesc] = useState(product ? pick(product.desc) : '')
   const [category, setCategory] = useState(product ? pick(product.category) : (catOptions[0] ? pick(catOptions[0]) : ''))
   const [variants, setVariants] = useState<StoreVariant[]>(() => (product?.variants?.length ? product.variants.map((v) => ({ ...v })) : [blankVariant('nv-0', product?.priceMinor)]))
+  // Ask before scaffolding variants: null = not answered yet (new products only), false = single price, true = multi-variant.
+  const [hasVariants, setHasVariants] = useState<boolean | null>(product ? (product.variants?.length ?? 1) > 1 : null)
   // Seed the new-variant id counter past any existing nv- id, so re-opening a saved product never collides.
   const vid = useRef<number | null>(null)
   if (vid.current === null) vid.current = 1 + variants.reduce((m, v) => (v.id.startsWith('nv-') ? Math.max(m, parseInt(v.id.slice(3), 10) || 0) : m), 0)
@@ -192,7 +194,7 @@ function ProductEditor({ product, catOptions, onClose, onSave }: { product: Stor
   const [shelfLife, setShelfLife] = useState(product?.shelfLife ?? '')
   const [barcode, setBarcode] = useState(product?.barcode ?? '')
   const [notes, setNotes] = useState(product?.notes ?? '')
-  const valid = name.trim() !== '' && category.trim() !== '' && variants.length > 0 && variants.every((v) => v.netWeightG > 0 && v.retailPriceMinor > 0)
+  const valid = name.trim() !== '' && category.trim() !== '' && hasVariants !== null && variants.length > 0 && variants.every((v) => v.netWeightG > 0 && v.retailPriceMinor > 0)
   const toggleBadge = (b: StoreBadge) => setBadges((prev) => (prev.includes(b) ? prev.filter((x) => x !== b) : [...prev, b]))
   const setVar = (id: string, patch: Partial<StoreVariant>) => setVariants((vs) => vs.map((v) => (v.id === id ? { ...v, ...patch } : v)))
   const addVar = () => setVariants((vs) => [...vs, blankVariant(`nv-${vid.current!++}`)])
@@ -255,11 +257,22 @@ function ProductEditor({ product, catOptions, onClose, onSave }: { product: Stor
           <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'MOQ (min order)', ar: 'الحد الأدنى للشراء' })}</span><input value={moq || ''} onChange={(e) => setMoq(parseNum(e.target.value))} className="input tabular-nums" inputMode="numeric" placeholder="0" /></label>
         </div>
 
-        {/* variants & pricing — mirrors the customer product page: weight, packaging, dual pricing, stock, cold chain */}
+        {/* variants & pricing — asked first: multi-variant builder or a single price */}
+        {hasVariants === null ? (
+          <div className="flex flex-col gap-sm rounded-lg border border-hairline bg-surface-2/40 p-md">
+            <span className="font-sans text-data text-ink">{pick({ en: 'Does this product have multiple variants (different weights or packaging)?', ar: 'هل لهذا المنتج أصناف متعددة (أوزان أو تغليف مختلف)؟' })}</span>
+            <div className="flex flex-wrap gap-sm">
+              <button type="button" onClick={() => setHasVariants(true)} className={buttonClass('secondary', 'sm')}><Plus size={14} /> {pick({ en: 'Yes — multiple variants', ar: 'نعم — أصناف متعددة' })}</button>
+              <button type="button" onClick={() => { setHasVariants(false); setVariants((vs) => [vs[0]]) }} className={buttonClass('secondary', 'sm')}>{pick({ en: 'No — one price', ar: 'لا — سعر واحد' })}</button>
+            </div>
+          </div>
+        ) : (
         <div className="flex flex-col gap-sm">
           <div className="flex items-center justify-between">
-            <span className="label !mb-0">{pick({ en: 'Variants & pricing', ar: 'الأصناف والتسعير' })}</span>
-            <button type="button" onClick={addVar} className="link-gold text-caption inline-flex items-center gap-xxs"><Plus size={13} /> {pick({ en: 'Add variant', ar: 'أضف صنفًا' })}</button>
+            <span className="label !mb-0">{pick(hasVariants ? { en: 'Variants & pricing', ar: 'الأصناف والتسعير' } : { en: 'Pricing', ar: 'التسعير' })}</span>
+            {hasVariants
+              ? <button type="button" onClick={addVar} className="link-gold text-caption inline-flex items-center gap-xxs"><Plus size={13} /> {pick({ en: 'Add variant', ar: 'أضف صنفًا' })}</button>
+              : <button type="button" onClick={() => setHasVariants(true)} className="link-gold text-caption inline-flex items-center gap-xxs"><Plus size={13} /> {pick({ en: 'Switch to multiple variants', ar: 'تحويل إلى أصناف متعددة' })}</button>}
           </div>
           {variants.map((v, i) => (
             <div key={v.id} className="rounded-lg border border-hairline bg-surface-2/40 p-md flex flex-col gap-sm">
@@ -290,6 +303,7 @@ function ProductEditor({ product, catOptions, onClose, onSave }: { product: Stor
             </div>
           ))}
         </div>
+        )}
 
         {/* components / bill of materials — drawn from raw stock products; cost derives from purchases */}
         <div className="flex flex-col gap-sm">
