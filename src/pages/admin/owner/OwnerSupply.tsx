@@ -1,12 +1,12 @@
 import { Fragment, useState } from 'react'
-import { Lock, ClipboardCheck, Check, Plus, Eye, FileText, X } from 'lucide-react'
+import { Lock, ClipboardCheck, Check, Plus, Eye, FileText, X, Printer } from 'lucide-react'
 import { useLocale, toAsciiDigits } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import type { Bilingual } from '@/data/types'
 import {
-  rawMaterials, stockUnits, unitFactor, type PurchaseMatch, type RawKey, type ExtraRaw, type Supplier,
+  rawMaterials, stockUnits, type PurchaseMatch, type RawKey, type ExtraRaw, type Supplier, type StockTakeReport,
 } from '@/data/ownerSupply'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { cn } from '@/lib/cn'
@@ -109,16 +109,40 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
   )
 }
 
+/** Shared supplier search-as-you-type: type part of a name, pick from matches. */
+function SupplierSearch({ supplierId, onPick }: { supplierId: string; onPick: (id: string) => void }) {
+  const { pick } = useLocale()
+  const { suppliers } = useOwnerState()
+  const [q, setQ] = useState('')
+  const sel = suppliers.find((s) => s.id === supplierId) ?? null
+  const matches = !sel && q.trim() !== '' ? suppliers.filter((s) => productMatches(q, s.name)).slice(0, 6) : []
+  return (
+    <div className="flex flex-col gap-xs">
+      <input value={sel ? pick(sel.name) : q} onChange={(e) => { onPick(''); setQ(e.target.value) }} className="input" placeholder={pick({ en: 'Type a supplier name…', ar: 'اكتب اسم المورّد…' })} />
+      {matches.length > 0 && (
+        <div className="rounded-md border border-hairline bg-surface-1 shadow-soft max-h-40 overflow-y-auto divide-y divide-hairline">
+          {matches.map((s) => (
+            <button key={s.id} type="button" onClick={() => { onPick(s.id); setQ('') }} className="w-full flex items-center justify-between gap-sm px-3 py-2 text-start hover:bg-surface-2 transition-colors">
+              <span className="min-w-0"><span className="block font-sans text-data text-ink truncate">{pick(s.name)}</span><span className="block font-sans text-caption text-ink-subtle truncate">{pick(s.material)} · {pick(s.country)}</span></span>
+              <span className="font-sans text-caption text-ink-subtle shrink-0 tabular-nums">{s.id}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {!sel && q.trim() !== '' && matches.length === 0 && <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'No matching supplier', ar: 'لا يوجد مورّد مطابق' })}</p>}
+    </div>
+  )
+}
+
 /** Enter a supplier invoice with line items — each line is assigned to a stock product
  *  (search-as-you-type), bought in a chosen unit with automatic conversion to the
  *  product's stock unit; totals (subtotal, VAT, extra cost) are computed live. */
 function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[] }) => void }) {
   const { pick, money } = useLocale()
   const { suppliers, extraRaws, rawQty } = useOwnerState()
-  type Line = { itemId: string; q: string; buyUnit: string; qtyStr: string; cost: number }
-  const emptyLine: Line = { itemId: '', q: '', buyUnit: 'kg', qtyStr: '', cost: 0 }
-  const [supplierId, setSupplierId] = useState(suppliers[0]?.id ?? '')
-  const [po, setPo] = useState('')
+  type Line = { itemId: string; q: string; qtyStr: string; cost: number }
+  const emptyLine: Line = { itemId: '', q: '', qtyStr: '', cost: 0 }
+  const [supplierId, setSupplierId] = useState('')
   const [extraCost, setExtraCost] = useState(0)
   const [lines, setLines] = useState<Line[]>([emptyLine])
 
@@ -128,13 +152,6 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
   ]
   type Item = (typeof items)[number]
   const itemOf = (id: string) => items.find((i) => i.id === id)
-  const unitKeyOf = (it: Item) => stockUnits.find((u) => u.label.en === it.unit.en || u.label.ar === it.unit.ar)
-  const lineFactor = (l: Line) => {
-    const it = itemOf(l.itemId)
-    const su = it ? unitKeyOf(it) : undefined
-    return su ? unitFactor(l.buyUnit, su.key) : 1
-  }
-  const lineStockQty = (l: Line) => Math.round(parseDec(l.qtyStr) * lineFactor(l) * 100) / 100
 
   const supplier = suppliers.find((s) => s.id === supplierId) ?? null
   const subtotal = lines.reduce((a, l) => a + l.cost, 0)
@@ -143,13 +160,13 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
   const valid = !!supplier && lines.length > 0 && lines.every((l) => itemOf(l.itemId) && parseDec(l.qtyStr) > 0 && l.cost > 0)
 
   const setLine = (i: number, patch: Partial<Line>) => setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
-  const pickItem = (i: number, it: Item) => setLine(i, { itemId: it.id, q: '', buyUnit: unitKeyOf(it)?.key ?? 'kg' })
+  const pickItem = (i: number, it: Item) => setLine(i, { itemId: it.id, q: '' })
   const addLine = () => setLines((prev) => [...prev, emptyLine])
   const removeLine = (i: number) => setLines((prev) => prev.filter((_, idx) => idx !== i))
 
   const submit = () => {
     if (!supplier) return
-    onSubmit({ supplier: supplier.name, po: po.trim() || undefined, totalMinor: total * 100, lines: lines.map((l) => ({ itemId: l.itemId, qty: Math.round(lineStockQty(l)), costMinor: l.cost * 100 })) })
+    onSubmit({ supplier: supplier.name, po: supplier.id, totalMinor: total * 100, lines: lines.map((l) => ({ itemId: l.itemId, qty: Math.round(parseDec(l.qtyStr)), costMinor: l.cost * 100 })) })
     onClose()
   }
 
@@ -160,13 +177,13 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
         <button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}>{pick({ en: 'Enter invoice', ar: 'إدخال الفاتورة' })}</button>
       </>}>
       <div className="flex flex-col gap-md">
-        <div className="grid grid-cols-2 gap-md">
-          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Supplier', ar: 'المورّد' })}</span>
-            <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className="input cursor-pointer">
-              {suppliers.map((s) => <option key={s.id} value={s.id}>{pick(s.name)}</option>)}
-            </select>
-          </label>
-          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'PO number (optional)', ar: 'أمر الشراء (اختياري)' })}</span><input value={po} onChange={(e) => setPo(e.target.value)} className="input" placeholder="PO-2048" /></label>
+        <div className="grid grid-cols-2 gap-md items-start">
+          <div className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Supplier', ar: 'المورّد' })}</span>
+            <SupplierSearch supplierId={supplierId} onPick={setSupplierId} />
+          </div>
+          <div className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Supplier number', ar: 'رقم المورد' })}</span>
+            <div className="input bg-surface-2 text-ink-muted tabular-nums cursor-default select-none inline-flex items-center gap-xs"><Lock size={12} /> {supplier ? supplier.id : '—'}</div>
+          </div>
         </div>
 
         {/* invoice lines — each assigned to a stock item */}
@@ -178,10 +195,6 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
           <div className="rounded-md border border-hairline-strong divide-y divide-hairline">
             {lines.map((l, i) => {
               const it = itemOf(l.itemId)
-              const su = it ? unitKeyOf(it) : undefined
-              const unitOptions = su ? stockUnits.filter((u) => u.dim === su.dim) : stockUnits
-              const factor = lineFactor(l)
-              const stockQty = lineStockQty(l)
               const sugg = !it && l.q.trim() !== '' ? items.filter((x) => productMatches(l.q, x.name) && !lines.some((o, oi) => oi !== i && o.itemId === x.id)).slice(0, 6) : []
               return (
                 <div key={i} className="flex flex-col gap-xs px-3 py-2">
@@ -189,12 +202,7 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
                     <label className="flex flex-col gap-xxs flex-1 min-w-[170px]"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Assigned to stock product', ar: 'مُسكَّن على منتج المخزون' })}</span>
                       <input value={it ? pick(it.name) : l.q} onChange={(e) => setLine(i, { itemId: '', q: e.target.value })} className="input py-1.5" placeholder={pick({ en: 'Type to search…', ar: 'اكتب للبحث…' })} />
                     </label>
-                    <label className="flex flex-col gap-xxs w-24"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Unit', ar: 'الوحدة' })}</span>
-                      <select value={l.buyUnit} onChange={(e) => setLine(i, { buyUnit: e.target.value })} className="input py-1.5 cursor-pointer" disabled={!it}>
-                        {unitOptions.map((u) => <option key={u.key} value={u.key}>{pick(u.label)}</option>)}
-                      </select>
-                    </label>
-                    <label className="flex flex-col gap-xxs w-24"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Qty', ar: 'الكمية' })}</span>
+                    <label className="flex flex-col gap-xxs w-28"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Qty', ar: 'الكمية' })}{it && ` (${pick(it.unit)})`}</span>
                       <input value={l.qtyStr} onChange={(e) => setLine(i, { qtyStr: e.target.value })} className="input py-1.5 tabular-nums" inputMode="decimal" placeholder="0" disabled={!it} />
                     </label>
                     <label className="flex flex-col gap-xxs w-28"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Cost (﷼)', ar: 'التكلفة (﷼)' })}</span>
@@ -208,7 +216,7 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
                         <button key={x.id} type="button" onClick={() => pickItem(i, x)} className="w-full flex items-center justify-between gap-sm px-3 py-2 text-start hover:bg-surface-2 transition-colors">
                           <span className="min-w-0">
                             <span className="block font-sans text-data text-ink truncate">{pick(x.name)}</span>
-                            <span className="block font-sans text-caption text-ink-subtle truncate">{pick(x.category)}</span>
+                            <span className="block font-sans text-caption text-ink-subtle truncate">{pick(x.category)} · {pick({ en: 'unit', ar: 'الوحدة' })}: {pick(x.unit)}</span>
                           </span>
                           <span className="font-sans text-caption text-ink-subtle shrink-0 tabular-nums">{pick({ en: 'balance', ar: 'الرصيد' })} {x.balance.toLocaleString()} {pick(x.unit)}</span>
                         </button>
@@ -217,9 +225,6 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
                   )}
                   {!it && l.q.trim() !== '' && sugg.length === 0 && (
                     <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'No matching stock product', ar: 'لا يوجد منتج مخزون مطابق' })}</p>
-                  )}
-                  {it && factor !== 1 && parseDec(l.qtyStr) > 0 && (
-                    <p className="font-sans text-caption text-ink-subtle tabular-nums">{pick({ en: 'Converted', ar: 'بعد التحويل' })}: {parseDec(l.qtyStr).toLocaleString()} {pick(stockUnits.find((u) => u.key === l.buyUnit)!.label)} = {stockQty.toLocaleString()} {pick(it.unit)}</p>
                   )}
                 </div>
               )
@@ -236,9 +241,7 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
         </div>
 
         <p className="font-sans text-caption rounded-lg bg-surface-2 border border-hairline p-md text-ink-subtle">
-          {po.trim()
-            ? pick({ en: 'On entry: every line restocks its assigned stock product, and the invoice awaits 3-way match.', ar: 'عند الإدخال: يرتفع رصيد كل منتج مخزون مُسكَّن عليه صنف، وتنتظر الفاتورة المطابقة الثلاثية.' })
-            : pick({ en: 'No PO — the invoice will be flagged as a variance for review (stock still updates).', ar: 'بدون أمر شراء — ستُعلَّم الفاتورة كفرق يتطلّب مراجعة (يُحدَّث المخزون رغم ذلك).' })}
+          {pick({ en: 'On entry: every line restocks its assigned stock product, the invoice is linked to the supplier number and awaits 3-way match.', ar: 'عند الإدخال: يرتفع رصيد كل منتج مخزون مُسكَّن عليه صنف، وتُربط الفاتورة برقم المورد وتنتظر المطابقة الثلاثية.' })}
         </p>
       </div>
     </Modal>
@@ -622,7 +625,7 @@ function SupplierDetailModal({ s, onClose }: { s: Supplier; onClose: () => void 
  *  The performance score is auto-computed from on-time compliance and lead time. */
 function AddSupplierModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (s: { name: Bilingual; country: Bilingual; material: Bilingual; leadDays: number; onTimePct: number; contact?: { person: Bilingual; phone: string; email: string; city: Bilingual }; supplies?: Bilingual[] }) => void }) {
   const { pick } = useLocale()
-  const { suppliers } = useOwnerState()
+  const { suppliers, extraRaws } = useOwnerState()
   const [name, setName] = useState('')
   const [country, setCountry] = useState('')
   const [catStr, setCatStr] = useState(suppliers[0] ? pick(suppliers[0].material) : NEW_CAT)
@@ -631,7 +634,7 @@ function AddSupplierModal({ onClose, onSubmit }: { onClose: () => void; onSubmit
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [city, setCity] = useState('')
-  const [supplies, setSupplies] = useState<string[]>([])
+  const [supplies, setSupplies] = useState<Bilingual[]>([])
   const [supplyDraft, setSupplyDraft] = useState('')
   const [leadDays, setLeadDays] = useState(0)
   const [onTimePct, setOnTimePct] = useState(0)
@@ -646,12 +649,20 @@ function AddSupplierModal({ onClose, onSubmit }: { onClose: () => void; onSubmit
   const valid = name.trim() !== '' && country.trim() !== '' && catName !== '' && person.trim() !== '' && phone.trim() !== '' && emailOk && supplies.length > 0 && leadDays > 0 && onTimePct > 0
   const previewScore = Math.max(0, Math.min(100, Math.round(onTimePct - Math.max(0, leadDays - 7) * 0.8)))
 
+  // Suggest stock products already defined in inventory while typing; free text stays allowed.
+  const stockItems: Bilingual[] = [...rawMaterials.map((r) => r.name), ...extraRaws.map((x) => x.name)]
+  const supplySugg = supplyDraft.trim() !== '' ? stockItems.filter((n) => productMatches(supplyDraft, n) && !supplies.some((s) => s.en === n.en)).slice(0, 6) : []
+
   const addSupply = () => {
     const v = supplyDraft.trim()
-    if (v !== '' && !supplies.includes(v)) setSupplies((prev) => [...prev, v])
+    if (v !== '' && !supplies.some((s) => s.en === v || s.ar === v)) setSupplies((prev) => [...prev, { en: v, ar: v }])
     setSupplyDraft('')
   }
-  const removeSupply = (v: string) => setSupplies((prev) => prev.filter((x) => x !== v))
+  const addSupplyItem = (b: Bilingual) => {
+    if (!supplies.some((s) => s.en === b.en)) setSupplies((prev) => [...prev, b])
+    setSupplyDraft('')
+  }
+  const removeSupply = (b: Bilingual) => setSupplies((prev) => prev.filter((x) => x !== b))
 
   const submit = () => {
     const catBi = cats.find((c) => pick(c) === catName) ?? { en: catName, ar: catName }
@@ -659,7 +670,7 @@ function AddSupplierModal({ onClose, onSubmit }: { onClose: () => void; onSubmit
       name: { en: name.trim(), ar: name.trim() }, country: { en: country.trim(), ar: country.trim() }, material: catBi,
       leadDays, onTimePct: Math.min(100, onTimePct),
       contact: { person: { en: person.trim(), ar: person.trim() }, phone: phone.trim(), email: email.trim(), city: { en: city.trim(), ar: city.trim() } },
-      supplies: supplies.map((s) => ({ en: s, ar: s })),
+      supplies,
     })
     onClose()
   }
@@ -694,14 +705,24 @@ function AddSupplierModal({ onClose, onSubmit }: { onClose: () => void; onSubmit
         <Section title={{ en: 'Raw products we order from them', ar: 'المواد التي نطلبها منه' }} />
         <div className="flex flex-col gap-xs">
           <div className="flex gap-sm">
-            <input value={supplyDraft} onChange={(e) => setSupplyDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addSupply() } }} className="input flex-1" placeholder={pick({ en: 'e.g. Cocoa mass — Enter to add', ar: 'مثال: كتلة كاكاو — اضغط Enter للإضافة' })} />
+            <input value={supplyDraft} onChange={(e) => setSupplyDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addSupply() } }} className="input flex-1" placeholder={pick({ en: 'Type to search stock products, or enter a new one…', ar: 'اكتب للبحث في منتجات المخزون أو أدخل مادة جديدة…' })} />
             <button type="button" onClick={addSupply} disabled={supplyDraft.trim() === ''} className={buttonClass('secondary', 'sm')}><Plus size={14} /> {pick({ en: 'Add', ar: 'إضافة' })}</button>
           </div>
+          {supplySugg.length > 0 && (
+            <div className="rounded-md border border-hairline bg-surface-1 shadow-soft max-h-40 overflow-y-auto divide-y divide-hairline">
+              {supplySugg.map((n) => (
+                <button key={n.en} type="button" onClick={() => addSupplyItem(n)} className="w-full flex items-center justify-between gap-sm px-3 py-2 text-start hover:bg-surface-2 transition-colors">
+                  <span className="font-sans text-data text-ink truncate">{pick(n)}</span>
+                  <span className="font-sans text-caption text-ink-subtle shrink-0">{pick({ en: 'from stock', ar: 'من المخزون' })}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {supplies.length > 0 ? (
             <div className="flex flex-wrap gap-xs">
               {supplies.map((s) => (
-                <span key={s} className="inline-flex items-center gap-xxs rounded-pill border border-hairline-strong bg-surface-2 ps-3 pe-1.5 py-1 font-sans text-caption text-ink">
-                  {s}
+                <span key={s.en} className="inline-flex items-center gap-xxs rounded-pill border border-hairline-strong bg-surface-2 ps-3 pe-1.5 py-1 font-sans text-caption text-ink">
+                  {pick(s)}
                   <button type="button" onClick={() => removeSupply(s)} className="grid place-items-center w-4 h-4 rounded-pill text-ink-subtle hover:text-danger" aria-label={pick({ en: 'Remove', ar: 'إزالة' })}><X size={11} /></button>
                 </span>
               ))}
@@ -884,96 +905,50 @@ const NEW_CAT = '__new__'
 // Decimal-friendly parser (the conversion factor and purchased qty can be fractional, e.g. 0.8 ton).
 const parseDec = (s: string) => Math.max(0, parseFloat(toAsciiDigits(s).replace(/[^\d.]/g, '')) || 0)
 
-/** Add an owner-tracked stock product (inventory overlay — not part of the production recipe).
- *  Units come from a fixed list with a purchase→stock conversion factor; the unit cost is
- *  derived from the entered purchase invoice, never typed by hand. */
+/** Define an owner-tracked stock product (inventory overlay — not part of the production recipe).
+ *  Only the definition is entered here: balance and unit cost are never typed — they flow in
+ *  automatically from purchase invoices whose lines are assigned to this product. */
 function AddMaterialModal({ category, cats, onClose, onSubmit }: { category?: Bilingual; cats: Bilingual[]; onClose: () => void; onSubmit: (m: Omit<ExtraRaw, 'id'>) => void }) {
-  const { pick, money } = useLocale()
-  const { suppliers, addPurchaseInvoice } = useOwnerState()
+  const { pick } = useLocale()
   const [name, setName] = useState('')
   const [catStr, setCatStr] = useState(category ? pick(category) : (cats[0] ? pick(cats[0]) : NEW_CAT))
   const [newCat, setNewCat] = useState('')
   const [stockUnit, setStockUnit] = useState('kg')
-  const [buyUnit, setBuyUnit] = useState('ton')
-  const [factorStr, setFactorStr] = useState(String(unitFactor('ton', 'kg')))
-  const [supplierId, setSupplierId] = useState(suppliers[0]?.id ?? '')
-  const [buyQtyStr, setBuyQtyStr] = useState('')
-  const [total, setTotal] = useState(0)
   const [reorderQty, setReorderQty] = useState(0)
 
   const su = stockUnits.find((u) => u.key === stockUnit)!
-  const bu = stockUnits.find((u) => u.key === buyUnit)!
-  const factor = parseDec(factorStr)
-  const buyQty = parseDec(buyQtyStr)
-  const stockQty = Math.round(buyQty * factor)
-  const costMinor = stockQty > 0 && total > 0 ? Math.round((total * 100) / stockQty) : 0
-  const supplier = suppliers.find((s) => s.id === supplierId) ?? null
   const catName = catStr === NEW_CAT ? newCat.trim() : catStr.trim()
 
-  const changeUnit = (kind: 'stock' | 'buy', key: string) => {
-    const nextStock = kind === 'stock' ? key : stockUnit
-    const nextBuy = kind === 'buy' ? key : buyUnit
-    if (kind === 'stock') setStockUnit(key); else setBuyUnit(key)
-    setFactorStr(String(unitFactor(nextBuy, nextStock)))
-  }
-
-  const valid = name.trim() !== '' && catName !== '' && !!supplier && factor > 0 && buyQty > 0 && total > 0 && reorderQty > 0
+  const valid = name.trim() !== '' && catName !== '' && reorderQty > 0
   const submit = () => {
-    if (!supplier) return
     const nameBi = { en: name.trim(), ar: name.trim() }
     const catBi = cats.find((c) => pick(c) === catName) ?? { en: catName, ar: catName }
-    onSubmit({ name: nameBi, category: catBi, unit: su.label, costUnit: su.label, costMinor, qty: stockQty, reorderQty })
-    addPurchaseInvoice({ supplier: supplier.name, material: nameBi, date: { en: 'Now', ar: 'الآن' }, totalMinor: total * 100 })
+    onSubmit({ name: nameBi, category: catBi, unit: su.label, costUnit: su.label, costMinor: 0, qty: 0, reorderQty })
     onClose()
   }
   return (
-    <Modal open onClose={onClose} size="lg" eyebrow={pick({ en: 'Raw stock', ar: 'المخزون الخام' })} title={pick({ en: 'Add stock product', ar: 'إضافة منتج مخزون' })}
+    <Modal open onClose={onClose} size="md" eyebrow={pick({ en: 'Raw stock', ar: 'المخزون الخام' })} title={pick({ en: 'Add stock product', ar: 'إضافة منتج مخزون' })}
       footer={<><button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button><button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}>{pick({ en: 'Add', ar: 'إضافة' })}</button></>}>
       <div className="flex flex-col gap-md">
         <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Material name', ar: 'اسم المادة' })}</span><input value={name} onChange={(e) => setName(e.target.value)} className="input" placeholder={pick({ en: 'e.g. Hazelnut paste', ar: 'مثال: معجون بندق' })} /></label>
-        <div className="grid grid-cols-2 gap-md">
-          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Category', ar: 'التصنيف' })}</span>
-            <select value={catStr} onChange={(e) => setCatStr(e.target.value)} className="input cursor-pointer">
-              {cats.map((c, i) => <option key={i} value={pick(c)}>{pick(c)}</option>)}
-              <option value={NEW_CAT}>+ {pick({ en: 'New category…', ar: 'تصنيف جديد…' })}</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Supplier', ar: 'المورّد' })}</span>
-            <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className="input cursor-pointer">
-              {suppliers.map((s) => <option key={s.id} value={s.id}>{pick(s.name)}</option>)}
-            </select>
-          </label>
-        </div>
+        <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Category', ar: 'التصنيف' })}</span>
+          <select value={catStr} onChange={(e) => setCatStr(e.target.value)} className="input cursor-pointer">
+            {cats.map((c, i) => <option key={i} value={pick(c)}>{pick(c)}</option>)}
+            <option value={NEW_CAT}>+ {pick({ en: 'New category…', ar: 'تصنيف جديد…' })}</option>
+          </select>
+        </label>
         {catStr === NEW_CAT && (
           <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'New category name', ar: 'اسم التصنيف الجديد' })}</span><input value={newCat} onChange={(e) => setNewCat(e.target.value)} className="input" placeholder={pick({ en: 'e.g. Inclusions', ar: 'مثال: إضافات' })} /></label>
         )}
-        <div className="grid grid-cols-3 gap-md">
+        <div className="grid grid-cols-2 gap-md">
           <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Stock unit', ar: 'وحدة المخزون' })}</span>
-            <select value={stockUnit} onChange={(e) => changeUnit('stock', e.target.value)} className="input cursor-pointer">
+            <select value={stockUnit} onChange={(e) => setStockUnit(e.target.value)} className="input cursor-pointer">
               {stockUnits.map((u) => <option key={u.key} value={u.key}>{pick(u.label)}</option>)}
             </select>
           </label>
-          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Purchase unit', ar: 'وحدة الشراء' })}</span>
-            <select value={buyUnit} onChange={(e) => changeUnit('buy', e.target.value)} className="input cursor-pointer">
-              {stockUnits.map((u) => <option key={u.key} value={u.key}>{pick(u.label)}</option>)}
-            </select>
-          </label>
-          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Conversion factor', ar: 'معامل التحويل' })}</span>
-            <input value={factorStr} onChange={(e) => setFactorStr(e.target.value)} className="input tabular-nums" inputMode="decimal" />
-            <span className="font-sans text-caption text-ink-subtle tabular-nums">1 {pick(bu.label)} = {factor.toLocaleString()} {pick(su.label)}</span>
-          </label>
-        </div>
-        <div className="grid grid-cols-3 gap-md">
-          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Purchased qty', ar: 'الكمية المشتراة' })} ({pick(bu.label)})</span><input value={buyQtyStr} onChange={(e) => setBuyQtyStr(e.target.value)} className="input tabular-nums" inputMode="decimal" placeholder="0" /></label>
-          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Invoice total (﷼)', ar: 'إجمالي الفاتورة (﷼)' })}</span><input value={total || ''} onChange={(e) => setTotal(parseNum(e.target.value))} className="input tabular-nums" inputMode="numeric" placeholder="0" /></label>
           <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Reorder at', ar: 'نقطة الطلب' })} ({pick(su.label)})</span><input value={reorderQty || ''} onChange={(e) => setReorderQty(parseNum(e.target.value))} className="input tabular-nums" inputMode="numeric" placeholder="0" /></label>
         </div>
-        <div className="flex flex-wrap items-center gap-md rounded-lg bg-surface-2 border border-hairline p-md font-sans text-caption text-ink-muted">
-          <span className="inline-flex items-center gap-xxs"><Lock size={12} /> {pick({ en: 'Auto-calculated from the invoice', ar: 'تُحسب تلقائيًا من الفاتورة' })}:</span>
-          <span className="tabular-nums text-ink">{pick({ en: 'On hand', ar: 'المتوفر' })}: {stockQty.toLocaleString()} {pick(su.label)}</span>
-          <span className="tabular-nums text-ink">{pick({ en: 'Unit cost', ar: 'تكلفة الوحدة' })}: {costMinor > 0 ? `${money(costMinor)} / ${pick(su.label)}` : '—'}</span>
-        </div>
-        <p className="font-sans text-caption text-ink-subtle rounded-lg bg-surface-2 border border-hairline p-md">{pick({ en: 'The purchase invoice is recorded in procurement and the unit cost is derived from it automatically. Tracked for inventory only — not linked to the production recipe.', ar: 'تُسجَّل فاتورة المشتريات في سجل المشتريات وتُحسب تكلفة الوحدة منها تلقائيًا. يُتتبَّع للمخزون فقط — غير مرتبط بوصفة الإنتاج.' })}</p>
+        <p className="inline-flex items-start gap-xs font-sans text-caption text-ink-subtle rounded-lg bg-surface-2 border border-hairline p-md"><Lock size={13} className="shrink-0 mt-0.5" /> {pick({ en: 'Balance and unit cost are not entered here — they update automatically from purchase invoices whose lines are assigned to this product. Quantities are entered in the stock unit, which carries over to purchasing automatically.', ar: 'الرصيد وتكلفة الوحدة لا يُدخلان هنا — يتحدثان تلقائيًا من فواتير المشتريات التي تُسكَّن أصنافها على هذا المنتج. الكميات تُدخل بوحدة المخزون وتنسحب تلقائيًا على الشراء.' })}</p>
       </div>
     </Modal>
   )
@@ -1004,6 +979,46 @@ function StockTakeReportsModal({ onClose }: { onClose: () => void }) {
     return m > 0 ? `${m} ${pick({ en: 'min', ar: 'د' })} ${s % 60} ${pick({ en: 's', ar: 'ث' })}` : `${s} ${pick({ en: 's', ar: 'ث' })}`
   }
   const scopeMeta = { raw: { label: { en: 'Raw stock', ar: 'المخزون الخام' }, color: '#8a6b3f', bg: '#f6edde' }, finished: { label: { en: 'Finished goods', ar: 'المخزون المصنّع' }, color: '#355c4b', bg: '#e8f0ec' } } as const
+
+  // Print a single report in a clean dedicated window (the audit record itself stays immutable).
+  const printReport = (r: StockTakeReport) => {
+    const dir = locale === 'ar' ? 'rtl' : 'ltr'
+    const L = (en: string, ar: string) => (locale === 'ar' ? ar : en)
+    const rows = r.lines.map((ln) => `<tr><td>${pick(ln.name)}</td><td>${ln.system.toLocaleString()}</td><td>${ln.counted.toLocaleString()}</td><td>${(ln.variance > 0 ? '+' : '') + ln.variance}</td><td>${ln.variance === 0 ? '—' : money(ln.valueMinor)}</td></tr>`).join('')
+    const html = `<!doctype html><html dir="${dir}"><head><meta charset="utf-8"><title>${r.id}</title><style>
+      body{font-family:'Segoe UI',Tahoma,sans-serif;padding:32px;color:#2b2b2b}
+      h1{font-size:20px;margin:0 0 4px}
+      .sub{color:#777;font-size:12px;margin-bottom:16px}
+      .meta{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;font-size:13px;margin:14px 0}
+      .meta b{display:block;color:#777;font-weight:600;font-size:11px;text-transform:uppercase}
+      .method{font-size:12px;color:#444;margin:10px 0;border:1px solid #ddd;border-radius:6px;padding:10px;background:#faf7f1}
+      table{width:100%;border-collapse:collapse;margin-top:10px}
+      th,td{border:1px solid #ccc;padding:6px 10px;font-size:12px;text-align:${locale === 'ar' ? 'right' : 'left'}}
+      th{background:#f3efe8}
+      .net{margin-top:14px;font-size:14px;font-weight:700}
+      .foot{margin-top:24px;font-size:11px;color:#999}
+      @media print{body{padding:0}}
+    </style></head><body>
+      <h1>${L('Stock-take report', 'تقرير جرد')} ${r.id}</h1>
+      <div class="sub">${pick(scopeMeta[r.scope].label)} · Jaz</div>
+      <div class="meta">
+        <div><b>${L('Started', 'بدأ')}</b>${fmt(r.startedAt)}</div>
+        <div><b>${L('Ended', 'انتهى')}</b>${fmt(r.endedAt)}</div>
+        <div><b>${L('Duration', 'المدة')}</b>${dur(r)}</div>
+        <div><b>${L('Net value impact', 'صافي أثر القيمة')}</b>${money(r.netValueMinor)}</div>
+      </div>
+      <div class="method"><b>${L('How the count was performed', 'كيف تمت عملية الجرد')}:</b> ${pick(r.method)}</div>
+      <table><thead><tr><th>${L('Item', 'الصنف')}</th><th>${L('System', 'النظام')}</th><th>${L('Counted', 'المجرود')}</th><th>${L('Variance', 'الفرق')}</th><th>${L('Value', 'القيمة')}</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="net">${L('Net value impact', 'صافي أثر القيمة')}: ${money(r.netValueMinor)}</div>
+      <div class="foot">${L('Immutable audit record — generated automatically on stock-take finalize.', 'سجل توثيقي غير قابل للتعديل — أُنشئ تلقائيًا عند إنهاء الجرد.')}</div>
+    </body></html>`
+    const w = window.open('', '_blank', 'width=840,height=600')
+    if (!w) return
+    w.document.write(html)
+    w.document.close()
+    w.focus()
+    setTimeout(() => w.print(), 150)
+  }
   return (
     <Modal open onClose={onClose} size="lg" eyebrow={pick({ en: 'Stock-take', ar: 'الجرد' })} title={pick({ en: 'Stock-take reports', ar: 'تقارير الجرد' })}
       footer={<button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Close', ar: 'إغلاق' })}</button>}>
@@ -1025,6 +1040,9 @@ function StockTakeReportsModal({ onClose }: { onClose: () => void }) {
               </button>
               {open && (
                 <div className="border-t border-hairline p-md flex flex-col gap-md">
+                  <div className="flex justify-end">
+                    <button onClick={() => printReport(r)} className={buttonClass('secondary', 'sm')}><Printer size={14} /> {pick({ en: 'Print report', ar: 'طباعة التقرير' })}</button>
+                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-md">
                     {([[{ en: 'Started', ar: 'بدأ' }, fmt(r.startedAt)], [{ en: 'Ended', ar: 'انتهى' }, fmt(r.endedAt)], [{ en: 'Duration', ar: 'المدة' }, dur(r)], [{ en: 'Net value impact', ar: 'صافي أثر القيمة' }, money(r.netValueMinor)]] as const).map(([l, v], i) => (
                       <div key={i} className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick(l)}</span><span className="font-sans text-data text-ink tabular-nums">{v}</span></div>

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import {
   LayoutGrid, Wallet, FileText, Building2, Headset, PenTool, ScrollText, Users, Workflow,
   X, Check, RefreshCw, QrCode, Lock, ArrowRight, ShieldCheck, ShieldAlert, Target,
-  Gauge, ClipboardList, Factory, Package, UsersRound, LayoutList, Handshake, Globe, Coins,
+  Gauge, ClipboardList, Factory, UsersRound, LayoutList, Handshake, Globe, Coins,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useChannel } from '@/state/ChannelContext'
@@ -29,7 +29,6 @@ import { AccountsPanel } from './admin/AccountsPanel'
 import { OwnerExec } from './admin/owner/OwnerExec'
 import { OwnerOrders } from './admin/owner/OwnerOrders'
 import { OwnerSupply } from './admin/owner/OwnerSupply'
-import { OwnerProducts } from './admin/owner/OwnerProducts'
 import { OwnerCustomers } from './admin/owner/OwnerCustomers'
 import { OwnerCatalog } from './admin/owner/OwnerCatalog'
 import { OwnerVendors } from './admin/owner/OwnerVendors'
@@ -39,7 +38,7 @@ import { OwnerFinance } from './admin/owner/OwnerFinance'
 type Section =
   | 'overview' | 'credit' | 'invoicing' | 'accounts' | 'pipeline' | 'performance' | 'support' | 'catalogue' | 'audit' | 'users'
   // Owner operational sections (owner role only)
-  | 'owner_exec' | 'owner_orders' | 'owner_supply' | 'owner_products' | 'owner_customers' | 'owner_catalog' | 'owner_vendors' | 'owner_export' | 'owner_fin'
+  | 'owner_exec' | 'owner_orders' | 'owner_supply' | 'owner_customers' | 'owner_catalog' | 'owner_vendors' | 'owner_export' | 'owner_fin'
 
 const SECTION_META: Record<Section, { key: string; icon: NonNullable<TabDef['icon']> }> = {
   overview: { key: 'admin.section.overview', icon: LayoutGrid },
@@ -55,7 +54,6 @@ const SECTION_META: Record<Section, { key: string; icon: NonNullable<TabDef['ico
   owner_exec: { key: 'owner.section.exec', icon: Gauge },
   owner_orders: { key: 'owner.section.orders', icon: ClipboardList },
   owner_supply: { key: 'owner.section.supply', icon: Factory },
-  owner_products: { key: 'owner.section.products', icon: Package },
   owner_customers: { key: 'owner.section.customers', icon: UsersRound },
   owner_catalog: { key: 'owner.section.catalog', icon: LayoutList },
   owner_vendors: { key: 'owner.section.vendors', icon: Handshake },
@@ -63,7 +61,7 @@ const SECTION_META: Record<Section, { key: string; icon: NonNullable<TabDef['ico
   owner_fin: { key: 'owner.section.fin', icon: Coins },
 }
 
-const OWNER_SECTIONS: Section[] = ['owner_exec', 'owner_orders', 'owner_supply', 'owner_products', 'owner_customers', 'owner_catalog', 'owner_vendors', 'owner_export', 'owner_fin']
+const OWNER_SECTIONS: Section[] = ['owner_exec', 'owner_orders', 'owner_supply', 'owner_customers', 'owner_catalog', 'owner_vendors', 'owner_export', 'owner_fin']
 
 // Owner sections that expand into nested sidebar sub-tabs, mapped to their sub-views (id + bilingual label).
 // The active sub-view is carried in a shared `?sub=` URL param and passed down to the panel as `view`.
@@ -86,7 +84,6 @@ const FIN_VIEWS: SubView[] = [
 ]
 const SUB_NAVS: Partial<Record<Section, SubView[]>> = {
   owner_supply: SUPPLY_VIEWS,
-  owner_products: CHANNEL_VIEWS,
   owner_catalog: CHANNEL_VIEWS,
   owner_fin: FIN_VIEWS,
 }
@@ -176,7 +173,6 @@ export function AdminConsole() {
         {active === 'owner_exec' && <OwnerExec />}
         {active === 'owner_orders' && <OwnerOrders />}
         {active === 'owner_supply' && <OwnerSupply view={(sub ?? 'po') as SupplyView} />}
-        {active === 'owner_products' && <OwnerProducts view={(sub ?? 'b2c') as ProdChannel} />}
         {active === 'owner_customers' && <OwnerCustomers />}
         {active === 'owner_catalog' && <OwnerCatalog view={(sub ?? 'b2c') as ProdChannel} />}
         {active === 'owner_vendors' && <OwnerVendors />}
