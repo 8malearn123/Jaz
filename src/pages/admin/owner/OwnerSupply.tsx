@@ -170,8 +170,9 @@ function WastePanel({ flash }: { flash: (m: string) => void }) {
 }
 
 /** Record a waste event: pick the stock item (raw or finished), qty capped at what's available,
- *  a justification (predefined or free text) — loss is valued automatically, entry is signed. */
-function RecordWasteModal({ flash, onClose }: { flash: (m: string) => void; onClose: () => void }) {
+ *  a justification (predefined or free text) — loss is valued automatically, entry is signed.
+ *  Shared with the Finance waste ledger. */
+export function RecordWasteModal({ flash, onClose }: { flash: (m: string) => void; onClose: () => void }) {
   const { pick, money } = useLocale()
   const { rawQty, extraRaws, finished, recordWaste } = useOwnerState()
   const [scope, setScope] = useState<'raw' | 'finished'>('raw')

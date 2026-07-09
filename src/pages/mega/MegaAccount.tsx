@@ -13,7 +13,6 @@ import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
 import { useTab } from '@/lib/useTab'
 import { cn } from '@/lib/cn'
-import type { Bilingual } from '@/data/types'
 import {
   megaAccount, megaCatalog, megaVolumeTiers, volumeDiscount, trucksFor,
   shipFlow, SHIP_LAST, CANCEL_WINDOW_MS, megaCredit, megaStatements, megaInvoices, megaCompliance,
@@ -23,13 +22,16 @@ import {
 const TABS = ['overview', 'catalog', 'orders', 'shipments', 'finance'] as const
 type Tab = (typeof TABS)[number]
 
-const DESTINATIONS: Bilingual[] = [
-  { en: 'Hamburg, DE', ar: 'هامبورغ، ألمانيا' },
-  { en: 'Dubai, UAE', ar: 'دبي، الإمارات' },
-  { en: 'Doha, QA', ar: 'الدوحة، قطر' },
-  { en: 'Kuwait City, KW', ar: 'مدينة الكويت' },
-  { en: 'Cairo, EG', ar: 'القاهرة، مصر' },
-]
+/** Fixed fulfilment notice: all MEGA orders are picked up at the site — no branch delivery. */
+function PickupNotice() {
+  const { pick } = useLocale()
+  return (
+    <div className="rounded-md border border-hairline bg-surface-2 px-md py-sm font-sans text-caption text-ink-muted inline-flex items-start gap-xs">
+      <MapPin size={13} className="shrink-0 mt-0.5" />
+      <span>{pick({ en: 'Receiving: pickup from the site — Jaz plant, Jazan (EXW). No branch delivery.', ar: 'الاستلام: من الموقع — مصنع جاز، جيزان (EXW). لا يوجد تسليم للفرع.' })}</span>
+    </div>
+  )
+}
 
 export function MegaAccount() {
   return (
@@ -161,7 +163,6 @@ function DraftCard({ onTab }: { onTab: (id: string) => void }) {
   const { pick, money } = useLocale()
   const { draft, draftPallets, draftCbm, draftValueMinor, placeOrder, clearDraft } = useMegaState()
   const { flash } = useToast()
-  const [dest, setDest] = useState(0)
   const lines = Object.entries(draft)
 
   return (
@@ -189,13 +190,9 @@ function DraftCard({ onTab }: { onTab: (id: string) => void }) {
             <span className="font-sans text-data text-ink-muted">{pick({ en: 'Total', ar: 'الإجمالي' })}</span>
             <span className="font-serif text-card-title text-ink tabular-nums">{money(draftValueMinor)}</span>
           </div>
-          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Destination', ar: 'الوجهة' })}</span>
-            <select value={dest} onChange={(e) => setDest(Number(e.target.value))} className="input cursor-pointer">
-              {DESTINATIONS.map((d, i) => <option key={i} value={i}>{pick(d)}</option>)}
-            </select>
-          </label>
+          <PickupNotice />
           <div className="flex items-center gap-sm">
-            <button onClick={() => { const id = placeOrder(DESTINATIONS[dest]); if (id) { flash(`${pick({ en: 'Export order placed', ar: 'تم تقديم طلب التصدير' })} · ${id}`); onTab('orders') } }} className={buttonClass('primary', 'sm', 'flex-1')}>{pick({ en: 'Place export order', ar: 'تقديم طلب تصدير' })}</button>
+            <button onClick={() => { const id = placeOrder(); if (id) { flash(`${pick({ en: 'Export order placed', ar: 'تم تقديم طلب التصدير' })} · ${id}`); onTab('orders') } }} className={buttonClass('primary', 'sm', 'flex-1')}>{pick({ en: 'Place export order', ar: 'تقديم طلب تصدير' })}</button>
             <button onClick={clearDraft} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Clear', ar: 'مسح' })}</button>
           </div>
         </>
@@ -302,10 +299,9 @@ function ReviewOrderModal({ open, onClose, onTab }: { open: boolean; onClose: ()
   const { pick, money } = useLocale()
   const { draft, draftPallets, draftCbm, draftValueMinor, lineValueMinor, placeOrder } = useMegaState()
   const { flash } = useToast()
-  const [dest, setDest] = useState(0)
   const lines = Object.entries(draft)
   const place = () => {
-    const id = placeOrder(DESTINATIONS[dest])
+    const id = placeOrder()
     if (id) { flash(`${pick({ en: 'Export order placed', ar: 'تم تقديم طلب التصدير' })} · ${id}`); onClose(); onTab('orders') }
   }
   return (
@@ -339,11 +335,7 @@ function ReviewOrderModal({ open, onClose, onTab }: { open: boolean; onClose: ()
             <Detail label={pick({ en: 'Volume', ar: 'الحجم' })} value={`${draftCbm.toFixed(1)} m³`} />
             <Detail label={pick({ en: 'Reefer trucks', ar: 'شاحنات مبرّدة' })} value={String(trucksFor(draftCbm))} />
           </div>
-          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Destination', ar: 'الوجهة' })}</span>
-            <select value={dest} onChange={(e) => setDest(Number(e.target.value))} className="input cursor-pointer">
-              {DESTINATIONS.map((d, i) => <option key={i} value={i}>{pick(d)}</option>)}
-            </select>
-          </label>
+          <PickupNotice />
           <div className="flex items-center justify-between rounded-lg bg-surface-2 border border-hairline px-md py-sm">
             <span className="font-sans text-data text-ink-muted">{pick({ en: 'Order total', ar: 'إجمالي الطلب' })} · {pick(megaCredit.terms)}</span>
             <span className="font-serif text-headline text-ink tabular-nums">{money(draftValueMinor)}</span>
@@ -367,7 +359,7 @@ function Orders() {
         <div className="overflow-x-auto">
           <table className="w-full border-collapse min-w-[680px]">
             <thead><tr className="bg-surface-2 border-b border-hairline">
-              {[{ en: 'Order', ar: 'الطلب' }, { en: 'Pallets', ar: 'طبليات' }, { en: 'Destination', ar: 'الوجهة' }, { en: 'Incoterm', ar: 'التسليم' }, { en: 'Value', ar: 'القيمة' }, { en: 'Status', ar: 'الحالة' }].map((h, i) => (
+              {[{ en: 'Order', ar: 'الطلب' }, { en: 'Pallets', ar: 'طبليات' }, { en: 'Receiving', ar: 'الاستلام' }, { en: 'Incoterm', ar: 'الشروط' }, { en: 'Value', ar: 'القيمة' }, { en: 'Status', ar: 'الحالة' }].map((h, i) => (
                 <th key={i} className={cn('font-sans text-caption uppercase tracking-wide text-ink-subtle px-lg py-2.5', i > 0 && i < 4 ? 'text-center' : i >= 4 ? 'text-end' : 'text-start')}>{pick(h)}</th>
               ))}
             </tr></thead>
