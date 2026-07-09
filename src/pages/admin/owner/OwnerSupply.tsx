@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react'
-import { Lock, ClipboardCheck, Check, Plus, Eye, FileText } from 'lucide-react'
+import { Lock, ClipboardCheck, Check, Plus, Eye, FileText, X } from 'lucide-react'
 import { useLocale, toAsciiDigits } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
@@ -25,7 +25,7 @@ const matchMeta: Record<PurchaseMatch, { label: { en: string; ar: string }; colo
 export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' | 'suppliers' }) {
   const { pick, money } = useLocale()
   const { flash } = useToast()
-  const { invoices, reconcileInvoice, addPurchaseInvoice } = useOwnerState()
+  const { invoices, reconcileInvoice, receivePurchase } = useOwnerState()
   const [invoiceOpen, setInvoiceOpen] = useState(false)
 
   const matched = invoices.filter((iv) => iv.match === 'matched').length
@@ -95,7 +95,7 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
 
           {invoiceOpen && (
             <EnterInvoiceModal onClose={() => setInvoiceOpen(false)}
-              onSubmit={(payload) => { addPurchaseInvoice(payload); flash(`${pick({ en: 'Invoice entered · stock updated', ar: 'أُدخلت الفاتورة · حُدّث المخزون' })}`) }} />
+              onSubmit={(payload) => { receivePurchase(payload); flash(`${pick({ en: 'Invoice entered · stock updated', ar: 'أُدخلت الفاتورة · حُدّث المخزون' })}`) }} />
           )}
         </div>
       )}
@@ -109,44 +109,94 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
   )
 }
 
-/** Enter a supplier invoice against a raw-material line. On submit it restocks that material and records the cost. */
-function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { supplier: Bilingual; material: Bilingual; date: Bilingual; totalMinor: number; po?: string; rawKey: RawKey; qty: number }) => void }) {
-  const { pick } = useLocale()
-  const [supplier, setSupplier] = useState('')
+/** Enter a supplier invoice with line items — each line is assigned to a stock product
+ *  and restocks it on entry; totals (subtotal, VAT, extra cost) are computed live. */
+function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[] }) => void }) {
+  const { pick, money } = useLocale()
+  const { suppliers, extraRaws } = useOwnerState()
+  type Line = { itemId: string; qty: number; cost: number }
+  const [supplierId, setSupplierId] = useState(suppliers[0]?.id ?? '')
   const [po, setPo] = useState('')
-  const [rawKey, setRawKey] = useState<RawKey>('cacao')
-  const [qty, setQty] = useState(0)
-  const [value, setValue] = useState(0)
-  const mat = rawMaterials.find((r) => r.key === rawKey)!
-  const valid = supplier.trim() !== '' && qty > 0 && value > 0
-  const reset = () => { setSupplier(''); setPo(''); setRawKey('cacao'); setQty(0); setValue(0) }
+  const [extraCost, setExtraCost] = useState(0)
+  const [lines, setLines] = useState<Line[]>([{ itemId: 'cacao', qty: 0, cost: 0 }])
+
+  const items = [
+    ...rawMaterials.map((r) => ({ id: r.key as string, name: r.name, unit: r.unit })),
+    ...extraRaws.map((x) => ({ id: x.id, name: x.name, unit: x.unit })),
+  ]
+  const itemOf = (id: string) => items.find((i) => i.id === id)
+  const supplier = suppliers.find((s) => s.id === supplierId) ?? null
+  const subtotal = lines.reduce((a, l) => a + l.cost, 0)
+  const vat = Math.round(subtotal * 0.15)
+  const total = subtotal + vat + extraCost
+  const valid = !!supplier && lines.length > 0 && lines.every((l) => itemOf(l.itemId) && l.qty > 0 && l.cost > 0)
+
+  const setLine = (i: number, patch: Partial<Line>) => setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
+  const addLine = () => setLines((prev) => [...prev, { itemId: items[0].id, qty: 0, cost: 0 }])
+  const removeLine = (i: number) => setLines((prev) => prev.filter((_, idx) => idx !== i))
 
   const submit = () => {
-    onSubmit({ supplier: { en: supplier.trim(), ar: supplier.trim() }, material: mat.name, date: { en: 'Today', ar: 'اليوم' }, totalMinor: value * 100, po: po.trim() || undefined, rawKey, qty })
-    reset(); onClose()
+    if (!supplier) return
+    onSubmit({ supplier: supplier.name, po: po.trim() || undefined, totalMinor: total * 100, lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty, costMinor: l.cost * 100 })) })
+    onClose()
   }
 
   return (
-    <Modal open onClose={onClose} size="md" eyebrow={pick({ en: 'Supply', ar: 'الإمداد' })} title={pick({ en: 'Enter purchase invoice', ar: 'إدخال فاتورة مشتريات' })}
+    <Modal open onClose={onClose} size="lg" eyebrow={pick({ en: 'Supply', ar: 'الإمداد' })} title={pick({ en: 'Enter purchase invoice', ar: 'إدخال فاتورة مشتريات' })}
       footer={<>
         <button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button>
         <button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}>{pick({ en: 'Enter invoice', ar: 'إدخال الفاتورة' })}</button>
       </>}>
       <div className="flex flex-col gap-md">
         <div className="grid grid-cols-2 gap-md">
-          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Supplier', ar: 'المورّد' })}</span><input value={supplier} onChange={(e) => setSupplier(e.target.value)} className="input" placeholder={pick({ en: 'e.g. Barry Callebaut', ar: 'مثال: باري كاليبو' })} /></label>
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Supplier', ar: 'المورّد' })}</span>
+            <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className="input cursor-pointer">
+              {suppliers.map((s) => <option key={s.id} value={s.id}>{pick(s.name)}</option>)}
+            </select>
+          </label>
           <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'PO number (optional)', ar: 'أمر الشراء (اختياري)' })}</span><input value={po} onChange={(e) => setPo(e.target.value)} className="input" placeholder="PO-2048" /></label>
         </div>
-        <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Raw material', ar: 'المادة الخام' })}</span>
-          <select value={rawKey} onChange={(e) => setRawKey(e.target.value as RawKey)} className="input cursor-pointer">{rawMaterials.map((r) => <option key={r.key} value={r.key}>{pick(r.name)}</option>)}</select>
-        </label>
-        <div className="grid grid-cols-2 gap-md">
-          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Quantity received', ar: 'الكمية المستلمة' })} · {pick(mat.unit)}</span><input value={qty || ''} onChange={(e) => setQty(parseNum(e.target.value))} className="input tabular-nums" inputMode="numeric" placeholder="0" /></label>
-          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Value incl. VAT (﷼)', ar: 'القيمة شامل الضريبة (﷼)' })}</span><input value={value || ''} onChange={(e) => setValue(parseNum(e.target.value))} className="input tabular-nums" inputMode="numeric" placeholder="0" /></label>
+
+        {/* invoice lines — each assigned to a stock item */}
+        <div className="flex flex-col gap-xs">
+          <div className="flex items-center justify-between">
+            <span className="label">{pick({ en: 'Stock items', ar: 'مواد المخزون' })} · {lines.length}</span>
+            <button type="button" onClick={addLine} className="link-gold text-caption">＋ {pick({ en: 'Add line', ar: 'إضافة صنف' })}</button>
+          </div>
+          <div className="rounded-md border border-hairline-strong divide-y divide-hairline">
+            {lines.map((l, i) => {
+              const it = itemOf(l.itemId)
+              return (
+                <div key={i} className="flex flex-wrap items-end gap-sm px-3 py-2">
+                  <label className="flex flex-col gap-xxs flex-1 min-w-[160px]"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Assigned to stock product', ar: 'مُسكَّن على منتج المخزون' })}</span>
+                    <select value={l.itemId} onChange={(e) => setLine(i, { itemId: e.target.value })} className="input py-1.5 cursor-pointer">
+                      {items.map((it2) => <option key={it2.id} value={it2.id}>{pick(it2.name)}</option>)}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-xxs w-24"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Qty', ar: 'الكمية' })}{it && ` (${pick(it.unit)})`}</span>
+                    <input value={l.qty || ''} onChange={(e) => setLine(i, { qty: parseNum(e.target.value) })} className="input py-1.5 tabular-nums" inputMode="numeric" placeholder="0" />
+                  </label>
+                  <label className="flex flex-col gap-xxs w-28"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Cost (﷼)', ar: 'التكلفة (﷼)' })}</span>
+                    <input value={l.cost || ''} onChange={(e) => setLine(i, { cost: parseNum(e.target.value) })} className="input py-1.5 tabular-nums" inputMode="numeric" placeholder="0" />
+                  </label>
+                  <button type="button" onClick={() => removeLine(i)} disabled={lines.length === 1} className="grid place-items-center w-8 h-8 rounded-md text-ink-subtle hover:text-danger disabled:opacity-30 shrink-0 mb-0.5" aria-label={pick({ en: 'Remove line', ar: 'إزالة الصنف' })}><X size={15} /></button>
+                </div>
+              )
+            })}
+          </div>
         </div>
+
+        {/* computed totals */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-md rounded-lg bg-surface-2 border border-hairline p-md">
+          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Subtotal', ar: 'المجموع الفرعي' })}</span><span className="font-sans text-data text-ink tabular-nums">{money(subtotal * 100)}</span></div>
+          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'VAT 15%', ar: 'الضريبة ١٥٪' })}</span><span className="font-sans text-data text-ink tabular-nums">{money(vat * 100)}</span></div>
+          <label className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Extra cost (﷼)', ar: 'التكلفة الإضافية (﷼)' })}</span><input value={extraCost || ''} onChange={(e) => setExtraCost(parseNum(e.target.value))} className="input py-1.5 tabular-nums" inputMode="numeric" placeholder="0" /></label>
+          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Total', ar: 'الإجمالي' })}</span><span className="font-serif text-card-title text-ink tabular-nums">{money(total * 100)}</span></div>
+        </div>
+
         <p className="font-sans text-caption rounded-lg bg-surface-2 border border-hairline p-md text-ink-subtle">
           {po.trim()
-            ? pick({ en: `On entry: ${mat.name.en} stock rises by ${qty || 0} ${mat.unit.en} and the invoice awaits 3-way match.`, ar: `عند الإدخال: يرتفع مخزون ${mat.name.ar} بمقدار ${qty || 0} ${mat.unit.ar} وتنتظر الفاتورة المطابقة الثلاثية.` })
+            ? pick({ en: 'On entry: every line restocks its assigned stock product, and the invoice awaits 3-way match.', ar: 'عند الإدخال: يرتفع رصيد كل منتج مخزون مُسكَّن عليه صنف، وتنتظر الفاتورة المطابقة الثلاثية.' })
             : pick({ en: 'No PO — the invoice will be flagged as a variance for review (stock still updates).', ar: 'بدون أمر شراء — ستُعلَّم الفاتورة كفرق يتطلّب مراجعة (يُحدَّث المخزون رغم ذلك).' })}
         </p>
       </div>
