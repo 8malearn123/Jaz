@@ -4,9 +4,10 @@ import { useLocale } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { RankedBars } from '@/components/charts/Charts'
 import {
-  finBase, finGrossMinor, opexRows, recalIngredients, cogsProducts,
+  finBase, finGrossMinor, opexRows, cogsProducts,
   collectionRows, taxCard, receivables,
 } from '@/data/ownerFinance'
+import { rawMaterials, stockUnits, unitFactor, type RawKey } from '@/data/ownerSupply'
 import { RecordWasteModal } from './OwnerSupply'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { cn } from '@/lib/cn'
@@ -14,10 +15,16 @@ import { PanelHead, StatCard, UtilBar } from './_shared'
 
 type FinTab = 'overview' | 'cost' | 'tax' | 'waste'
 
+const finNorm = (s: string) => s.trim().toLowerCase()
+const finMatches = (q: string, name: { en: string; ar: string }) => finNorm(name.ar).includes(finNorm(q)) || finNorm(name.en).includes(finNorm(q))
+
 /** Finance panel. The active sub-view is driven by the sidebar sub-nav (see AdminConsole). */
 export function OwnerFinance({ view = 'overview' }: { view?: FinTab }) {
   const { pick, money } = useLocale()
-  const { cocoaDelta: cocoa, setCocoa, netProfitMinor, wasteTotalMinor } = useOwnerState()
+  const { cocoaDelta: cocoa, setCocoa, netProfitMinor, wasteTotalMinor, products, bomOf } = useOwnerState()
+  // Recalibration product picker (search-as-you-type over products that have a recipe).
+  const [recalQ, setRecalQ] = useState('')
+  const [recalSku, setRecalSku] = useState('BOX-JASMINE')
 
   const pctOfRev = (m: number) => `${Math.round((m / finBase.revenueMinor) * 100)}%`
 
@@ -54,9 +61,27 @@ export function OwnerFinance({ view = 'overview' }: { view?: FinTab }) {
 
       {view === 'cost' && (() => {
         const factor = 1 + cocoa / 100
-        const oldCogs = recalIngredients.reduce((a, r) => a + r.costMinor, 0)
-        const newCogs = recalIngredients.reduce((a, r) => a + (r.cocoaLinked ? Math.round(r.costMinor * factor) : r.costMinor), 0)
         const up = cocoa >= 0
+        // Recalibration rows come from the selected product's real recipe: qty per unit ×
+        // the raw's purchase-derived unit cost (landed cost converted to the stock unit).
+        const producible = [...products.b2c, ...products.b2b, ...products.mega].filter((p) => Object.keys(bomOf(p.sku)).length > 0)
+        const selProd = producible.find((p) => p.sku === recalSku) ?? null
+        const recalMatches = !selProd && recalQ.trim() !== '' ? producible.filter((p) => finMatches(recalQ, p.name)).slice(0, 6) : []
+        const rawUnitCost = (k: RawKey) => {
+          const r = rawMaterials.find((x) => x.key === k)!
+          const cu = stockUnits.find((u) => u.label.en === r.costUnit.en || u.label.ar === r.costUnit.ar)
+          const su = stockUnits.find((u) => u.label.en === r.unit.en || u.label.ar === r.unit.ar)
+          return Math.round(r.landedMinor / Math.max(1, cu && su ? unitFactor(cu.key, su.key) : 1))
+        }
+        const rows = selProd
+          ? (Object.keys(bomOf(selProd.sku)) as RawKey[]).map((k) => {
+            const r = rawMaterials.find((x) => x.key === k)!
+            const per = bomOf(selProd.sku)[k]!
+            return { name: r.name, qty: per, unit: r.unit, costMinor: Math.round(per * rawUnitCost(k)), cocoaLinked: k === 'cacao' }
+          })
+          : []
+        const oldCogs = rows.reduce((a, r) => a + r.costMinor, 0)
+        const newCogs = rows.reduce((a, r) => a + (r.cocoaLinked ? Math.round(r.costMinor * factor) : r.costMinor), 0)
         return (
           <div className="flex flex-col gap-lg">
             <div className="rounded-xl p-lg text-ink-on-dark" style={{ background: 'linear-gradient(160deg,#2b2019,#17120f)' }}>
@@ -69,20 +94,48 @@ export function OwnerFinance({ view = 'overview' }: { view?: FinTab }) {
             </div>
 
             <div className="card p-lg flex flex-col gap-sm">
-              <h3 className="font-serif text-card-title text-ink mb-xs">{pick({ en: 'Recalibration · Jasmine luxury box', ar: 'إعادة معايرة · بوكس الفُل الفاخر' })}</h3>
-              {recalIngredients.map((r, i) => {
-                const nv = r.cocoaLinked ? Math.round(r.costMinor * factor) : r.costMinor
-                return (
-                  <div key={i} className="flex items-center justify-between py-1.5">
-                    <span className="font-sans text-data text-ink-muted">{pick(r.name)} {r.cocoaLinked && <span className="text-primary-hover text-caption">· {pick({ en: 'cocoa-linked', ar: 'مرتبط بالكاكاو' })}</span>}</span>
-                    <span className="font-sans text-data tabular-nums text-ink">{r.cocoaLinked && nv !== r.costMinor ? <><span className="text-ink-subtle line-through me-1">{money(r.costMinor, { withSymbol: false })}</span>{money(nv, { withSymbol: false })}</> : money(nv, { withSymbol: false })}</span>
+              {/* top search: pick the product to recalibrate */}
+              <div className="flex flex-col gap-xs mb-xs">
+                <input
+                  value={selProd ? pick(selProd.name) : recalQ}
+                  onChange={(e) => { setRecalSku(''); setRecalQ(e.target.value) }}
+                  className="input"
+                  placeholder={pick({ en: 'Search for a product to recalibrate…', ar: 'ابحث عن منتج لإعادة معايرته…' })}
+                />
+                {recalMatches.length > 0 && (
+                  <div className="rounded-md border border-hairline bg-surface-1 shadow-soft max-h-40 overflow-y-auto divide-y divide-hairline">
+                    {recalMatches.map((p) => (
+                      <button key={p.sku} type="button" onClick={() => { setRecalSku(p.sku); setRecalQ('') }} className="w-full flex items-center justify-between gap-sm px-3 py-2 text-start hover:bg-surface-2 transition-colors">
+                        <span className="font-sans text-data text-ink truncate">{pick(p.name)}</span>
+                        <span className="font-sans text-caption text-ink-subtle shrink-0">{pick(p.category)}</span>
+                      </button>
+                    ))}
                   </div>
-                )
-              })}
-              <div className="flex items-center justify-between border-t border-hairline pt-sm mt-xs">
-                <span className="font-sans text-data text-ink font-medium">{pick({ en: 'Unit COGS', ar: 'تكلفة الوحدة' })}</span>
-                <span className="font-sans text-data tabular-nums">{oldCogs !== newCogs ? <><span className="text-ink-subtle line-through me-1">{money(oldCogs)}</span><span className={cn('font-semibold', newCogs > oldCogs ? 'text-danger' : 'text-success')}>{money(newCogs)}</span></> : money(newCogs)}</span>
+                )}
+                {!selProd && recalQ.trim() !== '' && recalMatches.length === 0 && (
+                  <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'No product with a recipe matches', ar: 'لا يوجد منتج بوصفة مكونات مطابق' })}</p>
+                )}
               </div>
+              {selProd ? (
+                <>
+                  <h3 className="font-serif text-card-title text-ink mb-xs">{pick({ en: 'Recalibration', ar: 'إعادة معايرة' })} · {pick(selProd.name)}</h3>
+                  {rows.map((r, i) => {
+                    const nv = r.cocoaLinked ? Math.round(r.costMinor * factor) : r.costMinor
+                    return (
+                      <div key={i} className="flex items-center justify-between py-1.5">
+                        <span className="font-sans text-data text-ink-muted">{pick(r.name)} <span className="text-ink-subtle text-caption tabular-nums">· {r.qty.toLocaleString()} {pick(r.unit)}</span> {r.cocoaLinked && <span className="text-primary-hover text-caption">· {pick({ en: 'cocoa-linked', ar: 'مرتبط بالكاكاو' })}</span>}</span>
+                        <span className="font-sans text-data tabular-nums text-ink">{r.cocoaLinked && nv !== r.costMinor ? <><span className="text-ink-subtle line-through me-1">{money(r.costMinor)}</span>{money(nv)}</> : money(nv)}</span>
+                      </div>
+                    )
+                  })}
+                  <div className="flex items-center justify-between border-t border-hairline pt-sm mt-xs">
+                    <span className="font-sans text-data text-ink font-medium">{pick({ en: 'Unit COGS', ar: 'تكلفة الوحدة' })}</span>
+                    <span className="font-sans text-data tabular-nums">{oldCogs !== newCogs ? <><span className="text-ink-subtle line-through me-1">{money(oldCogs)}</span><span className={cn('font-semibold', newCogs > oldCogs ? 'text-danger' : 'text-success')}>{money(newCogs)}</span></> : money(newCogs)}</span>
+                  </div>
+                </>
+              ) : (
+                <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Search and pick a product to see its ingredient costs.', ar: 'ابحث واختر منتجًا لعرض تكلفة مكوّناته.' })}</p>
+              )}
             </div>
 
             <div className="grid sm:grid-cols-3 gap-sm">
