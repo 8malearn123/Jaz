@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import type { Bilingual } from '@/data/types'
 import {
-  rawMaterials, type PurchaseMatch, type RawKey, type ExtraRaw,
+  rawMaterials, stockUnits, unitFactor, type PurchaseMatch, type RawKey, type ExtraRaw,
 } from '@/data/ownerSupply'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { cn } from '@/lib/cn'
@@ -548,37 +548,105 @@ function StockTakeModal({ flash, onClose }: { flash: (m: string) => void; onClos
   )
 }
 
-/** Add an owner-tracked stock product (inventory overlay — not part of the production recipe). */
+const NEW_CAT = '__new__'
+// Decimal-friendly parser (the conversion factor and purchased qty can be fractional, e.g. 0.8 ton).
+const parseDec = (s: string) => Math.max(0, parseFloat(toAsciiDigits(s).replace(/[^\d.]/g, '')) || 0)
+
+/** Add an owner-tracked stock product (inventory overlay — not part of the production recipe).
+ *  Units come from a fixed list with a purchase→stock conversion factor; the unit cost is
+ *  derived from the entered purchase invoice, never typed by hand. */
 function AddMaterialModal({ category, cats, onClose, onSubmit }: { category?: Bilingual; cats: Bilingual[]; onClose: () => void; onSubmit: (m: Omit<ExtraRaw, 'id'>) => void }) {
-  const { pick } = useLocale()
+  const { pick, money } = useLocale()
+  const { suppliers, addPurchaseInvoice } = useOwnerState()
   const [name, setName] = useState('')
-  const [catStr, setCatStr] = useState(category ? pick(category) : (cats[0] ? pick(cats[0]) : ''))
-  const [unit, setUnit] = useState('')
-  const [qty, setQty] = useState(0)
+  const [catStr, setCatStr] = useState(category ? pick(category) : (cats[0] ? pick(cats[0]) : NEW_CAT))
+  const [newCat, setNewCat] = useState('')
+  const [stockUnit, setStockUnit] = useState('kg')
+  const [buyUnit, setBuyUnit] = useState('ton')
+  const [factorStr, setFactorStr] = useState(String(unitFactor('ton', 'kg')))
+  const [supplierId, setSupplierId] = useState(suppliers[0]?.id ?? '')
+  const [buyQtyStr, setBuyQtyStr] = useState('')
+  const [total, setTotal] = useState(0)
   const [reorderQty, setReorderQty] = useState(0)
-  const [cost, setCost] = useState(0)
-  const valid = name.trim() !== '' && catStr.trim() !== '' && unit.trim() !== '' && cost > 0 && reorderQty > 0
+
+  const su = stockUnits.find((u) => u.key === stockUnit)!
+  const bu = stockUnits.find((u) => u.key === buyUnit)!
+  const factor = parseDec(factorStr)
+  const buyQty = parseDec(buyQtyStr)
+  const stockQty = Math.round(buyQty * factor)
+  const costMinor = stockQty > 0 && total > 0 ? Math.round((total * 100) / stockQty) : 0
+  const supplier = suppliers.find((s) => s.id === supplierId) ?? null
+  const catName = catStr === NEW_CAT ? newCat.trim() : catStr.trim()
+
+  const changeUnit = (kind: 'stock' | 'buy', key: string) => {
+    const nextStock = kind === 'stock' ? key : stockUnit
+    const nextBuy = kind === 'buy' ? key : buyUnit
+    if (kind === 'stock') setStockUnit(key); else setBuyUnit(key)
+    setFactorStr(String(unitFactor(nextBuy, nextStock)))
+  }
+
+  const valid = name.trim() !== '' && catName !== '' && !!supplier && factor > 0 && buyQty > 0 && total > 0 && reorderQty > 0
   const submit = () => {
-    const catBi = cats.find((c) => pick(c) === catStr.trim()) ?? { en: catStr.trim(), ar: catStr.trim() }
-    const unitBi = { en: unit.trim(), ar: unit.trim() }
-    onSubmit({ name: { en: name.trim(), ar: name.trim() }, category: catBi, unit: unitBi, costUnit: unitBi, costMinor: cost * 100, qty, reorderQty })
+    if (!supplier) return
+    const nameBi = { en: name.trim(), ar: name.trim() }
+    const catBi = cats.find((c) => pick(c) === catName) ?? { en: catName, ar: catName }
+    onSubmit({ name: nameBi, category: catBi, unit: su.label, costUnit: su.label, costMinor, qty: stockQty, reorderQty })
+    addPurchaseInvoice({ supplier: supplier.name, material: nameBi, date: { en: 'Now', ar: 'الآن' }, totalMinor: total * 100 })
     onClose()
   }
   return (
-    <Modal open onClose={onClose} size="md" eyebrow={pick({ en: 'Raw stock', ar: 'المخزون الخام' })} title={pick({ en: 'Add stock product', ar: 'إضافة منتج مخزون' })}
+    <Modal open onClose={onClose} size="lg" eyebrow={pick({ en: 'Raw stock', ar: 'المخزون الخام' })} title={pick({ en: 'Add stock product', ar: 'إضافة منتج مخزون' })}
       footer={<><button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button><button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}>{pick({ en: 'Add', ar: 'إضافة' })}</button></>}>
       <div className="flex flex-col gap-md">
         <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Material name', ar: 'اسم المادة' })}</span><input value={name} onChange={(e) => setName(e.target.value)} className="input" placeholder={pick({ en: 'e.g. Hazelnut paste', ar: 'مثال: معجون بندق' })} /></label>
         <div className="grid grid-cols-2 gap-md">
-          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Category', ar: 'التصنيف' })}</span><select value={catStr} onChange={(e) => setCatStr(e.target.value)} className="input cursor-pointer">{cats.map((c, i) => <option key={i} value={pick(c)}>{pick(c)}</option>)}</select></label>
-          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Unit', ar: 'الوحدة' })}</span><input value={unit} onChange={(e) => setUnit(e.target.value)} className="input" placeholder={pick({ en: 'kg / roll / ton', ar: 'كجم / لفة / طن' })} /></label>
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Category', ar: 'التصنيف' })}</span>
+            <select value={catStr} onChange={(e) => setCatStr(e.target.value)} className="input cursor-pointer">
+              {cats.map((c, i) => <option key={i} value={pick(c)}>{pick(c)}</option>)}
+              <option value={NEW_CAT}>+ {pick({ en: 'New category…', ar: 'تصنيف جديد…' })}</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Supplier', ar: 'المورّد' })}</span>
+            <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className="input cursor-pointer">
+              {suppliers.map((s) => <option key={s.id} value={s.id}>{pick(s.name)}</option>)}
+            </select>
+          </label>
+        </div>
+        {catStr === NEW_CAT && (
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'New category name', ar: 'اسم التصنيف الجديد' })}</span><input value={newCat} onChange={(e) => setNewCat(e.target.value)} className="input" placeholder={pick({ en: 'e.g. Inclusions', ar: 'مثال: إضافات' })} /></label>
+        )}
+        <div className="grid grid-cols-3 gap-md">
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Stock unit', ar: 'وحدة المخزون' })}</span>
+            <select value={stockUnit} onChange={(e) => changeUnit('stock', e.target.value)} className="input cursor-pointer">
+              {stockUnits.map((u) => <option key={u.key} value={u.key}>{pick(u.label)}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Purchase unit', ar: 'وحدة الشراء' })}</span>
+            <select value={buyUnit} onChange={(e) => changeUnit('buy', e.target.value)} className="input cursor-pointer">
+              {stockUnits.map((u) => <option key={u.key} value={u.key}>{pick(u.label)}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Conversion factor', ar: 'معامل التحويل' })}</span>
+            <input value={factorStr} onChange={(e) => setFactorStr(e.target.value)} className="input tabular-nums" inputMode="decimal" />
+            <span className="font-sans text-caption text-ink-subtle tabular-nums">1 {pick(bu.label)} = {factor.toLocaleString()} {pick(su.label)}</span>
+          </label>
         </div>
         <div className="grid grid-cols-3 gap-md">
-          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'On hand', ar: 'المتوفر' })}</span><input value={qty || ''} onChange={(e) => setQty(parseNum(e.target.value))} className="input tabular-nums" inputMode="numeric" placeholder="0" /></label>
-          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Reorder at', ar: 'نقطة الطلب' })}</span><input value={reorderQty || ''} onChange={(e) => setReorderQty(parseNum(e.target.value))} className="input tabular-nums" inputMode="numeric" placeholder="0" /></label>
-          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Cost (﷼)', ar: 'التكلفة (﷼)' })}</span><input value={cost || ''} onChange={(e) => setCost(parseNum(e.target.value))} className="input tabular-nums" inputMode="numeric" placeholder="0" /></label>
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Purchased qty', ar: 'الكمية المشتراة' })} ({pick(bu.label)})</span><input value={buyQtyStr} onChange={(e) => setBuyQtyStr(e.target.value)} className="input tabular-nums" inputMode="decimal" placeholder="0" /></label>
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Invoice total (﷼)', ar: 'إجمالي الفاتورة (﷼)' })}</span><input value={total || ''} onChange={(e) => setTotal(parseNum(e.target.value))} className="input tabular-nums" inputMode="numeric" placeholder="0" /></label>
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Reorder at', ar: 'نقطة الطلب' })} ({pick(su.label)})</span><input value={reorderQty || ''} onChange={(e) => setReorderQty(parseNum(e.target.value))} className="input tabular-nums" inputMode="numeric" placeholder="0" /></label>
         </div>
-        <p className="font-sans text-caption text-ink-subtle rounded-lg bg-surface-2 border border-hairline p-md">{pick({ en: 'Tracked for inventory only (balance, reorder point, cost) — not linked to the production recipe.', ar: 'يُتتبَّع للمخزون فقط (الرصيد ونقطة الطلب والتكلفة) — غير مرتبط بوصفة الإنتاج.' })}</p>
+        <div className="flex flex-wrap items-center justify-between gap-sm rounded-lg bg-surface-2 border border-hairline p-md">
+          <div className="flex flex-col gap-xxs">
+            <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'On hand', ar: 'المتوفر' })}</span>
+            <span className="font-sans text-data text-ink tabular-nums">{stockQty.toLocaleString()} {pick(su.label)}</span>
+          </div>
+          <div className="flex flex-col gap-xxs text-end">
+            <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Unit cost — from the purchase invoice', ar: 'تكلفة الوحدة — من فاتورة المشتريات' })}</span>
+            <span className="font-sans text-data text-ink tabular-nums">{costMinor > 0 ? `${money(costMinor)} / ${pick(su.label)}` : '—'}</span>
+          </div>
+        </div>
+        <p className="font-sans text-caption text-ink-subtle rounded-lg bg-surface-2 border border-hairline p-md">{pick({ en: 'The purchase invoice is recorded in procurement and the unit cost is derived from it automatically. Tracked for inventory only — not linked to the production recipe.', ar: 'تُسجَّل فاتورة المشتريات في سجل المشتريات وتُحسب تكلفة الوحدة منها تلقائيًا. يُتتبَّع للمخزون فقط — غير مرتبط بوصفة الإنتاج.' })}</p>
       </div>
     </Modal>
   )

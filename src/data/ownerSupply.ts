@@ -29,6 +29,25 @@ export const rawMaterials: RawMaterial[] = [
 // Owner-added stock items (inventory-only overlay; not part of the production BOM/buildable system).
 export interface ExtraRaw { id: string; name: Bilingual; category: Bilingual; unit: Bilingual; costUnit: Bilingual; costMinor: number; qty: number; reorderQty: number }
 
+// Stock/purchase units. Same-dimension pairs convert automatically (toBase ratio);
+// count units (carton → piece …) have no fixed ratio, so the factor stays manual.
+export interface StockUnit { key: string; label: Bilingual; dim: 'mass' | 'volume' | 'count'; toBase: number }
+export const stockUnits: StockUnit[] = [
+  { key: 'g', label: { en: 'g', ar: 'جم' }, dim: 'mass', toBase: 0.001 },
+  { key: 'kg', label: { en: 'kg', ar: 'كجم' }, dim: 'mass', toBase: 1 },
+  { key: 'ton', label: { en: 'ton', ar: 'طن' }, dim: 'mass', toBase: 1000 },
+  { key: 'ml', label: { en: 'ml', ar: 'مل' }, dim: 'volume', toBase: 0.001 },
+  { key: 'liter', label: { en: 'liter', ar: 'لتر' }, dim: 'volume', toBase: 1 },
+  { key: 'piece', label: { en: 'piece', ar: 'قطعة' }, dim: 'count', toBase: 1 },
+  { key: 'roll', label: { en: 'roll', ar: 'لفة' }, dim: 'count', toBase: 1 },
+  { key: 'carton', label: { en: 'carton', ar: 'كرتون' }, dim: 'count', toBase: 1 },
+  { key: 'bag', label: { en: 'bag', ar: 'كيس' }, dim: 'count', toBase: 1 },
+]
+export const unitFactor = (buyKey: string, stockKey: string): number => {
+  const b = stockUnits.find((u) => u.key === buyKey), s = stockUnits.find((u) => u.key === stockKey)
+  return b && s && b.dim === s.dim ? b.toBase / s.toBase : 1
+}
+
 // Raw availability (kg / units) the product buildable computation reads.
 export const rawAvail: Record<RawKey, number> = { cacao: 800, milk: 2400, sugar: 5100, foil: 1900 }
 
