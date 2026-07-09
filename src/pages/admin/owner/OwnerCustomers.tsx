@@ -14,7 +14,9 @@ const tierOf = (k: OwnerTier) => ownerTiers.find((t) => t.key === k)!
 export function OwnerCustomers() {
   const { pick, money } = useLocale()
   const { flash } = useToast()
-  const { customers, rewardCustomer } = useOwnerState()
+  const { customers: allCustomers, rewardCustomer } = useOwnerState()
+  // Loyalty is a B2C program — business (B2B) accounts live under their own sections.
+  const customers = allCustomers.filter((c) => c.type === 'B2C')
   const [tier, setTier] = useState<OwnerTier | 'all'>('all')
   const [detailId, setDetailId] = useState<string | null>(null)
   const detail = customers.find((c) => c.id === detailId) ?? null
