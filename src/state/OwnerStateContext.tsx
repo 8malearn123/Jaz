@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Bilingual } from '@/data/types'
 import { ownerOrdersSeed, ownerOrderStatuses, type OwnerOrder, type OwnerChannel, type OwnerOrderStage } from '@/data/ownerOrders'
-import { rawMaterials, finishedBatches, bomBySku, purchaseInvoices, suppliers as suppliersSeed, stockMovementsSeed, type RawKey, type FinishedBatch, type PurchaseInvoice, type ExtraRaw, type Supplier, type SupplierContact, type StockMovement, type StockTakeReport } from '@/data/ownerSupply'
+import { rawMaterials, finishedBatches, bomBySku, purchaseInvoices, suppliers as suppliersSeed, stockMovementsSeed, stockUnits, unitFactor, type RawKey, type FinishedBatch, type PurchaseInvoice, type ExtraRaw, type Supplier, type SupplierContact, type StockMovement, type StockTakeReport } from '@/data/ownerSupply'
 import { ownerProductsByChannel, type OwnerProduct, type ProdChannel } from '@/data/ownerProducts'
 import { ownerCustomers, ownerTiers, type OwnerCustomer, type OwnerTier } from '@/data/ownerCustomers'
 import { wasteLog as wasteSeed, finNetMinor, finBase, type WasteEntry } from '@/data/ownerFinance'
@@ -83,6 +83,9 @@ interface OwnerStateValue {
   // waste → finance
   wasteLog: WasteEntry[]
   logWaste: (e: { item: Bilingual; reason: Bilingual; lossMinor: number }) => void
+  // waste a raw or finished stock item: deducts stock, values the loss from purchases,
+  // logs a movement and records the entry under the acting account
+  recordWaste: (w: { scope: 'raw' | 'finished'; itemId: string; qty: number; reason: Bilingual }) => boolean
   wasteTotalMinor: number
   netProfitMinor: number
   // customers loyalty
@@ -341,6 +344,41 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     setWasteSeq((s) => s + 1)
     setWasteLog((prev) => [{ id, item: e.item, reason: e.reason, lossMinor: e.lossMinor, at: { en: 'Now', ar: 'الآن' } }, ...prev])
   }, [wasteSeq])
+  // Waste a stock item: deduct the stock, value the loss from purchase-derived unit cost,
+  // log an 'out' movement and record the waste entry under the acting account.
+  const recordWaste = useCallback((w: { scope: 'raw' | 'finished'; itemId: string; qty: number; reason: Bilingual }): boolean => {
+    if (w.qty <= 0) return false
+    const id = `w-${wasteSeq}`
+    const push = (item: Bilingual, lossMinor: number, unit?: Bilingual) => {
+      setWasteSeq((s) => s + 1)
+      setWasteLog((prev) => [{ id, item, reason: w.reason, lossMinor, at: { en: 'Now', ar: 'الآن' }, by: OWNER_BY, qty: w.qty, unit, scope: w.scope }, ...prev])
+    }
+    if (w.scope === 'finished') {
+      const b = finished.find((x) => x.code === w.itemId)
+      if (!b || w.qty > b.systemQty) return false
+      setFinished((prev) => prev.map((x) => (x.code === w.itemId ? { ...x, systemQty: x.systemQty - w.qty, countedQty: Math.max(0, x.countedQty - w.qty) } : x)))
+      push({ en: `${b.product.en} · ${b.code}`, ar: `${b.product.ar} · ${b.code}` }, Math.round(w.qty * b.unitMinor), { en: 'unit', ar: 'وحدة' })
+      return true
+    }
+    const seed = rawMaterials.find((r) => r.key === w.itemId)
+    if (seed) {
+      if (w.qty > rawQty[seed.key]) return false
+      const cu = stockUnits.find((u) => u.label.en === seed.costUnit.en || u.label.ar === seed.costUnit.ar)
+      const su = stockUnits.find((u) => u.label.en === seed.unit.en || u.label.ar === seed.unit.ar)
+      const perUnitMinor = Math.round(seed.landedMinor / Math.max(1, cu && su ? unitFactor(cu.key, su.key) : 1))
+      setRawQty((prev) => ({ ...prev, [seed.key]: prev[seed.key] - w.qty }))
+      logMovement({ itemId: seed.key, kind: 'out', qty: w.qty, note: { en: `Waste — ${w.reason.en}`, ar: `هدر — ${w.reason.ar}` } })
+      push(seed.name, Math.round(w.qty * perUnitMinor), seed.unit)
+      return true
+    }
+    const x = extraRaws.find((r) => r.id === w.itemId)
+    if (!x || w.qty > x.qty) return false
+    setExtraRaws((prev) => prev.map((r) => (r.id === w.itemId ? { ...r, qty: r.qty - w.qty } : r)))
+    logMovement({ itemId: x.id, kind: 'out', qty: w.qty, note: { en: `Waste — ${w.reason.en}`, ar: `هدر — ${w.reason.ar}` } })
+    push(x.name, Math.round(w.qty * x.costMinor), x.unit)
+    return true
+  }, [wasteSeq, finished, rawQty, extraRaws, logMovement]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const wasteTotalMinor = wasteLog.reduce((a, w) => a + w.lossMinor, 0)
   const netProfitMinor = finNetMinor + (finBase.wasteMinor - wasteTotalMinor) // base already subtracted seed waste; adjust to live
 
@@ -419,7 +457,7 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     stockTakeReports, addStockTakeReport, movements,
     suppliers, addSupplier,
     invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase,
-    wasteLog, logWaste, wasteTotalMinor, netProfitMinor,
+    wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor,
     customers, rewardCustomer,
     creditLimits, setCreditLimit,
     contracts, renewContract,
@@ -428,7 +466,7 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible,
     dismissedExpiry, dismissExpiry,
     cocoaDelta, setCocoa,
-  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, stockTakeReports, addStockTakeReport, movements, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, wasteLog, logWaste, wasteTotalMinor, netProfitMinor, customers, rewardCustomer, creditLimits, setCreditLimit, contracts, renewContract, approvals, advanceApproval, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, dismissedExpiry, dismissExpiry, cocoaDelta])
+  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, stockTakeReports, addStockTakeReport, movements, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor, customers, rewardCustomer, creditLimits, setCreditLimit, contracts, renewContract, approvals, advanceApproval, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, dismissedExpiry, dismissExpiry, cocoaDelta])
 
   return <OwnerStateContext.Provider value={value}>{children}</OwnerStateContext.Provider>
 }

@@ -66,12 +66,13 @@ const OWNER_SECTIONS: Section[] = ['owner_exec', 'owner_orders', 'owner_supply',
 // Owner sections that expand into nested sidebar sub-tabs, mapped to their sub-views (id + bilingual label).
 // The active sub-view is carried in a shared `?sub=` URL param and passed down to the panel as `view`.
 type SubView = { id: string; label: { en: string; ar: string } }
-export type SupplyView = 'po' | 'raw' | 'finished' | 'suppliers'
+export type SupplyView = 'po' | 'raw' | 'finished' | 'suppliers' | 'waste'
 const SUPPLY_VIEWS: SubView[] = [
   { id: 'po', label: { en: 'Purchases', ar: 'المشتريات' } },
   { id: 'raw', label: { en: 'Raw materials', ar: 'المواد الخام' } },
   { id: 'finished', label: { en: 'Finished goods', ar: 'المواد المصنعة' } },
   { id: 'suppliers', label: { en: 'Suppliers directory', ar: 'دليل المورّدين' } },
+  { id: 'waste', label: { en: 'Waste', ar: 'الهدر' } },
 ]
 // Products & Catalog both pivot on the three sales channels — reuse the shared channel labels.
 const CHANNEL_VIEWS: SubView[] = (['b2c', 'b2b', 'mega'] as ProdChannel[]).map((c) => ({ id: c, label: prodChannelMeta[c].label }))

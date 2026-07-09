@@ -1,13 +1,14 @@
 import { Fragment, useState } from 'react'
-import { Lock, ClipboardCheck, Check, Plus, Eye, FileText, X, Printer } from 'lucide-react'
+import { Lock, ClipboardCheck, Check, Plus, Eye, FileText, X, Printer, Trash2 } from 'lucide-react'
 import { useLocale, toAsciiDigits } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import type { Bilingual } from '@/data/types'
 import {
-  rawMaterials, stockUnits, type PurchaseMatch, type RawKey, type ExtraRaw, type Supplier, type StockTakeReport,
+  rawMaterials, stockUnits, unitFactor, type PurchaseMatch, type RawKey, type ExtraRaw, type Supplier, type StockTakeReport,
 } from '@/data/ownerSupply'
+import { wasteReasons } from '@/data/ownerFinance'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { cn } from '@/lib/cn'
 import { PanelHead, Pill, UtilBar } from './_shared'
@@ -22,7 +23,7 @@ const matchMeta: Record<PurchaseMatch, { label: { en: string; ar: string }; colo
 }
 
 /** Supply chain panel. The active sub-view is driven by the sidebar sub-nav (see AdminConsole). */
-export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' | 'suppliers' }) {
+export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' | 'suppliers' | 'waste' }) {
   const { pick, money } = useLocale()
   const { flash } = useToast()
   const { invoices, reconcileInvoice, receivePurchase } = useOwnerState()
@@ -105,7 +106,157 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
       {view === 'finished' && <FinishedGoods flash={flash} />}
 
       {view === 'suppliers' && <SuppliersDirectory flash={flash} />}
+
+      {view === 'waste' && <WastePanel flash={flash} />}
     </div>
+  )
+}
+
+/** Waste section: raw or finished stock written off with a justification, valued from
+ *  purchase-derived costs and recorded under the account that logged it. */
+function WastePanel({ flash }: { flash: (m: string) => void }) {
+  const { pick, money } = useLocale()
+  const { wasteLog, wasteTotalMinor } = useOwnerState()
+  const [open, setOpen] = useState(false)
+  const scopePill = { raw: { label: { en: 'Raw', ar: 'خام' }, color: '#8a6b3f', bg: '#f6edde' }, finished: { label: { en: 'Finished', ar: 'مصنّع' }, color: '#355c4b', bg: '#e8f0ec' } } as const
+  return (
+    <div className="flex flex-col gap-md">
+      <div className="flex flex-wrap items-start justify-between gap-md">
+        <div className="min-w-0">
+          <h3 className="font-serif text-card-title text-ink">{pick({ en: 'Waste', ar: 'الهدر' })}</h3>
+          <p className="font-sans text-caption text-ink-subtle mt-xxs">{pick({ en: 'Raw & finished write-offs · justified, stock-deducting, recorded under the acting account', ar: 'هدر المواد الخام والمصنعة · بمبرر موثق، يُخصم من المخزون، ويُسجَّل باسم الحساب' })}</p>
+        </div>
+        <button onClick={() => setOpen(true)} className={buttonClass('primary', 'sm')}><Trash2 size={15} /> {pick({ en: 'Record waste', ar: 'تسجيل هدر' })}</button>
+      </div>
+
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse min-w-[760px]">
+            <thead>
+              <tr className="bg-surface-2 border-b border-hairline">
+                {[{ h: { en: 'Item', ar: 'الصنف' }, a: 'text-start' }, { h: { en: 'Qty', ar: 'الكمية' }, a: 'text-end' }, { h: { en: 'Justification', ar: 'المبرر' }, a: 'text-start' }, { h: { en: 'Recorded by', ar: 'الحساب' }, a: 'text-start' }, { h: { en: 'Date', ar: 'التاريخ' }, a: 'text-start' }, { h: { en: 'Loss', ar: 'الخسارة' }, a: 'text-end' }].map((c, i) => (
+                  <th key={i} className={cn('font-sans text-caption uppercase tracking-wide text-ink-subtle px-lg py-2.5', c.a)}>{pick(c.h)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {wasteLog.map((w) => (
+                <tr key={w.id} className="border-b border-hairline last:border-0 hover:bg-surface-2/30 transition-colors">
+                  <td className="px-lg py-md">
+                    <div className="flex items-center gap-sm">
+                      <span className="font-sans text-data text-ink truncate max-w-[240px]">{pick(w.item)}</span>
+                      {w.scope && <Pill color={scopePill[w.scope].color} bg={scopePill[w.scope].bg}>{pick(scopePill[w.scope].label)}</Pill>}
+                    </div>
+                  </td>
+                  <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums whitespace-nowrap">{w.qty != null ? `${w.qty.toLocaleString()} ${w.unit ? pick(w.unit) : ''}` : '—'}</td>
+                  <td className="px-lg py-md font-sans text-data text-ink-muted">{pick(w.reason)}</td>
+                  <td className="px-lg py-md font-sans text-caption text-ink-muted">{w.by ? pick(w.by) : '—'}</td>
+                  <td className="px-lg py-md font-sans text-caption text-ink-subtle">{pick(w.at)}</td>
+                  <td className="px-lg py-md text-end font-sans text-data text-danger tabular-nums whitespace-nowrap">−{money(w.lossMinor)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="px-lg py-sm bg-surface-2 border-t border-hairline flex flex-wrap items-center justify-between gap-sm">
+          <span className="font-sans text-caption text-ink-muted">{wasteLog.length} {pick({ en: 'waste records · deducted from net profit in Finance', ar: 'سجل هدر · يُخصم من صافي الربح في المالية' })}</span>
+          <span className="font-sans text-caption text-danger tabular-nums">{pick({ en: 'Total loss', ar: 'إجمالي الخسارة' })} −{money(wasteTotalMinor)}</span>
+        </div>
+      </div>
+
+      {open && <RecordWasteModal flash={flash} onClose={() => setOpen(false)} />}
+    </div>
+  )
+}
+
+/** Record a waste event: pick the stock item (raw or finished), qty capped at what's available,
+ *  a justification (predefined or free text) — loss is valued automatically, entry is signed. */
+function RecordWasteModal({ flash, onClose }: { flash: (m: string) => void; onClose: () => void }) {
+  const { pick, money } = useLocale()
+  const { rawQty, extraRaws, finished, recordWaste } = useOwnerState()
+  const [scope, setScope] = useState<'raw' | 'finished'>('raw')
+  const [itemId, setItemId] = useState('')
+  const [q, setQ] = useState('')
+  const [qty, setQty] = useState(0)
+  const [reasonIdx, setReasonIdx] = useState(0)
+  const [otherReason, setOtherReason] = useState('')
+
+  const rawUnitCost = (r: (typeof rawMaterials)[number]) => {
+    const cu = stockUnits.find((u) => u.label.en === r.costUnit.en || u.label.ar === r.costUnit.ar)
+    const su = stockUnits.find((u) => u.label.en === r.unit.en || u.label.ar === r.unit.ar)
+    return Math.round(r.landedMinor / Math.max(1, cu && su ? unitFactor(cu.key, su.key) : 1))
+  }
+  const options: { id: string; name: Bilingual; sub: Bilingual; avail: number; unit: Bilingual; unitCostMinor: number }[] = scope === 'raw'
+    ? [
+      ...rawMaterials.map((r) => ({ id: r.key as string, name: r.name, sub: r.category, avail: rawQty[r.key], unit: r.unit, unitCostMinor: rawUnitCost(r) })),
+      ...extraRaws.map((x) => ({ id: x.id, name: x.name, sub: x.category, avail: x.qty, unit: x.unit, unitCostMinor: x.costMinor })),
+    ]
+    : finished.map((b) => ({ id: b.code, name: { en: `${b.product.en} · ${b.code}`, ar: `${b.product.ar} · ${b.code}` }, sub: { en: 'Production batch', ar: 'دفعة إنتاج' }, avail: b.systemQty, unit: { en: 'unit', ar: 'وحدة' }, unitCostMinor: b.unitMinor }))
+
+  const sel = options.find((o) => o.id === itemId) ?? null
+  const matches = !sel && q.trim() !== '' ? options.filter((o) => productMatches(q, o.name)).slice(0, 6) : []
+  const isOther = reasonIdx === wasteReasons.length
+  const reason: Bilingual = isOther ? { en: otherReason.trim(), ar: otherReason.trim() } : wasteReasons[reasonIdx]
+  const over = sel != null && qty > sel.avail
+  const lossMinor = sel && qty > 0 ? Math.round(qty * sel.unitCostMinor) : 0
+  const valid = !!sel && qty > 0 && !over && (!isOther || otherReason.trim() !== '')
+
+  const switchScope = (s: 'raw' | 'finished') => { setScope(s); setItemId(''); setQ(''); setQty(0) }
+  const submit = () => {
+    if (!sel) return
+    if (recordWaste({ scope, itemId: sel.id, qty, reason })) {
+      flash(`${pick({ en: 'Waste recorded', ar: 'سُجّل الهدر' })} · ${pick(sel.name)} − ${qty.toLocaleString()}`)
+      onClose()
+    }
+  }
+  return (
+    <Modal open onClose={onClose} size="md" eyebrow={pick({ en: 'Supply', ar: 'الإمداد' })} title={pick({ en: 'Record waste', ar: 'تسجيل هدر' })}
+      footer={<><button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button><button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}><Trash2 size={15} /> {pick({ en: 'Record waste', ar: 'تسجيل الهدر' })}</button></>}>
+      <div className="flex flex-col gap-md">
+        <div className="flex flex-col gap-xs">
+          <span className="label">{pick({ en: 'Stock type', ar: 'نوع المخزون' })}</span>
+          <div className="flex gap-xs">
+            {([['raw', { en: 'Raw materials', ar: 'مواد خام' }], ['finished', { en: 'Finished goods', ar: 'مواد مصنعة' }]] as const).map(([s, l]) => (
+              <button key={s} type="button" onClick={() => switchScope(s)} className={cn('rounded-md border px-3 py-2 font-sans text-caption transition-colors', scope === s ? 'bg-primary/10 border-primary text-primary-hover' : 'border-hairline-strong text-ink-muted hover:text-ink')}>{scope === s && '✓ '}{pick(l)}</button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-col gap-xs">
+          <span className="label">{pick({ en: 'Item', ar: 'الصنف' })}</span>
+          <input value={sel ? pick(sel.name) : q} onChange={(e) => { setItemId(''); setQ(e.target.value) }} className="input" placeholder={pick({ en: 'Type to search…', ar: 'اكتب للبحث…' })} />
+          {matches.length > 0 && (
+            <div className="rounded-md border border-hairline bg-surface-1 shadow-soft max-h-40 overflow-y-auto divide-y divide-hairline">
+              {matches.map((o) => (
+                <button key={o.id} type="button" onClick={() => { setItemId(o.id); setQ('') }} className="w-full flex items-center justify-between gap-sm px-3 py-2 text-start hover:bg-surface-2 transition-colors">
+                  <span className="min-w-0"><span className="block font-sans text-data text-ink truncate">{pick(o.name)}</span><span className="block font-sans text-caption text-ink-subtle truncate">{pick(o.sub)}</span></span>
+                  <span className="font-sans text-caption text-ink-subtle shrink-0 tabular-nums">{pick({ en: 'available', ar: 'المتوفر' })} {o.avail.toLocaleString()} {pick(o.unit)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {!sel && q.trim() !== '' && matches.length === 0 && <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'No matching item', ar: 'لا يوجد صنف مطابق' })}</p>}
+        </div>
+        <div className="grid grid-cols-2 gap-md">
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Wasted qty', ar: 'الكمية المهدرة' })}{sel && ` (${pick(sel.unit)})`}</span>
+            <input value={qty || ''} onChange={(e) => setQty(parseNum(e.target.value))} className={cn('input tabular-nums', over && 'border-danger')} inputMode="numeric" placeholder="0" disabled={!sel} />
+            {sel && <span className={cn('font-sans text-caption tabular-nums', over ? 'text-danger' : 'text-ink-subtle')}>{pick({ en: 'Available', ar: 'المتوفر' })}: {sel.avail.toLocaleString()} {pick(sel.unit)}</span>}
+          </label>
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Justification', ar: 'المبرر' })}</span>
+            <select value={reasonIdx} onChange={(e) => setReasonIdx(Number(e.target.value))} className="input cursor-pointer">
+              {wasteReasons.map((r, i) => <option key={i} value={i}>{pick(r)}</option>)}
+              <option value={wasteReasons.length}>{pick({ en: 'Other…', ar: 'أخرى…' })}</option>
+            </select>
+          </label>
+        </div>
+        {isOther && (
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Justification details', ar: 'تفاصيل المبرر' })}</span><input value={otherReason} onChange={(e) => setOtherReason(e.target.value)} className="input" placeholder={pick({ en: 'Why is this stock being written off?', ar: 'لماذا يُهدر هذا المخزون؟' })} /></label>
+        )}
+        <div className="flex flex-wrap items-center justify-between gap-sm rounded-lg bg-surface-2 border border-hairline p-md">
+          <span className="inline-flex items-center gap-xxs font-sans text-caption text-ink-muted"><Lock size={12} /> {pick({ en: 'Recorded by', ar: 'يُسجَّل باسم' })}: {pick({ en: 'Owner — admin console', ar: 'المالك — لوحة التحكم' })}</span>
+          <span className="font-sans text-data text-danger tabular-nums">{pick({ en: 'Loss', ar: 'الخسارة' })}: {lossMinor > 0 ? `−${money(lossMinor)}` : '—'}</span>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
