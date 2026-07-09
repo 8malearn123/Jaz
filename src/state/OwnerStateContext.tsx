@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Bilingual } from '@/data/types'
 import { ownerOrdersSeed, ownerOrderStatuses, type OwnerOrder, type OwnerChannel, type OwnerOrderStage } from '@/data/ownerOrders'
-import { rawMaterials, finishedBatches, bomBySku, purchaseInvoices, suppliers as suppliersSeed, stockMovementsSeed, type RawKey, type FinishedBatch, type PurchaseInvoice, type ExtraRaw, type Supplier, type StockMovement, type StockTakeReport } from '@/data/ownerSupply'
+import { rawMaterials, finishedBatches, bomBySku, purchaseInvoices, suppliers as suppliersSeed, stockMovementsSeed, type RawKey, type FinishedBatch, type PurchaseInvoice, type ExtraRaw, type Supplier, type SupplierContact, type StockMovement, type StockTakeReport } from '@/data/ownerSupply'
 import { ownerProductsByChannel, type OwnerProduct, type ProdChannel } from '@/data/ownerProducts'
 import { ownerCustomers, ownerTiers, type OwnerCustomer, type OwnerTier } from '@/data/ownerCustomers'
 import { wasteLog as wasteSeed, finNetMinor, finBase, type WasteEntry } from '@/data/ownerFinance'
@@ -73,7 +73,7 @@ interface OwnerStateValue {
   movements: StockMovement[]
   // suppliers directory (auto-scored)
   suppliers: Supplier[]
-  addSupplier: (s: { name: Bilingual; country: Bilingual; material: Bilingual; leadDays: number; onTimePct: number }) => void
+  addSupplier: (s: { name: Bilingual; country: Bilingual; material: Bilingual; leadDays: number; onTimePct: number; contact?: SupplierContact; supplies?: Bilingual[] }) => void
   // purchase invoices (3-way match)
   invoices: PurchaseInvoice[]
   reconcileInvoice: (id: string) => void
@@ -281,11 +281,11 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     setFinishedStockTakeDate({ en: 'Today', ar: 'اليوم' })
   }, [])
   // Auto-score a new supplier from on-time compliance, penalised by long lead times.
-  const addSupplier = useCallback((s: { name: Bilingual; country: Bilingual; material: Bilingual; leadDays: number; onTimePct: number }) => {
+  const addSupplier = useCallback((s: { name: Bilingual; country: Bilingual; material: Bilingual; leadDays: number; onTimePct: number; contact?: SupplierContact; supplies?: Bilingual[] }) => {
     const score = Math.max(0, Math.min(100, Math.round(s.onTimePct - Math.max(0, s.leadDays - 7) * 0.8)))
     const id = `S-${String(supplierSeq).padStart(2, '0')}`
     setSupplierSeq((n) => n + 1)
-    setSuppliers((prev) => [{ id, name: s.name, country: s.country, material: s.material, leadDays: s.leadDays, onTimePct: s.onTimePct, score }, ...prev])
+    setSuppliers((prev) => [{ id, name: s.name, country: s.country, material: s.material, leadDays: s.leadDays, onTimePct: s.onTimePct, score, contact: s.contact, supplies: s.supplies }, ...prev])
   }, [supplierSeq])
 
   /* ── products ── */
