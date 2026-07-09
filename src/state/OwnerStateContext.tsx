@@ -72,7 +72,7 @@ interface OwnerStateValue {
   // purchase invoices (3-way match)
   invoices: PurchaseInvoice[]
   reconcileInvoice: (id: string) => void
-  addPurchaseInvoice: (inv: { supplier: Bilingual; material: Bilingual; date: Bilingual; totalMinor: number; po?: string; rawKey: RawKey; qty: number }) => void
+  addPurchaseInvoice: (inv: { supplier: Bilingual; material: Bilingual; date: Bilingual; totalMinor: number; po?: string; rawKey?: RawKey; qty?: number }) => void
   // waste → finance
   wasteLog: WasteEntry[]
   logWaste: (e: { item: Bilingual; reason: Bilingual; lossMinor: number }) => void
@@ -264,11 +264,14 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   /* ── purchase invoices ── */
   const reconcileInvoice = useCallback((id: string) => setInvoices((prev) => prev.map((iv) => (iv.id === id ? { ...iv, match: 'matched' } : iv))), [])
   // Entering a supplier invoice restocks its raw material automatically (rawQty) and records the imported cost.
-  const addPurchaseInvoice = useCallback((inv: { supplier: Bilingual; material: Bilingual; date: Bilingual; totalMinor: number; po?: string; rawKey: RawKey; qty: number }) => {
+  const addPurchaseInvoice = useCallback((inv: { supplier: Bilingual; material: Bilingual; date: Bilingual; totalMinor: number; po?: string; rawKey?: RawKey; qty?: number }) => {
     const id = `PINV-${invSeq}`
     setInvSeq((s) => s + 1)
     setInvoices((prev) => [{ id, supplier: inv.supplier, material: inv.material, date: inv.date, totalMinor: inv.totalMinor, match: inv.po ? 'pending' : 'flagged', po: inv.po, rawKey: inv.rawKey, qty: inv.qty }, ...prev])
-    setRawQty((prev) => ({ ...prev, [inv.rawKey]: prev[inv.rawKey] + inv.qty }))
+    if (inv.rawKey != null && inv.qty != null) {
+      const rawKey = inv.rawKey, qty = inv.qty
+      setRawQty((prev) => ({ ...prev, [rawKey]: prev[rawKey] + qty }))
+    }
   }, [invSeq])
 
   /* ── waste → finance ── */
