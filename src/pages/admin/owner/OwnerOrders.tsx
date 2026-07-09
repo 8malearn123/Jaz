@@ -8,6 +8,7 @@ import {
   ownerOrderStatuses, ownerChannelMeta, ownerDepartments,
   type OwnerChannel, type OwnerOrderStage,
 } from '@/data/ownerOrders'
+import type { OwnerProduct, ProdChannel } from '@/data/ownerProducts'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { cn } from '@/lib/cn'
 import { PanelHead, StatCard, FilterChips, Pill } from './_shared'
@@ -166,30 +167,94 @@ export function OwnerOrders() {
   )
 }
 
+const chanToProd: Record<OwnerChannel, ProdChannel> = { B2C: 'b2c', B2B: 'b2b', MEGA: 'mega' }
+
 function ManualOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (o: { customer: { en: string; ar: string }; chan: OwnerChannel; items: { en: string; ar: string }; qty: number; amountMinor: number }) => void }) {
-  const { pick } = useLocale()
-  const [customer, setCustomer] = useState('')
+  const { pick, money } = useLocale()
+  const { customers, products } = useOwnerState()
   const [chan, setChan] = useState<OwnerChannel>('B2C')
-  const [items, setItems] = useState('')
-  const [qty, setQty] = useState(1)
-  const [amount, setAmount] = useState(0)
-  const valid = customer.trim() !== '' && items.trim() !== '' && qty > 0 && amount > 0
-  const reset = () => { setCustomer(''); setChan('B2C'); setItems(''); setQty(1); setAmount(0) }
-  const submit = () => { onCreate({ customer: { en: customer, ar: customer }, chan, items: { en: items, ar: items }, qty, amountMinor: amount * 100 }); reset(); onClose() }
+  const [customerId, setCustomerId] = useState('')
+  const [lines, setLines] = useState<Record<string, number>>({}) // sku → qty
+
+  const chanProducts = products[chanToProd[chan]]
+  const chanCustomers = customers.filter((c) => (chan === 'B2C' ? c.type === 'B2C' : c.type === 'B2B'))
+  const customer = chanCustomers.find((c) => c.id === customerId) ?? null
+  const picked = chanProducts.filter((p) => lines[p.sku] != null)
+
+  const minQty = (p: OwnerProduct) => Math.max(1, p.moq)
+  const totalQty = picked.reduce((a, p) => a + lines[p.sku], 0)
+  const totalMinor = picked.reduce((a, p) => a + lines[p.sku] * p.priceMinor, 0)
+  const valid = !!customer && picked.length > 0 && picked.every((p) => lines[p.sku] >= minQty(p))
+
+  const switchChan = (c: OwnerChannel) => { setChan(c); setCustomerId(''); setLines({}) }
+  const toggle = (p: OwnerProduct) => setLines((prev) => {
+    const next = { ...prev }
+    if (next[p.sku] != null) delete next[p.sku]
+    else next[p.sku] = minQty(p)
+    return next
+  })
+  const setQty = (sku: string, raw: string) => setLines((prev) => ({ ...prev, [sku]: Math.max(0, parseInt(raw.replace(/\D/g, ''), 10) || 0) }))
+
+  const reset = () => { setChan('B2C'); setCustomerId(''); setLines({}) }
+  const submit = () => {
+    if (!customer) return
+    onCreate({
+      customer: customer.name,
+      chan,
+      items: {
+        en: picked.map((p) => `${p.name.en} ×${lines[p.sku]}`).join(' + '),
+        ar: picked.map((p) => `${p.name.ar} ×${lines[p.sku]}`).join(' + '),
+      },
+      qty: totalQty,
+      amountMinor: totalMinor,
+    })
+    reset(); onClose()
+  }
   return (
-    <Modal open={open} onClose={onClose} size="md" eyebrow={pick({ en: 'New order', ar: 'طلب جديد' })} title={pick({ en: 'Manual order', ar: 'طلب يدوي' })}
+    <Modal open={open} onClose={onClose} size="lg" eyebrow={pick({ en: 'New order', ar: 'طلب جديد' })} title={pick({ en: 'Manual order', ar: 'طلب يدوي' })}
       footer={<><button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button><button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}>{pick({ en: 'Create order', ar: 'إنشاء الطلب' })}</button></>}>
       <div className="flex flex-col gap-md">
-        <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Customer', ar: 'العميل' })}</span><input value={customer} onChange={(e) => setCustomer(e.target.value)} className="input" /></label>
         <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Channel', ar: 'القناة' })}</span>
-          <select value={chan} onChange={(e) => setChan(e.target.value as OwnerChannel)} className="input cursor-pointer">
+          <select value={chan} onChange={(e) => switchChan(e.target.value as OwnerChannel)} className="input cursor-pointer">
             {(['B2C', 'B2B', 'MEGA'] as OwnerChannel[]).map((c) => <option key={c} value={c}>{pick(ownerChannelMeta[c].label)}</option>)}
           </select>
         </label>
-        <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Items', ar: 'الأصناف' })}</span><input value={items} onChange={(e) => setItems(e.target.value)} className="input" /></label>
-        <div className="flex gap-md">
-          <label className="flex flex-col gap-xs flex-1"><span className="label">{pick({ en: 'Qty', ar: 'الكمية' })}</span><input value={qty} onChange={(e) => setQty(Math.max(0, parseInt(e.target.value.replace(/\D/g, ''), 10) || 0))} className="input tabular-nums" inputMode="numeric" /></label>
-          <label className="flex flex-col gap-xs flex-1"><span className="label">{pick({ en: 'Amount (﷼)', ar: 'المبلغ (﷼)' })}</span><input value={amount} onChange={(e) => setAmount(Math.max(0, parseInt(e.target.value.replace(/\D/g, ''), 10) || 0))} className="input tabular-nums" inputMode="numeric" /></label>
+        <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Customer', ar: 'العميل' })}</span>
+          <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="input cursor-pointer">
+            <option value="">{pick({ en: 'Select a customer…', ar: 'اختر عميلًا…' })}</option>
+            {chanCustomers.map((c) => <option key={c.id} value={c.id}>{pick(c.name)}</option>)}
+          </select>
+        </label>
+        <div className="flex flex-col gap-xs">
+          <span className="label">{pick({ en: 'Items', ar: 'الأصناف' })}{picked.length > 0 && <span className="text-ink-subtle"> · {picked.length}</span>}</span>
+          <div className="rounded-md border border-hairline-strong divide-y divide-hairline max-h-64 overflow-y-auto">
+            {chanProducts.map((p) => {
+              const on = lines[p.sku] != null
+              const below = on && lines[p.sku] < minQty(p)
+              return (
+                <div key={p.sku} className={cn('flex items-center gap-sm px-3 py-2', on && 'bg-primary/[0.06]')}>
+                  <button type="button" onClick={() => toggle(p)} className="flex items-center gap-sm flex-1 min-w-0 text-start">
+                    <span className={cn('grid place-items-center w-5 h-5 rounded border shrink-0 transition-colors', on ? 'bg-primary border-primary text-on-primary' : 'border-hairline-strong')}>{on && <Check size={13} />}</span>
+                    <span className="w-3 h-3 rounded-pill shrink-0" style={{ background: p.color }} aria-hidden />
+                    <span className="flex-1 min-w-0">
+                      <span className="block font-sans text-data text-ink truncate">{pick(p.name)}</span>
+                      <span className="block font-sans text-caption text-ink-subtle truncate">{pick(p.category)} · {money(p.priceMinor)}{p.moq > 0 && ` · ${pick({ en: 'MOQ', ar: 'حد أدنى' })} ${p.moq}`}</span>
+                    </span>
+                  </button>
+                  {on && (
+                    <div className="flex items-center gap-sm shrink-0">
+                      <input value={lines[p.sku]} onChange={(e) => setQty(p.sku, e.target.value)} className={cn('input w-20 py-1.5 text-center tabular-nums', below && 'border-danger')} inputMode="numeric" aria-label={pick({ en: 'Qty', ar: 'الكمية' })} />
+                      <span className="font-sans text-data text-ink tabular-nums w-24 text-end">{money(lines[p.sku] * p.priceMinor)}</span>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+        <div className="flex items-center justify-between rounded-lg bg-surface-2 border border-hairline px-md py-sm">
+          <span className="font-sans text-caption text-ink-subtle">{totalQty.toLocaleString()} {pick({ en: 'units', ar: 'وحدة' })}</span>
+          <span className="font-sans text-data text-ink tabular-nums">{pick({ en: 'Total', ar: 'الإجمالي' })}: {money(totalMinor)}</span>
         </div>
       </div>
     </Modal>
