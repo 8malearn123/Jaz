@@ -6,6 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import type { Bilingual } from '@/data/types'
 import { storeBadgeMeta, storeBadgeKeys, storeSwatches, storePackaging, type StoreProduct, type StoreBadge, type StoreVariant, type StoreComponent } from '@/data/ownerCatalog'
+import { rawMaterials, stockUnits, unitFactor } from '@/data/ownerSupply'
 import type { ProdChannel } from '@/data/ownerProducts'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { cn } from '@/lib/cn'
@@ -151,9 +152,26 @@ function ProductCard({ p, onEdit, onToggle }: { p: StoreProduct; onEdit: () => v
   )
 }
 
+const bomNorm = (s: string) => s.trim().toLowerCase()
+const bomMatches = (q: string, name: Bilingual) => bomNorm(name.ar).includes(bomNorm(q)) || bomNorm(name.en).includes(bomNorm(q))
+
 function ProductEditor({ product, catOptions, onClose, onSave }: { product: StoreProduct | null; catOptions: Bilingual[]; onClose: () => void; onSave: (d: Draft) => void }) {
-  const { pick } = useLocale()
+  const { pick, money } = useLocale()
   const { flash } = useToast()
+  const { extraRaws } = useOwnerState()
+
+  // Raw stock products the BOM can draw from, with a per-stock-unit cost derived from purchases
+  // (seed raws quote landed cost per costUnit — convert; owner-added items already carry it per unit).
+  const bomItems: { name: Bilingual; unit: Bilingual; costPerUnitMinor: number }[] = [
+    ...rawMaterials.map((r) => {
+      const cu = stockUnits.find((u) => u.label.en === r.costUnit.en || u.label.ar === r.costUnit.ar)
+      const su = stockUnits.find((u) => u.label.en === r.unit.en || u.label.ar === r.unit.ar)
+      const f = cu && su ? unitFactor(cu.key, su.key) : 1
+      return { name: r.name, unit: r.unit, costPerUnitMinor: Math.round(r.landedMinor / Math.max(1, f)) }
+    }),
+    ...extraRaws.map((x) => ({ name: x.name, unit: x.unit, costPerUnitMinor: x.costMinor })),
+  ]
+  const bomItemOf = (name: string) => bomItems.find((b) => b.name.en === name || b.name.ar === name)
   const fileRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState(product ? pick(product.name) : '')
   const [desc, setDesc] = useState(product ? pick(product.desc) : '')
@@ -188,8 +206,9 @@ function ProductEditor({ product, catOptions, onClose, onSave }: { product: Stor
     if (!file.type.startsWith('image/')) { flash(pick({ en: 'Please choose an image file', ar: 'اختر ملف صورة' })); return }
     readResizedImage(file).then(setImage).catch(() => flash(pick({ en: 'Could not read that image', ar: 'تعذّرت قراءة الصورة' })))
   }
-  // clean the BOM rows (drop blanks) into StoreComponent[]
-  const cleanComps = (): StoreComponent[] => comps.filter((c) => c.name.trim() !== '' && parseDec(c.qty) > 0).map((c) => ({ name: c.name.trim(), qty: parseDec(c.qty), unit: c.unit.trim() }))
+  // clean the BOM rows into StoreComponent[] — only rows matched to a raw stock product count,
+  // and the unit always comes from that product (never typed).
+  const cleanComps = (): StoreComponent[] => comps.filter((c) => bomItemOf(c.name) && parseDec(c.qty) > 0).map((c) => ({ name: c.name.trim(), qty: parseDec(c.qty), unit: pick(bomItemOf(c.name)!.unit) }))
 
   return (
     <Modal open onClose={onClose} size="lg" eyebrow={pick(product ? { en: 'Edit product', ar: 'تعديل منتج' } : { en: 'New product', ar: 'منتج جديد' })} title={product ? pick(product.name) : pick({ en: 'New product', ar: 'منتج جديد' })}
@@ -272,22 +291,52 @@ function ProductEditor({ product, catOptions, onClose, onSave }: { product: Stor
           ))}
         </div>
 
-        {/* components / bill of materials (display metadata) */}
+        {/* components / bill of materials — drawn from raw stock products; cost derives from purchases */}
         <div className="flex flex-col gap-sm">
           <div className="flex items-center justify-between">
             <span className="label !mb-0">{pick({ en: 'Components (BOM)', ar: 'مكوّنات المنتج (BOM)' })}</span>
             <button type="button" onClick={addComp} className="link-gold text-caption inline-flex items-center gap-xxs"><Plus size={13} /> {pick({ en: 'Add component', ar: 'إضافة مكوّن' })}</button>
           </div>
           {comps.length === 0
-            ? <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Optional — list the ingredients or components.', ar: 'اختياري — عدّد المكوّنات أو الخامات.' })}</p>
-            : comps.map((c) => (
-              <div key={c.id} className="flex items-center gap-sm rounded-lg border border-hairline bg-surface-2/40 px-md py-2">
-                <button type="button" onClick={() => removeComp(c.id)} aria-label={pick({ en: 'Remove', ar: 'حذف' })} className="grid place-items-center w-7 h-7 rounded-md text-danger hover:bg-danger/10 transition-colors shrink-0"><Trash2 size={13} /></button>
-                <input value={c.name} onChange={(e) => setComp(c.id, { name: e.target.value })} placeholder={pick({ en: 'Component', ar: 'المكوّن' })} className="input flex-1 min-w-0 py-1.5" />
-                <input value={c.qty} onChange={(e) => setComp(c.id, { qty: e.target.value.replace(/[^\d.٠-٩۰-۹]/g, '') })} placeholder="0" className="input w-20 py-1.5 tabular-nums" inputMode="decimal" />
-                <input value={c.unit} onChange={(e) => setComp(c.id, { unit: e.target.value })} placeholder={pick({ en: 'unit', ar: 'وحدة' })} className="input w-20 py-1.5" />
+            ? <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Optional — components are picked from raw stock; their cost comes from purchases.', ar: 'اختياري — المكوّنات تُختار من المخزون الخام وتكلفتها من واقع المشتريات.' })}</p>
+            : comps.map((c) => {
+              const it = bomItemOf(c.name)
+              const sugg = !it && c.name.trim() !== '' ? bomItems.filter((b) => bomMatches(c.name, b.name) && !comps.some((o) => o.id !== c.id && bomItemOf(o.name) === b)).slice(0, 6) : []
+              const qty = parseDec(c.qty)
+              return (
+                <div key={c.id} className="flex flex-col gap-xs rounded-lg border border-hairline bg-surface-2/40 px-md py-2">
+                  <div className="flex items-center gap-sm">
+                    <button type="button" onClick={() => removeComp(c.id)} aria-label={pick({ en: 'Remove', ar: 'حذف' })} className="grid place-items-center w-7 h-7 rounded-md text-danger hover:bg-danger/10 transition-colors shrink-0"><Trash2 size={13} /></button>
+                    <input value={c.name} onChange={(e) => setComp(c.id, { name: e.target.value, unit: '' })} placeholder={pick({ en: 'Type to search raw stock…', ar: 'اكتب للبحث في المخزون الخام…' })} className="input flex-1 min-w-0 py-1.5" />
+                    <input value={c.qty} onChange={(e) => setComp(c.id, { qty: e.target.value.replace(/[^\d.٠-٩۰-۹]/g, '') })} placeholder="0" className="input w-20 py-1.5 tabular-nums" inputMode="decimal" disabled={!it} />
+                    <span className="input w-20 py-1.5 bg-surface-2 text-ink-muted text-center cursor-default select-none">{it ? pick(it.unit) : '—'}</span>
+                    <span className="font-sans text-data text-ink tabular-nums w-24 text-end shrink-0">{it && qty > 0 ? money(Math.round(qty * it.costPerUnitMinor)) : '—'}</span>
+                  </div>
+                  {sugg.length > 0 && (
+                    <div className="rounded-md border border-hairline bg-surface-1 shadow-soft max-h-40 overflow-y-auto divide-y divide-hairline">
+                      {sugg.map((b) => (
+                        <button key={b.name.en} type="button" onClick={() => setComp(c.id, { name: pick(b.name), unit: pick(b.unit) })} className="w-full flex items-center justify-between gap-sm px-3 py-2 text-start hover:bg-surface-2 transition-colors">
+                          <span className="font-sans text-data text-ink truncate">{pick(b.name)}</span>
+                          <span className="font-sans text-caption text-ink-subtle shrink-0 tabular-nums">{money(b.costPerUnitMinor)} / {pick(b.unit)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {!it && c.name.trim() !== '' && sugg.length === 0 && (
+                    <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'No matching raw stock product', ar: 'لا يوجد منتج مخزون خام مطابق' })}</p>
+                  )}
+                </div>
+              )
+            })}
+          {(() => {
+            const totalMinor = comps.reduce((a, c) => { const it = bomItemOf(c.name); return a + (it ? Math.round(parseDec(c.qty) * it.costPerUnitMinor) : 0) }, 0)
+            return totalMinor > 0 ? (
+              <div className="flex items-center justify-between rounded-lg bg-surface-2 border border-hairline px-md py-sm">
+                <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Components cost — from purchases', ar: 'تكلفة المكوّنات — من واقع المشتريات' })}</span>
+                <span className="font-sans text-data text-ink tabular-nums">{money(totalMinor)}</span>
               </div>
-            ))}
+            ) : null
+          })()}
         </div>
 
         {/* badges */}
