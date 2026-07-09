@@ -68,6 +68,30 @@ export const finishedBatches: FinishedBatch[] = [
   { code: 'BATCH-FG-063', product: { en: 'Jasmine luxury box', ar: 'بوكس الفُل الفاخر' }, systemQty: 540, countedQty: 545, expiryDays: 47, unitMinor: 16800, color: '#b08a57' },
 ]
 
+// Per-item stock movement audit trail (who moved what, when and why).
+export interface StockMovement { id: string; itemId: string; kind: 'in' | 'out' | 'adjust'; qty: number; at: Bilingual; by: Bilingual; note: Bilingual }
+export const stockMovementsSeed: StockMovement[] = [
+  { id: 'MV-091', itemId: 'cacao', kind: 'in', qty: 5000, at: { en: '04 Jul · 09:20', ar: '٠٤ يوليو · ٠٩:٢٠' }, by: { en: 'Salem Al-Ghamdi — warehouse', ar: 'سالم الغامدي — أمين المستودع' }, note: { en: 'Purchase invoice PINV-3312 received', ar: 'استلام فاتورة المشتريات PINV-3312' } },
+  { id: 'MV-090', itemId: 'cacao', kind: 'out', qty: 620, at: { en: '03 Jul · 14:05', ar: '٠٣ يوليو · ١٤:٠٥' }, by: { en: 'Hind Al-Asiri — production', ar: 'هند العسيري — الإنتاج' }, note: { en: 'Production draw — Dark 70% batch', ar: 'خصم إنتاج — دفعة لوح داكن ٧٠٪' } },
+  { id: 'MV-089', itemId: 'milk', kind: 'in', qty: 3000, at: { en: '03 Jul · 11:40', ar: '٠٣ يوليو · ١١:٤٠' }, by: { en: 'Salem Al-Ghamdi — warehouse', ar: 'سالم الغامدي — أمين المستودع' }, note: { en: 'Purchase invoice PINV-3310 received', ar: 'استلام فاتورة المشتريات PINV-3310' } },
+  { id: 'MV-088', itemId: 'sugar', kind: 'adjust', qty: -40, at: { en: '03 Jul · 08:15', ar: '٠٣ يوليو · ٠٨:١٥' }, by: { en: 'Salem Al-Ghamdi — warehouse', ar: 'سالم الغامدي — أمين المستودع' }, note: { en: 'Stock-take adjustment', ar: 'تسوية جرد' } },
+  { id: 'MV-087', itemId: 'foil', kind: 'out', qty: 1200, at: { en: '02 Jul · 16:30', ar: '٠٢ يوليو · ١٦:٣٠' }, by: { en: 'Hind Al-Asiri — production', ar: 'هند العسيري — الإنتاج' }, note: { en: 'Production draw — jasmine boxes', ar: 'خصم إنتاج — بوكسات الفُل' } },
+  { id: 'MV-086', itemId: 'foil', kind: 'in', qty: 4000, at: { en: '28 Jun · 10:00', ar: '٢٨ يونيو · ١٠:٠٠' }, by: { en: 'Salem Al-Ghamdi — warehouse', ar: 'سالم الغامدي — أمين المستودع' }, note: { en: 'Purchase invoice PINV-3301 received', ar: 'استلام فاتورة المشتريات PINV-3301' } },
+]
+
+// Immutable stock-take audit report — created automatically when a stock-take is finalized.
+// By design there is no edit or delete path for these.
+export interface StockTakeReportLine { name: Bilingual; system: number; counted: number; variance: number; valueMinor: number }
+export interface StockTakeReport {
+  id: string
+  scope: 'raw' | 'finished'
+  startedAt: number // epoch ms — when the stock-take was opened
+  endedAt: number // epoch ms — when it was finalized
+  method: Bilingual // how the count was performed
+  lines: StockTakeReportLine[]
+  netValueMinor: number
+}
+
 export type PurchaseMatch = 'matched' | 'pending' | 'flagged'
 export interface PurchaseInvoice {
   id: string
@@ -87,10 +111,23 @@ export const purchaseInvoices: PurchaseInvoice[] = [
   { id: 'PINV-3301', supplier: { en: 'Jizan Press', ar: 'مطابع جيزان' }, material: { en: 'Gold foil', ar: 'ورق ذهبي' }, date: { en: '28 Jun', ar: '٢٨ يونيو' }, totalMinor: 1564000, match: 'pending', po: 'PO-2047', rawKey: 'foil', qty: 4000 },
 ]
 
-export interface Supplier { id: string; name: Bilingual; country: Bilingual; material: Bilingual; score: number; leadDays: number; onTimePct: number }
+export interface SupplierContact { person: Bilingual; phone: string; email: string; city: Bilingual }
+export interface Supplier {
+  id: string; name: Bilingual; country: Bilingual; material: Bilingual; score: number; leadDays: number; onTimePct: number
+  contact?: SupplierContact
+  supplies?: Bilingual[] // raw products we order from this supplier
+}
 export const suppliers: Supplier[] = [
-  { id: 'S-01', name: { en: 'Barry Callebaut', ar: 'Barry Callebaut' }, country: { en: 'Belgium', ar: 'بلجيكا' }, material: { en: 'Cocoa', ar: 'كاكاو' }, score: 96, leadDays: 18, onTimePct: 98 },
-  { id: 'S-02', name: { en: 'Almarai', ar: 'المراعي' }, country: { en: 'Saudi Arabia', ar: 'السعودية' }, material: { en: 'Dairy', ar: 'ألبان' }, score: 91, leadDays: 4, onTimePct: 95 },
-  { id: 'S-03', name: { en: 'Jizan Press', ar: 'مطابع جيزان للتغليف' }, country: { en: 'Saudi Arabia', ar: 'السعودية' }, material: { en: 'Packaging', ar: 'تغليف' }, score: 78, leadDays: 9, onTimePct: 84 },
-  { id: 'S-04', name: { en: 'Nut Traders Co.', ar: 'Nut Traders Co.' }, country: { en: 'Turkey', ar: 'تركيا' }, material: { en: 'Nuts', ar: 'مكسرات' }, score: 64, leadDays: 22, onTimePct: 71 },
+  { id: 'S-01', name: { en: 'Barry Callebaut', ar: 'Barry Callebaut' }, country: { en: 'Belgium', ar: 'بلجيكا' }, material: { en: 'Cocoa', ar: 'كاكاو' }, score: 96, leadDays: 18, onTimePct: 98,
+    contact: { person: { en: 'Marc Dubois', ar: 'مارك دوبوا' }, phone: '+32 2 555 0141', email: 'sales@barry-callebaut.com', city: { en: 'Brussels', ar: 'بروكسل' } },
+    supplies: [{ en: 'Cocoa mass', ar: 'كتلة كاكاو' }, { en: 'Cocoa butter', ar: 'زبدة كاكاو' }, { en: 'Bulk couverture', ar: 'كوفرتور خام' }] },
+  { id: 'S-02', name: { en: 'Almarai', ar: 'المراعي' }, country: { en: 'Saudi Arabia', ar: 'السعودية' }, material: { en: 'Dairy', ar: 'ألبان' }, score: 91, leadDays: 4, onTimePct: 95,
+    contact: { person: { en: 'Eng. Fahad Al-Dossari', ar: 'م. فهد الدوسري' }, phone: '+966 11 470 0005', email: 'b2b@almarai.com', city: { en: 'Riyadh', ar: 'الرياض' } },
+    supplies: [{ en: 'Milk powder', ar: 'حليب مجفف' }] },
+  { id: 'S-03', name: { en: 'Jizan Press', ar: 'مطابع جيزان للتغليف' }, country: { en: 'Saudi Arabia', ar: 'السعودية' }, material: { en: 'Packaging', ar: 'تغليف' }, score: 78, leadDays: 9, onTimePct: 84,
+    contact: { person: { en: 'Naif Asiri', ar: 'أ. نايف عسيري' }, phone: '+966 17 322 8890', email: 'orders@jizanpress.sa', city: { en: 'Jazan', ar: 'جيزان' } },
+    supplies: [{ en: 'Gold wrapping foil', ar: 'ورق تغليف ذهبي' }, { en: 'Gift boxes', ar: 'علب هدايا' }] },
+  { id: 'S-04', name: { en: 'Nut Traders Co.', ar: 'Nut Traders Co.' }, country: { en: 'Turkey', ar: 'تركيا' }, material: { en: 'Nuts', ar: 'مكسرات' }, score: 64, leadDays: 22, onTimePct: 71,
+    contact: { person: { en: 'Emre Kaya', ar: 'إمره كايا' }, phone: '+90 212 555 0173', email: 'export@nuttraders.com.tr', city: { en: 'Istanbul', ar: 'إسطنبول' } },
+    supplies: [{ en: 'Hazelnuts', ar: 'بندق' }, { en: 'Pistachios', ar: 'فستق' }, { en: 'Fine sugar', ar: 'سكر ناعم' }] },
 ]
