@@ -618,33 +618,107 @@ function SupplierDetailModal({ s, onClose }: { s: Supplier; onClose: () => void 
   )
 }
 
-/** Add a supplier — the performance score is auto-computed from on-time compliance and lead time. */
-function AddSupplierModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (s: { name: Bilingual; country: Bilingual; material: Bilingual; leadDays: number; onTimePct: number }) => void }) {
+/** Add a supplier: profile, contact details and the raw products we order from them.
+ *  The performance score is auto-computed from on-time compliance and lead time. */
+function AddSupplierModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (s: { name: Bilingual; country: Bilingual; material: Bilingual; leadDays: number; onTimePct: number; contact?: { person: Bilingual; phone: string; email: string; city: Bilingual }; supplies?: Bilingual[] }) => void }) {
   const { pick } = useLocale()
+  const { suppliers } = useOwnerState()
   const [name, setName] = useState('')
   const [country, setCountry] = useState('')
-  const [material, setMaterial] = useState('')
+  const [catStr, setCatStr] = useState(suppliers[0] ? pick(suppliers[0].material) : NEW_CAT)
+  const [newCat, setNewCat] = useState('')
+  const [person, setPerson] = useState('')
+  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
+  const [city, setCity] = useState('')
+  const [supplies, setSupplies] = useState<string[]>([])
+  const [supplyDraft, setSupplyDraft] = useState('')
   const [leadDays, setLeadDays] = useState(0)
   const [onTimePct, setOnTimePct] = useState(0)
-  const valid = name.trim() !== '' && country.trim() !== '' && material.trim() !== '' && leadDays > 0 && onTimePct > 0
+
+  // Distinct existing categories in first-seen order.
+  const cats: Bilingual[] = []
+  const seenCats = new Set<string>()
+  for (const s of suppliers) { const k = pick(s.material); if (!seenCats.has(k)) { seenCats.add(k); cats.push(s.material) } }
+  const catName = catStr === NEW_CAT ? newCat.trim() : catStr.trim()
+
+  const emailOk = email.trim() === '' || /^\S+@\S+\.\S+$/.test(email.trim())
+  const valid = name.trim() !== '' && country.trim() !== '' && catName !== '' && person.trim() !== '' && phone.trim() !== '' && emailOk && supplies.length > 0 && leadDays > 0 && onTimePct > 0
   const previewScore = Math.max(0, Math.min(100, Math.round(onTimePct - Math.max(0, leadDays - 7) * 0.8)))
-  const submit = () => { onSubmit({ name: { en: name.trim(), ar: name.trim() }, country: { en: country.trim(), ar: country.trim() }, material: { en: material.trim(), ar: material.trim() }, leadDays, onTimePct: Math.min(100, onTimePct) }); onClose() }
+
+  const addSupply = () => {
+    const v = supplyDraft.trim()
+    if (v !== '' && !supplies.includes(v)) setSupplies((prev) => [...prev, v])
+    setSupplyDraft('')
+  }
+  const removeSupply = (v: string) => setSupplies((prev) => prev.filter((x) => x !== v))
+
+  const submit = () => {
+    const catBi = cats.find((c) => pick(c) === catName) ?? { en: catName, ar: catName }
+    onSubmit({
+      name: { en: name.trim(), ar: name.trim() }, country: { en: country.trim(), ar: country.trim() }, material: catBi,
+      leadDays, onTimePct: Math.min(100, onTimePct),
+      contact: { person: { en: person.trim(), ar: person.trim() }, phone: phone.trim(), email: email.trim(), city: { en: city.trim(), ar: city.trim() } },
+      supplies: supplies.map((s) => ({ en: s, ar: s })),
+    })
+    onClose()
+  }
+  const Section = ({ title }: { title: Bilingual }) => <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle border-b border-hairline pb-xs">{pick(title)}</span>
   return (
-    <Modal open onClose={onClose} size="md" eyebrow={pick({ en: 'Suppliers', ar: 'الموردون' })} title={pick({ en: 'New supplier', ar: 'مورّد جديد' })}
+    <Modal open onClose={onClose} size="lg" eyebrow={pick({ en: 'Suppliers', ar: 'الموردون' })} title={pick({ en: 'New supplier', ar: 'مورّد جديد' })}
       footer={<><button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button><button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}>{pick({ en: 'Add supplier', ar: 'إضافة المورّد' })}</button></>}>
       <div className="flex flex-col gap-md">
+        <Section title={{ en: 'Supplier profile', ar: 'بيانات المورّد' }} />
         <div className="grid grid-cols-2 gap-md">
           <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Supplier name', ar: 'اسم المورّد' })}</span><input value={name} onChange={(e) => setName(e.target.value)} className="input" placeholder={pick({ en: 'e.g. Cocoa House', ar: 'مثال: بيت الكاكاو' })} /></label>
           <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Country', ar: 'الدولة' })}</span><input value={country} onChange={(e) => setCountry(e.target.value)} className="input" placeholder={pick({ en: 'e.g. Saudi Arabia', ar: 'مثال: السعودية' })} /></label>
         </div>
-        <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Category', ar: 'الفئة' })}</span><input value={material} onChange={(e) => setMaterial(e.target.value)} className="input" placeholder={pick({ en: 'e.g. Cocoa / Dairy / Packaging', ar: 'مثال: كاكاو / ألبان / تغليف' })} /></label>
+        <div className="grid grid-cols-2 gap-md">
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Category', ar: 'الفئة' })}</span>
+            <select value={catStr} onChange={(e) => setCatStr(e.target.value)} className="input cursor-pointer">
+              {cats.map((c, i) => <option key={i} value={pick(c)}>{pick(c)}</option>)}
+              <option value={NEW_CAT}>+ {pick({ en: 'New category…', ar: 'فئة جديدة…' })}</option>
+            </select>
+          </label>
+          {catStr === NEW_CAT && <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'New category name', ar: 'اسم الفئة الجديدة' })}</span><input value={newCat} onChange={(e) => setNewCat(e.target.value)} className="input" placeholder={pick({ en: 'e.g. Nuts', ar: 'مثال: مكسرات' })} /></label>}
+        </div>
+
+        <Section title={{ en: 'Contact details', ar: 'بيانات التواصل' }} />
+        <div className="grid grid-cols-2 gap-md">
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Contact person', ar: 'الشخص المسؤول' })}</span><input value={person} onChange={(e) => setPerson(e.target.value)} className="input" placeholder={pick({ en: 'e.g. Eng. Fahad', ar: 'مثال: م. فهد' })} /></label>
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'City', ar: 'المدينة' })}</span><input value={city} onChange={(e) => setCity(e.target.value)} className="input" placeholder={pick({ en: 'e.g. Jazan', ar: 'مثال: جيزان' })} /></label>
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Phone', ar: 'الهاتف' })}</span><input value={phone} onChange={(e) => setPhone(e.target.value)} className="input tabular-nums" dir="ltr" inputMode="tel" placeholder="+966 5X XXX XXXX" /></label>
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Email (optional)', ar: 'البريد الإلكتروني (اختياري)' })}</span><input value={email} onChange={(e) => setEmail(e.target.value)} className={cn('input', !emailOk && 'border-danger')} dir="ltr" inputMode="email" placeholder="orders@supplier.com" /></label>
+        </div>
+
+        <Section title={{ en: 'Raw products we order from them', ar: 'المواد التي نطلبها منه' }} />
+        <div className="flex flex-col gap-xs">
+          <div className="flex gap-sm">
+            <input value={supplyDraft} onChange={(e) => setSupplyDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addSupply() } }} className="input flex-1" placeholder={pick({ en: 'e.g. Cocoa mass — Enter to add', ar: 'مثال: كتلة كاكاو — اضغط Enter للإضافة' })} />
+            <button type="button" onClick={addSupply} disabled={supplyDraft.trim() === ''} className={buttonClass('secondary', 'sm')}><Plus size={14} /> {pick({ en: 'Add', ar: 'إضافة' })}</button>
+          </div>
+          {supplies.length > 0 ? (
+            <div className="flex flex-wrap gap-xs">
+              {supplies.map((s) => (
+                <span key={s} className="inline-flex items-center gap-xxs rounded-pill border border-hairline-strong bg-surface-2 ps-3 pe-1.5 py-1 font-sans text-caption text-ink">
+                  {s}
+                  <button type="button" onClick={() => removeSupply(s)} className="grid place-items-center w-4 h-4 rounded-pill text-ink-subtle hover:text-danger" aria-label={pick({ en: 'Remove', ar: 'إزالة' })}><X size={11} /></button>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Add at least one product to link with this supplier.', ar: 'أضف مادة واحدة على الأقل لربطها بهذا المورّد.' })}</p>
+          )}
+        </div>
+
+        <Section title={{ en: 'Performance', ar: 'الأداء' }} />
         <div className="grid grid-cols-2 gap-md">
           <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Lead time (days)', ar: 'مهلة التوريد (يوم)' })}</span><input value={leadDays || ''} onChange={(e) => setLeadDays(parseNum(e.target.value))} className="input tabular-nums" inputMode="numeric" placeholder="0" /></label>
           <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'On-time %', ar: 'الالتزام %' })}</span><input value={onTimePct || ''} onChange={(e) => setOnTimePct(Math.min(100, parseNum(e.target.value)))} className="input tabular-nums" inputMode="numeric" placeholder="0" /></label>
         </div>
         <div className="flex items-center justify-between rounded-lg bg-surface-2 border border-hairline p-md">
           <div className="flex flex-col"><span className="font-sans text-data text-ink">{pick({ en: 'Auto-scored rating', ar: 'التقييم الآلي' })}</span><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'From on-time compliance & lead time', ar: 'من الالتزام ومهلة التوريد' })}</span></div>
-          <span className="font-serif text-headline tabular-nums" style={{ color: valid ? scoreColor(previewScore) : '#8a7d6a' }}>{valid ? previewScore : '—'}</span>
+          <span className="font-serif text-headline tabular-nums" style={{ color: leadDays > 0 && onTimePct > 0 ? scoreColor(previewScore) : '#8a7d6a' }}>{leadDays > 0 && onTimePct > 0 ? previewScore : '—'}</span>
         </div>
       </div>
     </Modal>
