@@ -1,0 +1,24 @@
+name: Trigger Vercel deploy
+
+# Fires the Vercel deploy hook on every push to main (and on demand),
+# restoring automatic deployments while the Vercel<->GitHub integration is broken.
+# The hook URL lives in the VERCEL_DEPLOY_HOOK repository secret — never in code.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+    steps:
+      - name: Call Vercel deploy hook
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "VERCEL_DEPLOY_HOOK secret not set — skipping."
+            exit 0
+          fi
+          curl -sS -X POST "$HOOK"
+          echo "Deploy hook fired."
