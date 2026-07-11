@@ -1,0 +1,23 @@
+JAZ — product photos (manifest)
+================================
+
+Your 12 bar photos, wired into the Products catalog (owner → Products → B2C → Single bars).
+Originals (full-res PNG) are backed up outside the repo; these served copies are optimized JPEG.
+
+File                      →  Bar
+--------------------------------------------------
+  bar-dark-70.jpg            Dark chocolate 70%
+  bar-dark-60.jpg            Dark chocolate 60%
+  bar-milk.jpg               Milk chocolate
+  bar-dark-jasmine.jpg       Dark chocolate with Arabian jasmine
+  bar-dark-rose.jpg          Dark chocolate with rose
+  bar-dark-coffee.jpg        Dark chocolate with coffee
+  bar-dark-seasalt.jpg       Dark chocolate with sea salt
+  bar-dark-chili.jpg         Dark chocolate with chili
+  bar-dark-lavender.jpg      Dark chocolate with lavender
+  bar-dark-mango.jpg         Dark chocolate with mango
+  bar-dark-papaya.jpg        Dark chocolate with papaya
+  bar-dark-banana.jpg        Dark chocolate with banana
+
+To add/replace later: drop a JPEG named exactly as above and it swaps in automatically.
+(Boxes / B2B / mega products remain demo colour tiles — no photos.)

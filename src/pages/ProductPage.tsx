@@ -321,7 +321,7 @@ function ArtCardFeature({ product }: { product: NonNullable<ReturnType<typeof ge
             <span className="font-sans text-caption uppercase tracking-[0.1em] opacity-70">{t('product.artcardBy')}</span>
             <span className="font-serif text-card-title">{pick(card.artistName)}</span>
           </div>
-          <span className="font-sans text-data opacity-80 tabular-nums">{card.year}</span>
+          {card.year != null && <span className="font-sans text-data opacity-80 tabular-nums">{card.year}</span>}
         </div>
       </div>
     </div>

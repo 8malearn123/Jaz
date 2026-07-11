@@ -14,6 +14,27 @@ const flavorMotif: Record<FlavorId, Motif> = {
   mango: 'mango',
   coffee: 'coffee',
   dark: 'mountain',
+  dark60: 'mountain',
+  seasalt: 'wave',
+  chili: 'mango',
+  banana: 'mango',
+}
+
+// Real product photography by flavor. When a bar has a photo it overrides the procedural
+// art below; boxes and any flavor without a photo keep the illustrated fallback.
+const flavorBarPhoto: Partial<Record<FlavorId, string>> = {
+  milk: '/products/bar-milk.jpg',
+  lavender: '/products/bar-dark-lavender.jpg',
+  rose: '/products/bar-dark-rose.jpg',
+  jasmine: '/products/bar-dark-jasmine.jpg',
+  papaya: '/products/bar-dark-papaya.jpg',
+  mango: '/products/bar-dark-mango.jpg',
+  coffee: '/products/bar-dark-coffee.jpg',
+  dark: '/products/bar-dark-70.jpg',
+  dark60: '/products/bar-dark-60.jpg',
+  seasalt: '/products/bar-dark-seasalt.jpg',
+  chili: '/products/bar-dark-chili.jpg',
+  banana: '/products/bar-dark-banana.jpg',
 }
 
 interface ProductArtProps {
@@ -32,6 +53,13 @@ interface ProductArtProps {
 export function ProductArt({ flavorId, kind = 'bar', className, branded = true }: ProductArtProps) {
   const id = useId().replace(/:/g, '')
   const f = flavors[flavorId]
+
+  // Real bar photo takes precedence over the illustrated art (photo covers its tile).
+  const photo = kind === 'bar' ? flavorBarPhoto[flavorId] : undefined
+  if (photo) {
+    return <img src={photo} alt={`${f.name.en} chocolate`} loading="lazy" className={cn('w-full h-full object-cover', className)} />
+  }
+
   const accent = f.accent
   const light = tint(accent, 42)
   const dark = shade(accent, 78)
