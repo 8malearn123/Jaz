@@ -258,6 +258,7 @@ function Credit() {
                   const dir = locale === 'ar' ? 'rtl' : 'ltr'
                   const L = (en: string, ar: string) => (locale === 'ar' ? ar : en)
                   openPrintWindow(`<!doctype html><html dir="${dir}"><head><meta charset="utf-8"><title>${iv.id}</title><style>
+                    @page{size:A4 portrait;margin:12mm}
                     body{font-family:'Segoe UI',Tahoma,sans-serif;padding:32px;color:#2b2b2b}
                     h1{font-size:20px;margin:0 0 4px} .sub{color:#777;font-size:12px;margin-bottom:16px}
                     table{width:100%;border-collapse:collapse;margin-top:10px}
