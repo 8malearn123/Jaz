@@ -15,6 +15,7 @@ import { cn } from '@/lib/cn'
 import { orderStatusVariant, OrderJourney, Row } from './shared'
 import { DeliverySchedule } from './DeliveryPanel'
 import { openPrintWindow } from '@/lib/printWindow'
+import { useBilling } from '@/state/BillingContext'
 
 // An order may be cancelled only while still early-stage (before it ships or is delivered).
 const CANCELLABLE: ReadonlySet<AccountOrderStatus> = new Set(['awaiting_approval', 'confirmed', 'processing'])
@@ -27,13 +28,12 @@ export function OrgOrdersPanel() {
   const [viewNo, setViewNo] = useState<string | null>(null)
   const viewOrder = orders.find((o) => o.orderNo === viewNo) ?? null
   const cancelOrder = (orderNo: string) => setOrders((prev) => prev.map((o) => (o.orderNo === orderNo ? { ...o, cancelled: true } : o)))
-  const attachReceipt = (orderNo: string, name: string) => setOrders((prev) => prev.map((o) => (o.orderNo === orderNo ? { ...o, receipts: [...(o.receipts ?? []), name] } : o)))
   return (
     <div className="flex flex-col gap-lg">
       {/* delivery tracking lives at the top of Orders (the Delivery tab was folded in here) */}
       <DeliverySchedule />
       <MyOrders orders={orders} onView={(o) => setViewNo(o.orderNo)} />
-      <OrderDetailModal order={viewOrder} open={!!viewOrder} onClose={() => setViewNo(null)} onCancel={cancelOrder} onAttachReceipt={attachReceipt} />
+      <OrderDetailModal order={viewOrder} open={!!viewOrder} onClose={() => setViewNo(null)} onCancel={cancelOrder} />
     </div>
   )
 }
@@ -121,9 +121,12 @@ function OrderCard({ order, onView }: { order: AccountOrder; onView: () => void 
 /* ─────────── Lists ─────────── */
 
 /* ─────────── Order detail / invoice ─────────── */
-function OrderDetailModal({ order, open, onClose, onCancel, onAttachReceipt }: { order: AccountOrder | null; open: boolean; onClose: () => void; onCancel: (orderNo: string) => void; onAttachReceipt: (orderNo: string, name: string) => void }) {
+function OrderDetailModal({ order, open, onClose, onCancel }: { order: AccountOrder | null; open: boolean; onClose: () => void; onCancel: (orderNo: string) => void }) {
   const { t, pick, money, locale } = useLocale()
   const { flash } = useToast()
+  // Billing lives in the shared store so the Jaz admin console sees receipts live
+  // (and the tax invoice the admin attaches shows up here immediately).
+  const { billingFor, attachReceipt } = useBilling()
   const [now, setNow] = useState(() => Date.now())
   const canCancel = !!order && !order.cancelled && CANCELLABLE.has(order.status) && order.placedTs != null && (order.placedTs + CANCEL_WINDOW_MS - now) > 0
   // Tick the countdown while the window is open.
@@ -149,6 +152,7 @@ function OrderDetailModal({ order, open, onClose, onCancel, onAttachReceipt }: {
   const vat = Math.round(subtotal * 0.15)
   const total = subtotal + vat
   const awaiting = order.status === 'awaiting_approval'
+  const billing = billingFor(order.orderNo)
 
   // Printable invoice — the browser's "Save as PDF" produces the PDF.
   // 'proforma' is auto-issued with every order; 'tax' is the final invoice attached by Jaz.
@@ -304,23 +308,23 @@ function OrderDetailModal({ order, open, onClose, onCancel, onAttachReceipt }: {
                 <div className="flex flex-wrap items-center gap-sm">
                   <span className="grid place-items-center w-9 h-9 rounded-md bg-surface-2 text-ink-muted shrink-0"><Upload size={16} /></span>
                   <div className="flex-1 min-w-[180px]">
-                    <p className="font-sans text-data text-ink">{pick({ en: 'Payment receipts', ar: 'إيصالات السداد' })}{(order.receipts?.length ?? 0) > 0 && <span className="text-ink-subtle"> · {order.receipts!.length}</span>}</p>
+                    <p className="font-sans text-data text-ink">{pick({ en: 'Payment receipts', ar: 'إيصالات السداد' })}{billing.receipts.length > 0 && <span className="text-ink-subtle"> · {billing.receipts.length}</span>}</p>
                     <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Attach your transfer receipts for this order', ar: 'أرفق إيصالات التحويل الخاصة بهذا الطلب' })}</p>
                   </div>
                   <label className={buttonClass('secondary', 'sm', 'cursor-pointer')}>
                     <Upload size={14} /> {pick({ en: 'Attach receipt', ar: 'إرفاق إيصال' })}
                     <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => {
                       const f = e.target.files?.[0]
-                      if (f) { onAttachReceipt(order.orderNo, f.name); flash(pick({ en: 'Receipt attached', ar: 'أُرفق الإيصال' })) }
+                      if (f) { attachReceipt(order.orderNo, { name: f.name, url: URL.createObjectURL(f), at: new Date().toISOString() }); flash(pick({ en: 'Receipt attached', ar: 'أُرفق الإيصال' })) }
                       e.target.value = ''
                     }} />
                   </label>
                 </div>
-                {(order.receipts?.length ?? 0) > 0 && (
+                {billing.receipts.length > 0 && (
                   <div className="flex flex-wrap gap-xs">
-                    {order.receipts!.map((r, i) => (
+                    {billing.receipts.map((r, i) => (
                       <span key={i} className="inline-flex items-center gap-xxs rounded-pill border border-success/25 bg-success/8 px-3 py-1 font-sans text-caption text-ink">
-                        <CheckCircle2 size={12} className="text-success" /> <span dir="ltr">{r}</span>
+                        <CheckCircle2 size={12} className="text-success" /> <span dir="ltr">{r.name}</span>
                       </span>
                     ))}
                   </div>
@@ -329,17 +333,19 @@ function OrderDetailModal({ order, open, onClose, onCancel, onAttachReceipt }: {
 
               {/* 3 — the tax invoice, attached by Jaz once payment is confirmed */}
               <div className="flex flex-wrap items-center gap-sm px-md py-sm">
-                <span className={cn('grid place-items-center w-9 h-9 rounded-md shrink-0', order.taxInvoiceFile ? 'bg-success/10 text-success' : 'bg-surface-2 text-ink-subtle')}><FileText size={16} /></span>
+                <span className={cn('grid place-items-center w-9 h-9 rounded-md shrink-0', billing.taxInvoice ? 'bg-success/10 text-success' : 'bg-surface-2 text-ink-subtle')}><FileText size={16} /></span>
                 <div className="flex-1 min-w-[180px]">
-                  <p className="font-sans text-data text-ink">{pick({ en: 'Tax invoice', ar: 'الفاتورة الضريبية' })} {order.taxInvoiceFile && <CheckCircle2 size={13} className="inline text-success" />}</p>
+                  <p className="font-sans text-data text-ink">{pick({ en: 'Tax invoice', ar: 'الفاتورة الضريبية' })} {billing.taxInvoice && <CheckCircle2 size={13} className="inline text-success" />}</p>
                   <p className="font-sans text-caption text-ink-subtle">
-                    {order.taxInvoiceFile
-                      ? <>{pick({ en: 'Attached by Jaz', ar: 'أرفقتها شركة جاز' })} · <span dir="ltr">{order.taxInvoiceFile}</span></>
+                    {billing.taxInvoice
+                      ? <>{pick({ en: 'Attached by Jaz', ar: 'أرفقتها شركة جاز' })} · <span dir="ltr">{billing.taxInvoice.name}</span></>
                       : pick({ en: 'Issued by Jaz after payment is confirmed', ar: 'تصدرها شركة جاز بعد التحقق من السداد' })}
                   </p>
                 </div>
-                {order.taxInvoiceFile
-                  ? <button onClick={() => printDoc('tax')} className={buttonClass('secondary', 'sm')}><Download size={14} /> {pick({ en: 'Download', ar: 'تنزيل' })}</button>
+                {billing.taxInvoice
+                  ? (billing.taxInvoice.url
+                    ? <a href={billing.taxInvoice.url} download={billing.taxInvoice.name} className={buttonClass('secondary', 'sm')}><Download size={14} /> {pick({ en: 'Download', ar: 'تنزيل' })}</a>
+                    : <button onClick={() => printDoc('tax')} className={buttonClass('secondary', 'sm')}><Download size={14} /> {pick({ en: 'Download', ar: 'تنزيل' })}</button>)
                   : <span className="rounded-pill px-3 py-1 font-sans text-caption font-medium" style={{ color: '#8a6b3f', backgroundColor: '#f6edde' }}>{pick({ en: 'Awaiting issue', ar: 'بانتظار الإصدار' })}</span>}
               </div>
             </div>

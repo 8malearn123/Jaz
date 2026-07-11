@@ -6,15 +6,18 @@ import App from './App'
 import { LocaleProvider } from '@/i18n/LocaleContext'
 import { ChannelProvider } from '@/state/ChannelContext'
 import { CartProvider } from '@/state/CartContext'
+import { BillingProvider } from '@/state/BillingContext'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <LocaleProvider>
       <ChannelProvider>
         <CartProvider>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
+          <BillingProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </BillingProvider>
         </CartProvider>
       </ChannelProvider>
     </LocaleProvider>
