@@ -132,7 +132,7 @@ export function NextDeliveryStrip({ onTab }: { onTab: (id: string) => void }) {
   const dest = orgAddressById(next.branchId)
   const order = accountOrders.find((o) => o.orderNo === next.orderNo)
   return (
-    <button onClick={() => onTab('delivery')} className="card p-lg flex items-center gap-md text-start hover:border-primary/40 transition-colors">
+    <button onClick={() => onTab('orders')} className="card p-lg flex items-center gap-md text-start hover:border-primary/40 transition-colors">
       <span className="grid place-items-center w-10 h-10 rounded-md bg-primary text-on-primary shrink-0"><CalendarClock size={20} /></span>
       <div className="flex-1 min-w-0">
         <p className="font-sans text-caption uppercase tracking-[0.1em] text-ink-subtle">{t('delivery.nextTitle')}</p>
@@ -215,7 +215,7 @@ export function NextDeliveryCard({ onTab }: { onTab: (id: string) => void }) {
         </div>
         <span className="grid place-items-center w-10 h-10 rounded-md bg-primary text-on-primary shrink-0"><MapPin size={20} /></span>
       </div>
-      <button onClick={() => onTab('delivery')} className="mt-auto w-full inline-flex items-center justify-center gap-xs rounded-md bg-primary/10 text-primary-hover hover:bg-primary/15 px-4 py-2.5 font-sans text-button uppercase tracking-[0.06em] transition-colors">
+      <button onClick={() => onTab('orders')} className="mt-auto w-full inline-flex items-center justify-center gap-xs rounded-md bg-primary/10 text-primary-hover hover:bg-primary/15 px-4 py-2.5 font-sans text-button uppercase tracking-[0.06em] transition-colors">
         {t('delivery.schedule')} <ArrowRight size={15} className="rtl:rotate-180" />
       </button>
     </div>

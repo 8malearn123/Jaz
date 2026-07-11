@@ -2,14 +2,12 @@ import { useState } from 'react'
 import {
   LayoutGrid, Landmark, Package, Building2, ShieldCheck, BadgeCheck, Download,
   ArrowUpRight, ArrowDownRight, MapPin, Plus, Lock, FileText, TrendingUp,
-  Store, Truck, Bell, Phone,
+  Store, Bell, Phone,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { WholesaleOrderProvider } from '@/state/WholesaleOrderContext'
 import { OrgOrdersPanel } from './OrderQuotePanels'
 import { CatalogPanel } from './CatalogPanel'
-import { DeliveryPanel } from './DeliveryPanel'
-import { QuickOrderMatrix } from './ordering'
 import { AccountManagerCard, LastOrderCard, NextDeliveryCard, fill } from './shared'
 import { organization, availableCreditMinor } from '@/data/organization'
 import type { CreditLedgerEntry, Bilingual } from '@/data/types'
@@ -26,11 +24,12 @@ import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
 import { useTab } from '@/lib/useTab'
 import { cn } from '@/lib/cn'
+import { downloadExcel } from '@/lib/excel'
 
 const org = organization
 const roleAccent: Record<OrgMember['role'], 'gold' | 'success' | 'neutral'> = { b2b_admin: 'gold', approver: 'success', buyer: 'neutral', viewer: 'neutral' }
 
-const TABS = ['overview', 'catalog', 'orders', 'delivery', 'credit', 'company'] as const
+const TABS = ['overview', 'catalog', 'orders', 'credit', 'company'] as const
 type Tab = (typeof TABS)[number]
 
 export function BusinessAccount() {
@@ -54,7 +53,6 @@ function BusinessContent() {
     { id: 'overview', label: t('business.tab.overview'), icon: LayoutGrid },
     { id: 'catalog', label: t('biz.tab.catalog'), icon: Store },
     { id: 'orders', label: t('business.tab.orders'), icon: Package },
-    { id: 'delivery', label: t('biz.tab.delivery'), icon: Truck },
     { id: 'credit', label: t('biz.tab.finance'), icon: Landmark },
     { id: 'company', label: t('biz.tab.company'), icon: Building2 },
   ]
@@ -78,7 +76,6 @@ function BusinessContent() {
       {active === 'overview' && <Overview onTab={setActive} />}
       {active === 'catalog' && <CatalogPanel />}
       {active === 'orders' && <OrgOrdersPanel />}
-      {active === 'delivery' && <DeliveryPanel onTab={setActive} />}
       {active === 'credit' && <Credit />}
       {active === 'company' && <Account />}
     </AccountShell>
@@ -97,9 +94,6 @@ function Overview({ onTab }: { onTab: (id: string) => void }) {
         <LastOrderCard onTab={onTab} />
         <NextDeliveryCard onTab={onTab} />
       </div>
-
-      {/* merged full-width card: staples matrix on top, order summary at the bottom */}
-      <QuickOrderMatrix />
     </div>
   )
 }
@@ -152,9 +146,15 @@ function Credit() {
   }
   const downloadStatement = (id: string) => {
     const s = org.statements.find((x) => x.id === id)!
-    const doc = { period: s.period.en, opening_minor: s.openingMinor, charges_minor: s.chargesMinor, payments_minor: s.paymentsMinor, closing_minor: s.closingMinor, currency: 'SAR' }
-    const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `statement-${s.id}.json`; a.click(); URL.revokeObjectURL(url)
+    downloadExcel(`statement-${s.id}`, pick({ en: 'Statement', ar: 'كشف الحساب' }), [
+      [pick({ en: 'Item', ar: 'البند' }), pick({ en: 'Value', ar: 'القيمة' })],
+      [pick({ en: 'Period', ar: 'الفترة' }), pick(s.period)],
+      [pick({ en: 'Opening balance (SAR)', ar: 'الرصيد الافتتاحي (ريال)' }), s.openingMinor / 100],
+      [pick({ en: 'Charges (SAR)', ar: 'المشتريات (ريال)' }), s.chargesMinor / 100],
+      [pick({ en: 'Payments (SAR)', ar: 'المدفوعات (ريال)' }), s.paymentsMinor / 100],
+      [pick({ en: 'Closing balance (SAR)', ar: 'الرصيد الختامي (ريال)' }), s.closingMinor / 100],
+    ])
+    flash(pick({ en: 'Statement downloaded (Excel)', ar: 'نُزّل كشف الحساب (إكسل)' }))
   }
 
   return (
@@ -228,7 +228,7 @@ function Credit() {
                   <span className="font-serif text-body text-ink">{pick(s.period)}</span>
                   <span className="font-sans text-caption text-ink-subtle tabular-nums">{pick({ en: 'Closing', ar: 'الختامي' })} {money(s.closingMinor)}</span>
                 </div>
-                <button onClick={() => downloadStatement(s.id)} className="inline-flex items-center gap-xs font-sans text-caption uppercase tracking-[0.08em] text-primary-hover hover:text-ink"><Download size={15} /> PDF</button>
+                <button onClick={() => downloadStatement(s.id)} className="inline-flex items-center gap-xs font-sans text-caption uppercase tracking-[0.08em] text-primary-hover hover:text-ink"><Download size={15} /> Excel</button>
               </li>
             ))}
           </ul>
@@ -311,9 +311,9 @@ function Account() {
         </div>
       </div>
 
-      {/* addresses */}
+      {/* addresses & warehouses — warehouse details live here, in the facility tab */}
       <div className="flex items-center justify-between gap-md">
-        <h3 className="font-serif text-card-title text-ink">{t('orgadmin.addresses')}</h3>
+        <h3 className="font-serif text-card-title text-ink">{pick({ en: 'Addresses & warehouses', ar: 'العناوين والمستودعات' })}</h3>
         <button onClick={() => setAddOpen(true)} className={buttonClass('secondary', 'sm')}><Plus size={15} /> {t('addr.add')}</button>
       </div>
       <div className="grid sm:grid-cols-2 gap-md">
