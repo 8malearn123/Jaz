@@ -13,6 +13,7 @@ import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/cn'
 import { orderStatusVariant, OrderJourney, Row } from './shared'
 import { DeliverySchedule } from './DeliveryPanel'
+import { openPrintWindow } from '@/lib/printWindow'
 
 // An order may be cancelled only while still early-stage (before it ships or is delivered).
 const CANCELLABLE: ReadonlySet<AccountOrderStatus> = new Set(['awaiting_approval', 'confirmed', 'processing'])
@@ -147,9 +148,39 @@ function OrderDetailModal({ order, open, onClose, onCancel }: { order: AccountOr
   const awaiting = order.status === 'awaiting_approval'
 
   const download = () => {
-    const doc = { orderNo: order.orderNo, po: order.poNumber, status: order.status, buyer: order.buyer.en, lines: lines.map((l) => ({ item: l.found.product.title.en, qty: l.qty, unit_minor: l.unit, total_minor: l.total })), subtotal_minor: subtotal, vat_minor: vat, total_minor: total, currency: 'SAR' }
-    const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${order.orderNo}.json`; a.click(); URL.revokeObjectURL(url)
+    // Printable invoice — the browser's "Save as PDF" produces the PDF.
+    const dir = locale === 'ar' ? 'rtl' : 'ltr'
+    const L = (en: string, ar: string) => (locale === 'ar' ? ar : en)
+    const rows = lines.map((l) => `<tr><td>${pick(l.found.product.title)}</td><td>${l.qty}</td><td>${money(l.unit)}</td><td>${money(l.total)}</td></tr>`).join('')
+    openPrintWindow(`<!doctype html><html dir="${dir}"><head><meta charset="utf-8"><title>${order.orderNo}</title><style>
+      body{font-family:'Segoe UI',Tahoma,sans-serif;padding:32px;color:#2b2b2b}
+      h1{font-size:20px;margin:0 0 4px} .sub{color:#777;font-size:12px;margin-bottom:16px}
+      .meta{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;font-size:13px;margin:14px 0}
+      .meta b{display:block;color:#777;font-weight:600;font-size:11px;text-transform:uppercase}
+      table{width:100%;border-collapse:collapse;margin-top:10px}
+      th,td{border:1px solid #ccc;padding:6px 10px;font-size:12px;text-align:${locale === 'ar' ? 'right' : 'left'}}
+      th{background:#f3efe8}
+      .totals{margin-top:14px;font-size:13px} .totals div{display:flex;justify-content:space-between;padding:3px 0}
+      .totals .net{font-weight:700;font-size:15px;border-top:1px solid #ccc;padding-top:8px;margin-top:6px}
+      .foot{margin-top:24px;font-size:11px;color:#999}
+      @media print{body{padding:0}}
+    </style></head><body>
+      <h1>${L('Tax invoice', 'فاتورة ضريبية')} ${order.orderNo}</h1>
+      <div class="sub">Jaz · ${L('ZATCA compliant', 'متوافقة مع هيئة الزكاة والضريبة والجمارك')}</div>
+      <div class="meta">
+        <div><b>${L('PO', 'أمر الشراء')}</b>${order.poNumber}</div>
+        <div><b>${L('Buyer', 'المشتري')}</b>${pick(order.buyer)}</div>
+        <div><b>${L('Date', 'التاريخ')}</b>${new Date(order.placedAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+        <div><b>${L('Status', 'الحالة')}</b>${t(`orders.status.${order.status}`)}</div>
+      </div>
+      <table><thead><tr><th>${L('Item', 'الصنف')}</th><th>${L('Qty', 'الكمية')}</th><th>${L('Unit price', 'سعر الوحدة')}</th><th>${L('Total', 'الإجمالي')}</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="totals">
+        <div><span>${L('Subtotal', 'المجموع الفرعي')}</span><span>${money(subtotal)}</span></div>
+        <div><span>${L('VAT 15%', 'ضريبة القيمة المضافة ١٥٪')}</span><span>${money(vat)}</span></div>
+        <div class="net"><span>${L('Total', 'الإجمالي')}</span><span>${money(total)}</span></div>
+      </div>
+      <div class="foot">${L('Generated from the Jaz business portal.', 'صدرت من بوابة أعمال جاز.')}</div>
+    </body></html>`)
   }
 
   return (
