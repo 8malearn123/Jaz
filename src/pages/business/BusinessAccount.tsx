@@ -8,7 +8,7 @@ import { useLocale } from '@/i18n/LocaleContext'
 import { WholesaleOrderProvider } from '@/state/WholesaleOrderContext'
 import { OrgOrdersPanel } from './OrderQuotePanels'
 import { CatalogPanel } from './CatalogPanel'
-import { AccountManagerCard, LastOrderCard, NextDeliveryCard, fill } from './shared'
+import { AccountManagerCard, LastOrderCard, NextDeliveryCard } from './shared'
 import { organization, availableCreditMinor } from '@/data/organization'
 import type { CreditLedgerEntry, Bilingual } from '@/data/types'
 import {
@@ -25,6 +25,7 @@ import { StatusBadge } from '@/components/ui/Misc'
 import { useTab } from '@/lib/useTab'
 import { cn } from '@/lib/cn'
 import { downloadExcel } from '@/lib/excel'
+import { openPrintWindow } from '@/lib/printWindow'
 
 const org = organization
 const roleAccent: Record<OrgMember['role'], 'gold' | 'success' | 'neutral'> = { b2b_admin: 'gold', approver: 'success', buyer: 'neutral', viewer: 'neutral' }
@@ -253,7 +254,26 @@ function Credit() {
                   </div>
                   <p className="font-sans text-caption text-ink-subtle tabular-nums">{new Date(iv.date).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · {money(iv.amountMinor)}</p>
                 </div>
-                <button onClick={() => flash(fill(t('binv.download'), { id: iv.id }))} className="inline-flex items-center gap-xs font-sans text-caption uppercase tracking-[0.08em] text-primary-hover hover:text-ink"><Download size={15} /> PDF</button>
+                <button onClick={() => {
+                  const dir = locale === 'ar' ? 'rtl' : 'ltr'
+                  const L = (en: string, ar: string) => (locale === 'ar' ? ar : en)
+                  openPrintWindow(`<!doctype html><html dir="${dir}"><head><meta charset="utf-8"><title>${iv.id}</title><style>
+                    body{font-family:'Segoe UI',Tahoma,sans-serif;padding:32px;color:#2b2b2b}
+                    h1{font-size:20px;margin:0 0 4px} .sub{color:#777;font-size:12px;margin-bottom:16px}
+                    table{width:100%;border-collapse:collapse;margin-top:10px}
+                    th,td{border:1px solid #ccc;padding:6px 10px;font-size:12px;text-align:${locale === 'ar' ? 'right' : 'left'}}
+                    th{background:#f3efe8}
+                    @media print{body{padding:0}}
+                  </style></head><body>
+                    <h1>${L('Tax invoice', 'فاتورة ضريبية')} ${iv.id}</h1>
+                    <div class="sub">Jaz · ${L('ZATCA compliant', 'متوافقة مع هيئة الزكاة والضريبة والجمارك')}</div>
+                    <table><tbody>
+                      <tr><th>${L('Date', 'التاريخ')}</th><td>${new Date(iv.date).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</td></tr>
+                      <tr><th>${L('Amount', 'المبلغ')}</th><td>${money(iv.amountMinor)}</td></tr>
+                      <tr><th>${L('Status', 'الحالة')}</th><td>${iv.paid ? L('Paid', 'مسدّدة') : L('Net 30', 'صافي ٣٠')}</td></tr>
+                    </tbody></table>
+                  </body></html>`)
+                }} className="inline-flex items-center gap-xs font-sans text-caption uppercase tracking-[0.08em] text-primary-hover hover:text-ink"><Download size={15} /> PDF</button>
               </li>
             ))}
           </ul>
