@@ -1,24 +1,47 @@
-name: Trigger Vercel deploy
+name: Deploy to Vercel
 
-# Fires the Vercel deploy hook on every push to main (and on demand),
-# restoring automatic deployments while the Vercel<->GitHub integration is broken.
-# The hook URL lives in the VERCEL_DEPLOY_HOOK repository secret — never in code.
+# Builds the app on the GitHub runner and uploads the prebuilt output to Vercel
+# (bypassing Vercel's stuck build queue entirely). Runs on every push to main
+# and on demand. Requires the VERCEL_TOKEN repository secret; the project is
+# linked by name below.
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
+env:
+  VERCEL_PROJECT_NAME: jaz
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
     steps:
-      - name: Call Vercel deploy hook
+      - name: Check token
         run: |
-          if [ -z "$HOOK" ]; then
-            echo "VERCEL_DEPLOY_HOOK secret not set — skipping."
-            exit 0
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "VERCEL_TOKEN secret not set — skipping."
+            echo "SKIP=1" >> "$GITHUB_ENV"
           fi
-          curl -sS -X POST "$HOOK"
-          echo "Deploy hook fired."
+      - uses: actions/checkout@v4
+        if: env.SKIP != '1'
+      - uses: actions/setup-node@v4
+        if: env.SKIP != '1'
+        with:
+          node-version: 20
+      - name: Install Vercel CLI
+        if: env.SKIP != '1'
+        run: npm install -g vercel
+      - name: Link project
+        if: env.SKIP != '1'
+        run: vercel link --yes --project "$VERCEL_PROJECT_NAME" --token "$VERCEL_TOKEN"
+      - name: Pull project settings
+        if: env.SKIP != '1'
+        run: vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
+      - name: Build locally
+        if: env.SKIP != '1'
+        run: vercel build --prod --token "$VERCEL_TOKEN"
+      - name: Deploy prebuilt output
+        if: env.SKIP != '1'
+        run: vercel deploy --prebuilt --prod --token "$VERCEL_TOKEN"
