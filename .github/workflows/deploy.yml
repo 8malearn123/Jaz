@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 env:
-  VERCEL_PROJECT_NAME: jaz
+  VERCEL_PROJECT_NAME: jaz-2
 
 jobs:
   deploy:
