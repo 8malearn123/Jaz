@@ -7,6 +7,7 @@ import { LocaleProvider } from '@/i18n/LocaleContext'
 import { ChannelProvider } from '@/state/ChannelContext'
 import { CartProvider } from '@/state/CartContext'
 import { BillingProvider } from '@/state/BillingContext'
+import { TeamProvider } from '@/state/TeamContext'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -14,9 +15,11 @@ createRoot(document.getElementById('root')!).render(
       <ChannelProvider>
         <CartProvider>
           <BillingProvider>
-            <BrowserRouter>
-              <App />
-            </BrowserRouter>
+            <TeamProvider>
+              <BrowserRouter>
+                <App />
+              </BrowserRouter>
+            </TeamProvider>
           </BillingProvider>
         </CartProvider>
       </ChannelProvider>

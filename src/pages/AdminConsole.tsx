@@ -19,6 +19,8 @@ import { AccountShell, type TabDef } from '@/components/account/AccountShell'
 import { StepUpGate } from '@/components/account/StepUpGate'
 import { ToastProvider } from '@/components/account/Toast'
 import { OwnerStateProvider } from '@/state/OwnerStateContext'
+import { useTeam } from '@/state/TeamContext'
+import type { TeamPermission } from '@/data/ownerTeam'
 import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
 import { cn } from '@/lib/cn'
@@ -78,17 +80,31 @@ const SUPPLY_VIEWS: SubView[] = [
 ]
 // Products & Catalog both pivot on the three sales channels — reuse the shared channel labels.
 const CHANNEL_VIEWS: SubView[] = (['b2c', 'b2b', 'mega'] as ProdChannel[]).map((c) => ({ id: c, label: prodChannelMeta[c].label }))
-export type FinView = 'overview' | 'cost' | 'tax' | 'waste'
+// Cost recalibration was removed (unit costs come from purchase invoices) and the
+// waste log lives in Supply chain — finance keeps the overview and collection/tax.
+export type FinView = 'overview' | 'tax'
 const FIN_VIEWS: SubView[] = [
   { id: 'overview', label: { en: 'Financial overview', ar: 'نظرة مالية' } },
-  { id: 'cost', label: { en: 'Cost recalibration', ar: 'إعادة معايرة التكلفة' } },
   { id: 'tax', label: { en: 'Collection & tax', ar: 'التحصيل والضريبة' } },
-  { id: 'waste', label: { en: 'Waste log', ar: 'سجل الهدر' } },
 ]
 const SUB_NAVS: Partial<Record<Section, SubView[]>> = {
   owner_supply: SUPPLY_VIEWS,
   owner_catalog: CHANNEL_VIEWS,
   owner_fin: FIN_VIEWS,
+}
+
+// Which owner-console section each grantable team permission opens up.
+const PERM_SECTIONS: Record<TeamPermission, Section> = {
+  orders: 'owner_orders',
+  purchases: 'owner_supply',
+  raw: 'owner_supply',
+  production: 'owner_supply',
+  waste: 'owner_supply',
+  products: 'owner_catalog',
+  customers: 'owner_customers',
+  suppliers: 'owner_vendors',
+  finance: 'owner_fin',
+  reports: 'owner_supply',
 }
 
 const ACCESS: Record<RoleId, Section[]> = {
@@ -108,10 +124,15 @@ const ACCESS: Record<RoleId, Section[]> = {
 export function AdminConsole() {
   const { t, pick } = useLocale()
   const { role, persona, isStaff, isPrivileged } = useChannel()
-  const allowed = ACCESS[role]
+  const { activeEmployee } = useTeam()
+  // An employee session sees only the owner sections their granted permissions map to.
+  const allowed = activeEmployee
+    ? OWNER_SECTIONS.filter((s) => activeEmployee.perms.some((p) => PERM_SECTIONS[p] === s))
+    : ACCESS[role]
   const [params, setParams] = useSearchParams()
 
   if (!isStaff) return <Restricted />
+  if (activeEmployee && allowed.length === 0) return <Restricted />
 
   // Each role's landing section is its first allowed one (owner has no shared overview → lands on owner_exec).
   const defaultSection = (allowed[0] ?? 'overview') as Section
@@ -151,13 +172,13 @@ export function AdminConsole() {
   })
 
   return (
-    <StepUpGate id={role} required={isPrivileged}>
+    <StepUpGate id={activeEmployee ? `emp-${activeEmployee.id}` : role} required={isPrivileged && !activeEmployee}>
      <ToastProvider>
       <OwnerStateProvider>
       <AccountShell
         eyebrow={t('admin.platform')}
         title={t('admin.title')}
-        subtitle={`${t('ov.signedInAs')}: ${pick(persona.name)} · ${pick(persona.roleLabel)}`}
+        subtitle={`${t('ov.signedInAs')}: ${activeEmployee ? `${pick(activeEmployee.name)} · ${pick(activeEmployee.title)}` : `${pick(persona.name)} · ${pick(persona.roleLabel)}`}`}
         tone="dark"
         tabs={tabs}
         active={navActive}
