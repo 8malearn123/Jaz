@@ -38,6 +38,10 @@ export interface AccountOrder {
   summary: Bilingual
   cancelled?: boolean
   placedTs?: number // session epoch ms when the cancel window opened (early-stage orders only)
+  // Billing process: a proforma is auto-issued with every order; the buyer attaches
+  // payment receipts; Jaz attaches the final tax invoice once payment is confirmed.
+  receipts?: string[] // payment receipt file names attached by the buyer
+  taxInvoiceFile?: string // tax invoice attached by Jaz (absent → awaiting issue)
 }
 
 export interface GiftBatch {
@@ -165,6 +169,7 @@ export const accountOrders: AccountOrder[] = [
     poNumber: 'PO-2026-0431',
     requiresApproval: false,
     summary: { en: '200 × amenity bars', ar: '٢٠٠ × لوح ضيافة' },
+    receipts: ['receipt-PO-2026-0431.pdf'],
   },
   {
     orderNo: 'JAZ-2026-001065',
@@ -176,6 +181,8 @@ export const accountOrders: AccountOrder[] = [
     poNumber: 'PO-2026-0421',
     requiresApproval: false,
     summary: { en: '24 × Jazan Five boxes', ar: '٢٤ × خماسية جازان' },
+    receipts: ['transfer-1065.jpg'],
+    taxInvoiceFile: 'INV-2026-1065.pdf',
   },
   {
     orderNo: 'JAZ-2026-000981',
@@ -187,6 +194,8 @@ export const accountOrders: AccountOrder[] = [
     poNumber: 'PO-2026-0410',
     requiresApproval: false,
     summary: { en: '300 × signature bars', ar: '٣٠٠ × لوح توقيعي' },
+    receipts: ['transfer-0981.pdf'],
+    taxInvoiceFile: 'INV-2026-0981.pdf',
   },
 ]
 
