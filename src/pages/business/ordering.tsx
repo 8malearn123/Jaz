@@ -305,7 +305,7 @@ export function OrderRail({ variant = 'full', onReview }: { variant?: 'full' | '
     // Just the review button, floating in the corner — hidden entirely until something is selected.
     if (lineCount === 0) return null
     return (
-      <button onClick={() => onReview?.()} className="fixed bottom-6 end-6 z-40 inline-flex items-center gap-xs rounded-pill px-5 py-3 font-sans text-button uppercase tracking-[0.06em] bg-primary text-on-primary hover:bg-primary-hover transition-colors shadow-soft-lg">
+      <button onClick={() => onReview?.()} className="fixed top-28 end-6 z-40 inline-flex items-center gap-xs rounded-pill px-5 py-3 font-sans text-button uppercase tracking-[0.06em] bg-primary text-on-primary hover:bg-primary-hover transition-colors shadow-soft-lg">
         <span className="relative inline-flex shrink-0">
           <ShoppingCart size={16} />
           <span className="absolute -top-2.5 -end-2.5 grid place-items-center min-w-[17px] h-[17px] rounded-pill bg-ink text-ink-on-dark font-sans text-[10px] tabular-nums px-1">{lineCount}</span>
