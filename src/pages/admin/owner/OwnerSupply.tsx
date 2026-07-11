@@ -1138,6 +1138,7 @@ function StockTakeReportsModal({ onClose }: { onClose: () => void }) {
     const L = (en: string, ar: string) => (locale === 'ar' ? ar : en)
     const rows = r.lines.map((ln) => `<tr><td>${pick(ln.name)}</td><td>${ln.system.toLocaleString()}</td><td>${ln.counted.toLocaleString()}</td><td>${(ln.variance > 0 ? '+' : '') + ln.variance}</td><td>${ln.variance === 0 ? '—' : money(ln.valueMinor)}</td></tr>`).join('')
     const html = `<!doctype html><html dir="${dir}"><head><meta charset="utf-8"><title>${r.id}</title><style>
+      @page{size:A4 portrait;margin:12mm}
       body{font-family:'Segoe UI',Tahoma,sans-serif;padding:32px;color:#2b2b2b}
       h1{font-size:20px;margin:0 0 4px}
       .sub{color:#777;font-size:12px;margin-bottom:16px}

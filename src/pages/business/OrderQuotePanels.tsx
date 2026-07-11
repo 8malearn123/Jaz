@@ -153,6 +153,7 @@ function OrderDetailModal({ order, open, onClose, onCancel }: { order: AccountOr
     const L = (en: string, ar: string) => (locale === 'ar' ? ar : en)
     const rows = lines.map((l) => `<tr><td>${pick(l.found.product.title)}</td><td>${l.qty}</td><td>${money(l.unit)}</td><td>${money(l.total)}</td></tr>`).join('')
     openPrintWindow(`<!doctype html><html dir="${dir}"><head><meta charset="utf-8"><title>${order.orderNo}</title><style>
+      @page{size:A4 portrait;margin:12mm}
       body{font-family:'Segoe UI',Tahoma,sans-serif;padding:32px;color:#2b2b2b}
       h1{font-size:20px;margin:0 0 4px} .sub{color:#777;font-size:12px;margin-bottom:16px}
       .meta{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;font-size:13px;margin:14px 0}
