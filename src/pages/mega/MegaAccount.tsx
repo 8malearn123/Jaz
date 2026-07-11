@@ -13,6 +13,7 @@ import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
 import { useTab } from '@/lib/useTab'
 import { cn } from '@/lib/cn'
+import { downloadExcel } from '@/lib/excel'
 import {
   megaAccount, megaCatalog, megaVolumeTiers, volumeDiscount, trucksFor,
   shipFlow, SHIP_LAST, CANCEL_WINDOW_MS, megaCredit, megaStatements, megaInvoices, megaCompliance,
@@ -423,10 +424,13 @@ function Finance() {
 
   const downloadStatement = (id: string) => {
     const s = megaStatements.find((x) => x.id === id)!
-    const doc = { period: s.period.en, closing_minor: s.closingMinor, currency: 'SAR', account: megaAccount.legalName.en }
-    const url = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' }))
-    const a = document.createElement('a'); a.href = url; a.download = `mega-statement-${s.id}.json`; a.click(); URL.revokeObjectURL(url)
-    flash(pick({ en: 'Statement downloaded', ar: 'نُزّل كشف الحساب' }))
+    downloadExcel(`mega-statement-${s.id}`, pick({ en: 'Statement', ar: 'كشف الحساب' }), [
+      [pick({ en: 'Item', ar: 'البند' }), pick({ en: 'Value', ar: 'القيمة' })],
+      [pick({ en: 'Account', ar: 'الحساب' }), pick(megaAccount.legalName)],
+      [pick({ en: 'Period', ar: 'الفترة' }), pick(s.period)],
+      [pick({ en: 'Closing balance (SAR)', ar: 'الرصيد الختامي (ريال)' }), s.closingMinor / 100],
+    ])
+    flash(pick({ en: 'Statement downloaded (Excel)', ar: 'نُزّل كشف الحساب (إكسل)' }))
   }
 
   return (
@@ -466,7 +470,7 @@ function Finance() {
             {megaStatements.map((s) => (
               <li key={s.id} className="px-lg py-md flex items-center justify-between gap-md">
                 <div className="flex flex-col gap-xxs min-w-0"><span className="font-serif text-body text-ink">{pick(s.period)}</span><span className="font-sans text-caption text-ink-subtle tabular-nums">{pick({ en: 'Closing', ar: 'الختامي' })} {money(s.closingMinor)}</span></div>
-                <button onClick={() => downloadStatement(s.id)} className="inline-flex items-center gap-xs font-sans text-caption uppercase tracking-[0.08em] text-primary-hover hover:text-ink"><Download size={15} /> JSON</button>
+                <button onClick={() => downloadStatement(s.id)} className="inline-flex items-center gap-xs font-sans text-caption uppercase tracking-[0.08em] text-primary-hover hover:text-ink"><Download size={15} /> Excel</button>
               </li>
             ))}
           </ul>

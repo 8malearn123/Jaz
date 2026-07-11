@@ -12,6 +12,7 @@ import { StatusBadge } from '@/components/ui/Misc'
 import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/cn'
 import { orderStatusVariant, OrderJourney, Row } from './shared'
+import { DeliverySchedule } from './DeliveryPanel'
 
 // An order may be cancelled only while still early-stage (before it ships or is delivered).
 const CANCELLABLE: ReadonlySet<AccountOrderStatus> = new Set(['awaiting_approval', 'confirmed', 'processing'])
@@ -26,6 +27,8 @@ export function OrgOrdersPanel() {
   const cancelOrder = (orderNo: string) => setOrders((prev) => prev.map((o) => (o.orderNo === orderNo ? { ...o, cancelled: true } : o)))
   return (
     <div className="flex flex-col gap-lg">
+      {/* delivery tracking lives at the top of Orders (the Delivery tab was folded in here) */}
+      <DeliverySchedule />
       <MyOrders orders={orders} onView={(o) => setViewNo(o.orderNo)} />
       <OrderDetailModal order={viewOrder} open={!!viewOrder} onClose={() => setViewNo(null)} onCancel={cancelOrder} />
     </div>
