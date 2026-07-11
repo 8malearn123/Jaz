@@ -12,6 +12,7 @@ import type { OwnerProduct, ProdChannel } from '@/data/ownerProducts'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { cn } from '@/lib/cn'
 import { PanelHead, StatCard, FilterChips, Pill } from './_shared'
+import { BillingDesk } from './OwnerBilling'
 
 const LAST = (ownerOrderStatuses.length - 1) as OwnerOrderStage
 
@@ -113,6 +114,9 @@ export function OwnerOrders() {
         </div>
         <div className="px-lg py-sm bg-surface-2 border-t border-hairline font-sans text-caption text-ink-subtle">{shown.length} {pick({ en: 'of', ar: 'من' })} {orders.length} {pick({ en: 'orders', ar: 'طلب' })}</div>
       </div>
+
+      {/* Jaz side of the billing process — buyer receipts in, tax invoices out */}
+      <BillingDesk />
 
       {/* detail modal */}
       <Modal open={!!order} onClose={() => setSel(null)} size="lg" eyebrow={order ? pick(ownerChannelMeta[order.chan].label) : ''} title={order?.id ?? ''}
