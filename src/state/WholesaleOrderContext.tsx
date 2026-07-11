@@ -24,11 +24,10 @@ interface WholesaleOrderValue {
 
 const WholesaleOrderContext = createContext<WholesaleOrderValue | null>(null)
 
-const seedQty: Record<string, number> = { CHV70: 8, CHM45: 4, PWD22: 12, DRP60: 3, SPR: 6, TRF: 2 }
-
 export function WholesaleOrderProvider({ children }: { children: ReactNode }) {
   const cart = useCart()
-  const [qty, setQtyState] = useState<Record<string, number>>(() => ({ ...seedQty }))
+  // Quantities always start at zero — the buyer builds the order from scratch.
+  const [qty, setQtyState] = useState<Record<string, number>>({})
 
   // Clamp to [0,999]; snap a positive value up to the product's minimum order qty.
   const setQty = useCallback((sku: string, n: number) => {
