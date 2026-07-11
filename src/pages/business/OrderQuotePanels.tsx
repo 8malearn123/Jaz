@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
-import { AlertTriangle, Repeat, Check, Eye, Download, Clock, X } from 'lucide-react'
+import { AlertTriangle, Eye, Download, Clock, X } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
-import { useCart } from '@/state/CartContext'
 import {
   accountOrders, accountOrderItems, members, CANCEL_WINDOW_MS,
   type AccountOrder, type AccountOrderStatus,
@@ -12,7 +11,7 @@ import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
 import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/cn'
-import { orderStatusVariant, reorderToCart, OrderJourney, Row } from './shared'
+import { orderStatusVariant, OrderJourney, Row } from './shared'
 
 // An order may be cancelled only while still early-stage (before it ships or is delivered).
 const CANCELLABLE: ReadonlySet<AccountOrderStatus> = new Set(['awaiting_approval', 'confirmed', 'processing'])
@@ -36,11 +35,9 @@ export function OrgOrdersPanel() {
 /* ─────────── My orders ─────────── */
 function MyOrders({ orders, onView }: { orders: AccountOrder[]; onView: (o: AccountOrder) => void }) {
   const { t } = useLocale()
-  const { add } = useCart()
   const [filter, setFilter] = useState<'all' | 'awaiting_approval' | 'processing' | 'delivered'>('all')
   const filters: typeof filter[] = ['all', 'awaiting_approval', 'processing', 'delivered']
   const shown = filter === 'all' ? orders : orders.filter((o) => o.status === filter)
-  const reorder = (orderNo: string) => { reorderToCart(orderNo, add) }
 
   return (
     <div className="flex flex-col gap-lg">
@@ -58,7 +55,7 @@ function MyOrders({ orders, onView }: { orders: AccountOrder[]; onView: (o: Acco
       </div>
       <div className="flex flex-col gap-md">
         {shown.map((o) => (
-          <OrderCard key={o.orderNo} order={o} onReorder={() => reorder(o.orderNo)} onView={() => onView(o)} />
+          <OrderCard key={o.orderNo} order={o} onView={() => onView(o)} />
         ))}
         {shown.length === 0 && <p className="font-sans text-data text-ink-subtle py-xl text-center">{t('buyer.noOrders')}</p>}
       </div>
@@ -68,9 +65,8 @@ function MyOrders({ orders, onView }: { orders: AccountOrder[]; onView: (o: Acco
 
 /** Compact, scannable order card: id + date on one side, prominent total on the other,
  *  a minimalist progress bar instead of the wide stepper, and an inline soft alert. */
-function OrderCard({ order, onReorder, onView }: { order: AccountOrder; onReorder: () => void; onView: () => void }) {
+function OrderCard({ order, onView }: { order: AccountOrder; onView: () => void }) {
   const { t, pick, money, locale } = useLocale()
-  const [done, setDone] = useState(false)
   const journey = order.cancelled
     ? <p className="inline-flex items-center gap-xs font-sans text-caption text-danger"><X size={13} /> {pick({ en: 'This order was cancelled.', ar: 'أُلغي هذا الطلب.' })}</p>
     : <OrderJourney status={order.status} variant="mini" />
@@ -99,9 +95,6 @@ function OrderCard({ order, onReorder, onView }: { order: AccountOrder; onReorde
         {/* actions */}
         <div className="flex items-center gap-xs shrink-0">
           <button onClick={onView} className={buttonClass('secondary', 'sm')}><Eye size={14} /> {t('order.view')}</button>
-          <button onClick={() => { onReorder(); setDone(true); setTimeout(() => setDone(false), 1400) }} className={buttonClass('secondary', 'sm')}>
-            {done ? <><Check size={14} /> {t('cta.added')}</> : <><Repeat size={14} /> {t('orders.reorder')}</>}
-          </button>
         </div>
       </div>
 
