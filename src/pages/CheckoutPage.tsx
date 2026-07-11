@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CheckCircle2, CreditCard, Landmark, Wallet, ShieldCheck, AlertTriangle, ArrowRight, MapPin, Plus, Pencil, Gift } from 'lucide-react'
+import { CheckCircle2, CreditCard, Landmark, Wallet, ShieldCheck, AlertTriangle, MapPin, Plus, Pencil, Gift } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useCart } from '@/state/CartContext'
 import { useChannel, type Channel } from '@/state/ChannelContext'
@@ -23,11 +23,16 @@ export function CheckoutPage() {
   const { totalMinor, lines, clear } = useCart()
   const [placed, setPlaced] = useState(false)
   const [method, setMethod] = useState<PayMethod>('mada')
+  // Bank-transfer receipt (B2B): attached in the same flow, required before placing the order.
+  const [receipt, setReceipt] = useState<string | null>(null)
 
   useEffect(() => {
     // keep a sensible default method per channel
     setMethod(channel === 'b2b' ? 'credit' : 'mada')
+    setReceipt(null)
   }, [channel])
+
+  const needsReceipt = channel === 'b2b' && method === 'bank_transfer' && !receipt
 
   if (lines.length === 0 && !placed) {
     return (
@@ -56,8 +61,7 @@ export function CheckoutPage() {
         <div className="flex flex-col gap-xl">
           <ContactSection channel={channel} />
           <DeliverySection channel={channel} />
-          {channel === 'b2b' && <PoSection />}
-          <PaymentSection channel={channel} method={method} setMethod={setMethod} />
+          <PaymentSection channel={channel} method={method} setMethod={setMethod} receipt={receipt} setReceipt={setReceipt} />
         </div>
 
         {/* summary + credit */}
@@ -66,9 +70,10 @@ export function CheckoutPage() {
             <CreditCheckout baseTotalMinor={totalMinor} onPlace={() => { clear(); setPlaced(true) }} />
           ) : (
             <OrderSummary>
-              <button onClick={() => { clear(); setPlaced(true) }} className={buttonClass('primary', 'md', 'w-full mt-md')}>
+              <button onClick={() => { clear(); setPlaced(true) }} disabled={needsReceipt} className={buttonClass('primary', 'md', cn('w-full mt-md', needsReceipt && 'opacity-50 cursor-not-allowed'))}>
                 {t('checkout.placeOrder')} · {money(totalMinor)}
               </button>
+              {needsReceipt && <p className="font-sans text-caption text-danger text-center mt-xs">{pick({ en: 'Attach the transfer receipt before placing the order.', ar: 'أرفق إيصال التحويل قبل إرسال الطلب.' })}</p>}
             </OrderSummary>
           )}
           <p className="flex items-center justify-center gap-xs font-sans text-caption text-ink-subtle">
@@ -311,29 +316,21 @@ function GiftRecipientPicker() {
   )
 }
 
-function PoSection() {
-  const { t } = useLocale()
-  return (
-    <FieldShell step="03" title={t('checkout.poNumber')}>
-      <Field label={t('checkout.poNumber')} placeholder="PO-2026-0042" />
-    </FieldShell>
-  )
-}
-
 /* ─────────────── payment ─────────────── */
-function PaymentSection({ channel, method, setMethod }: { channel: Channel; method: PayMethod; setMethod: (m: PayMethod) => void }) {
+// B2B pays by bank transfer (receipt attached in the same flow) or on credit terms — no cards.
+function PaymentSection({ channel, method, setMethod, receipt, setReceipt }: { channel: Channel; method: PayMethod; setMethod: (m: PayMethod) => void; receipt: string | null; setReceipt: (r: string | null) => void }) {
   const { t, pick } = useLocale()
   const methods: { id: PayMethod; label: string; icon: typeof CreditCard; note?: string; b2bOnly?: boolean; b2cOnly?: boolean }[] = [
-    { id: 'mada', label: t('checkout.pay.mada'), icon: CreditCard },
-    { id: 'card', label: t('checkout.pay.card'), icon: CreditCard },
+    { id: 'mada', label: t('checkout.pay.mada'), icon: CreditCard, b2cOnly: true },
+    { id: 'card', label: t('checkout.pay.card'), icon: CreditCard, b2cOnly: true },
     { id: 'applepay', label: t('checkout.pay.applepay'), icon: Wallet, b2cOnly: true },
     { id: 'tabby', label: t('checkout.pay.tabby'), icon: Wallet, b2cOnly: true },
     { id: 'tamara', label: t('checkout.pay.tamara'), icon: Wallet, b2cOnly: true },
-    { id: 'bank_transfer', label: pick({ en: 'Bank transfer / SADAD', ar: 'تحويل بنكي / سداد' }), icon: Landmark, b2bOnly: true },
+    { id: 'bank_transfer', label: pick({ en: 'Bank transfer / SADAD', ar: 'تحويل بنكي / سداد' }), icon: Landmark, note: pick({ en: 'Attach the transfer receipt below', ar: 'يُرفق إيصال التحويل بالأسفل' }), b2bOnly: true },
     { id: 'credit', label: t('checkout.pay.credit'), icon: Landmark, note: t('checkout.pay.creditNote'), b2bOnly: true },
   ]
   const visible = methods.filter((m) => (channel === 'b2b' ? !m.b2cOnly : !m.b2bOnly))
-  const step = channel === 'b2b' ? '04' : '03'
+  const step = '03'
 
   return (
     <FieldShell step={step} title={t('checkout.payment')}>
@@ -369,6 +366,25 @@ function PaymentSection({ channel, method, setMethod }: { channel: Channel; meth
           </div>
         </div>
       ) : null}
+
+      {/* bank transfer: the receipt is attached in the same flow, required before placing the order */}
+      {channel === 'b2b' && method === 'bank_transfer' && (
+        <div className="flex flex-col gap-xs pt-sm border-t border-hairline">
+          <span className="label">{pick({ en: 'Transfer receipt', ar: 'إيصال التحويل' })}</span>
+          {receipt ? (
+            <div className="flex items-center justify-between gap-sm rounded-md bg-success/8 border border-success/25 px-md py-sm">
+              <span className="inline-flex items-center gap-xs font-sans text-data text-ink min-w-0"><CheckCircle2 size={16} className="text-success shrink-0" /> <span className="truncate" dir="ltr">{receipt}</span></span>
+              <button type="button" onClick={() => setReceipt(null)} className="font-sans text-caption text-danger hover:underline shrink-0">{pick({ en: 'Remove', ar: 'إزالة' })}</button>
+            </div>
+          ) : (
+            <label className="flex flex-col items-center justify-center gap-xs rounded-md border-2 border-dashed border-hairline-strong hover:border-primary/50 transition-colors px-md py-lg cursor-pointer text-center">
+              <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) setReceipt(f.name); e.target.value = '' }} />
+              <span className="font-sans text-data text-ink">{pick({ en: 'Attach the transfer receipt (image or PDF)', ar: 'أرفق إيصال التحويل (صورة أو PDF)' })}</span>
+              <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Required before placing the order', ar: 'إلزامي قبل إرسال الطلب' })}</span>
+            </label>
+          )}
+        </div>
+      )}
     </FieldShell>
   )
 }
@@ -377,17 +393,10 @@ function PaymentSection({ channel, method, setMethod }: { channel: Channel; meth
 function CreditCheckout({ baseTotalMinor, onPlace }: { baseTotalMinor: number; onPlace: () => void }) {
   const { t, pick, money, locale } = useLocale()
   const available = availableCreditMinor(organization)
-  // Let the buyer preview a larger seasonal order against the credit gate.
-  const max = Math.round(available * 1.9)
-  const [orderTotal, setOrderTotal] = useState(Math.min(baseTotalMinor || 5000, available))
-  const [resolution, setResolution] = useState<null | 'reduce' | 'pay' | 'request'>(null)
-
+  // The real cart total — no previews or simulations, just confirm the order.
+  const orderTotal = baseTotalMinor
   const over = orderTotal > available
   const shortfall = Math.max(0, orderTotal - available)
-
-  useEffect(() => {
-    if (!over) setResolution(null)
-  }, [over])
 
   const termLabel = useMemo(() => {
     const map: Record<string, { en: string; ar: string }> = {
@@ -427,26 +436,11 @@ function CreditCheckout({ baseTotalMinor, onPlace }: { baseTotalMinor: number; o
           </div>
         </div>
 
-        {/* order amount preview */}
-        <div className="flex flex-col gap-xs pt-sm border-t border-hairline">
-          <div className="flex items-center justify-between">
-            <span className="label !mb-0">{pick({ en: 'This order', ar: 'هذا الطلب' })}</span>
-            <span className="font-serif text-card-title text-ink tabular-nums" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
-              {money(orderTotal)}
-            </span>
-          </div>
-          <input
-            type="range"
-            min={1000}
-            max={max}
-            step={1000}
-            value={orderTotal}
-            onChange={(e) => setOrderTotal(Number(e.target.value))}
-            className="w-full accent-primary"
-            aria-label={pick({ en: 'Preview order amount against credit', ar: 'معاينة مبلغ الطلب مقابل الائتمان' })}
-          />
-          <span className="font-sans text-caption text-ink-subtle">
-            {pick({ en: 'Drag to preview a larger seasonal order against your credit gate.', ar: 'اسحب لمعاينة طلبٍ موسميٍّ أكبر مقابل بوابة الائتمان.' })}
+        {/* the actual order total — nothing to tweak, just confirm */}
+        <div className="flex items-center justify-between pt-sm border-t border-hairline">
+          <span className="label !mb-0">{pick({ en: 'This order', ar: 'هذا الطلب' })}</span>
+          <span className="font-serif text-card-title text-ink tabular-nums" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+            {money(orderTotal)}
           </span>
         </div>
 
@@ -468,45 +462,16 @@ function CreditCheckout({ baseTotalMinor, onPlace }: { baseTotalMinor: number; o
             </button>
           </div>
         ) : (
-          /* over limit — the three governed paths */
+          /* over limit — shortfall + a direct limit-increase request */
           <div className="flex flex-col gap-sm rounded-md bg-danger/6 border border-danger/25 p-md">
             <div className="flex items-start gap-sm">
               <AlertTriangle size={18} className="text-danger mt-0.5 shrink-0" />
               <div>
                 <p className="font-sans text-data font-medium text-ink">{t('credit.overLimit.title')}</p>
-                <p className="font-sans text-caption text-ink-muted mt-0.5">{t('credit.overLimit.body')}</p>
+                <p className="font-sans text-caption text-ink-muted mt-0.5">{t('credit.overLimit.shortfall')}: <span className="tabular-nums text-danger">{money(shortfall)}</span></p>
               </div>
             </div>
-            <div className="flex items-center justify-between rounded-sm bg-surface-1 border border-hairline px-md py-2">
-              <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{t('credit.overLimit.shortfall')}</span>
-              <span className="font-serif text-card-title text-danger tabular-nums" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
-                {money(shortfall)}
-              </span>
-            </div>
-
-            <div className="flex flex-col gap-xs">
-              <PathButton active={resolution === 'reduce'} onClick={() => { setResolution('reduce'); setOrderTotal(available) }} label={t('credit.overLimit.reduce')} />
-              <PathButton active={resolution === 'pay'} onClick={() => setResolution('pay')} label={t('credit.overLimit.payExcess')} />
-              <PathButton active={resolution === 'request'} onClick={() => setResolution('request')} label={t('credit.overLimit.requestMore')} highlight />
-            </div>
-
-            {resolution === 'pay' && (
-              <div className="rounded-md bg-surface-1 border border-hairline p-md flex flex-col gap-xs animate-fade-up">
-                <div className="flex items-center justify-between font-sans text-data">
-                  <span className="text-ink-muted">{pick({ en: 'Reserve on account', ar: 'حجز على الحساب' })}</span>
-                  <span className="tabular-nums">{money(available)}</span>
-                </div>
-                <div className="flex items-center justify-between font-sans text-data">
-                  <span className="text-ink-muted">{pick({ en: 'Pay now · mada / card', ar: 'ادفع الآن · مدى / بطاقة' })}</span>
-                  <span className="tabular-nums text-ink">{money(shortfall)}</span>
-                </div>
-                <button onClick={onPlace} className={buttonClass('primary', 'sm', 'w-full mt-xs')}>
-                  {pick({ en: 'Pay excess & place order', ar: 'ادفع الفائض وأكّد الطلب' })}
-                </button>
-              </div>
-            )}
-
-            {resolution === 'request' && <LimitIncreaseForm requestedMinor={Math.ceil(orderTotal / 100000) * 100000} />}
+            <LimitIncreaseForm requestedMinor={Math.ceil(orderTotal / 100000) * 100000} />
           </div>
         )}
       </div>
@@ -516,25 +481,6 @@ function CreditCheckout({ baseTotalMinor, onPlace }: { baseTotalMinor: number; o
 
 function Dot({ c }: { c: string }) {
   return <span className="inline-block w-2 h-2 rounded-pill" style={{ backgroundColor: c }} />
-}
-
-function PathButton({ label, onClick, active, highlight }: { label: string; onClick: () => void; active?: boolean; highlight?: boolean }) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        'flex items-center justify-between gap-sm text-start px-md py-3 rounded-md border transition-all font-sans text-data',
-        active
-          ? 'border-primary bg-primary/10 text-ink'
-          : highlight
-            ? 'border-primary/40 bg-surface-1 text-ink hover:bg-primary/5'
-            : 'border-hairline-strong bg-surface-1 text-ink-muted hover:text-ink hover:border-ink/30',
-      )}
-    >
-      {label}
-      <ArrowRight size={15} className={cn('rtl:rotate-180', active ? 'text-primary' : 'text-ink-subtle')} />
-    </button>
-  )
 }
 
 function LimitIncreaseForm({ requestedMinor }: { requestedMinor: number }) {
