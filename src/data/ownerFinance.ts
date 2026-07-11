@@ -1,42 +1,24 @@
 import type { Bilingual } from './types'
 
-// ── Owner finance & costs (isolated). Reads no shared price data; the cocoa
-// slider recomputes COGS/margins into view-models only (never writes back).
+// ── Owner finance & costs (isolated).
 
 export const finBase = {
   revenueMinor: 284750000,
   cogsMinor: 163100000,
   wasteMinor: 834000,
-  opexMinor: 31500000,
 }
 export const finGrossMinor = finBase.revenueMinor - finBase.cogsMinor
-export const finNetMinor = finGrossMinor - finBase.opexMinor - finBase.wasteMinor
 
-export interface OpexRow { label: Bilingual; amountMinor: number }
-export const opexRows: OpexRow[] = [
-  { label: { en: 'Salaries', ar: 'الرواتب' }, amountMinor: 14200000 },
-  { label: { en: 'Rent & utilities', ar: 'الإيجار والمرافق' }, amountMinor: 6800000 },
-  { label: { en: 'Logistics', ar: 'اللوجستيات' }, amountMinor: 4900000 },
-  { label: { en: 'Marketing', ar: 'التسويق' }, amountMinor: 3300000 },
-  { label: { en: 'General & admin', ar: 'عمومية وإدارية' }, amountMinor: 1500000 },
-]
-
-// Cocoa-linked COGS recalibration for one reference product ("Jasmine luxury box").
-export interface RecalIngredient { name: Bilingual; costMinor: number; cocoaLinked: boolean }
-export const recalIngredients: RecalIngredient[] = [
-  { name: { en: 'Cocoa mass', ar: 'كتلة كاكاو' }, costMinor: 4200, cocoaLinked: true },
-  { name: { en: 'Milk powder', ar: 'حليب مجفف' }, costMinor: 1800, cocoaLinked: false },
-  { name: { en: 'Sugar', ar: 'سكر' }, costMinor: 600, cocoaLinked: false },
-  { name: { en: 'Gold foil', ar: 'ورق ذهبي' }, costMinor: 900, cocoaLinked: false },
-  { name: { en: 'Packaging', ar: 'التغليف' }, costMinor: 1500, cocoaLinked: false },
-]
-
-// Per-product margin-impact cards; cocoa cost is the only slider-linked component.
-export interface CogsProduct { name: Bilingual; priceMinor: number; fixedCostMinor: number; cocoaCostMinor: number }
-export const cogsProducts: CogsProduct[] = [
-  { name: { en: 'Jasmine luxury box', ar: 'بوكس الفُل الفاخر' }, priceMinor: 16800, fixedCostMinor: 4800, cocoaCostMinor: 4200 },
-  { name: { en: 'Dark 70% bar', ar: 'لوح داكن ٧٠٪' }, priceMinor: 4400, fixedCostMinor: 900, cocoaCostMinor: 1400 },
-  { name: { en: 'Hotel amenity bar', ar: 'لوح ضيافة الفندق' }, priceMinor: 3800, fixedCostMinor: 1100, cocoaCostMinor: 900 },
+// Operating expenses are NOT seeded — salaries, rent and the like are the owner's
+// own affairs; the platform can't know them. They're recorded manually from the
+// finance panel, and the P&L reflects only what was actually recorded.
+export interface ExpenseEntry { id: string; category: Bilingual; amountMinor: number; note?: string; at: Bilingual }
+export const expenseCategories: Bilingual[] = [
+  { en: 'Salaries', ar: 'الرواتب' },
+  { en: 'Rent & utilities', ar: 'الإيجار والمرافق' },
+  { en: 'Logistics', ar: 'اللوجستيات' },
+  { en: 'Marketing', ar: 'التسويق' },
+  { en: 'General & admin', ar: 'عمومية وإدارية' },
 ]
 
 export interface CollectionRow { label: Bilingual; pct: number; note: Bilingual }

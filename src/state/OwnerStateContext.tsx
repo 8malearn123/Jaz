@@ -4,7 +4,7 @@ import { ownerOrdersSeed, ownerOrderStatuses, type OwnerOrder, type OwnerChannel
 import { rawMaterials, finishedBatches, bomBySku, purchaseInvoices, suppliers as suppliersSeed, stockMovementsSeed, stockUnits, unitFactor, type RawKey, type FinishedBatch, type PurchaseInvoice, type ExtraRaw, type Supplier, type SupplierContact, type StockMovement, type StockTakeReport } from '@/data/ownerSupply'
 import { ownerProductsByChannel, type OwnerProduct, type ProdChannel } from '@/data/ownerProducts'
 import { ownerCustomers, ownerTiers, type OwnerCustomer, type OwnerTier } from '@/data/ownerCustomers'
-import { wasteLog as wasteSeed, finNetMinor, finBase, type WasteEntry } from '@/data/ownerFinance'
+import { wasteLog as wasteSeed, finGrossMinor, type WasteEntry, type ExpenseEntry } from '@/data/ownerFinance'
 import { contracts as contractsSeed, b2cCatalog, stdCatalog, catTree, storeProductsSeed, type Contract, type CatNode, type StoreProduct } from '@/data/ownerCatalog'
 import { approvalStages as approvalSeed, ownerVendors as ownerVendorsSeed, type ApprovalStage, type OwnerVendor } from '@/data/ownerVendors'
 import type { Employee, TeamPermission } from '@/data/ownerTeam'
@@ -90,6 +90,10 @@ interface OwnerStateValue {
   recordWaste: (w: { scope: 'raw' | 'finished'; itemId: string; qty: number; reason: Bilingual }) => boolean
   wasteTotalMinor: number
   netProfitMinor: number
+  // operating expenses (owner-recorded; start empty)
+  expenses: ExpenseEntry[]
+  recordExpense: (e: Omit<ExpenseEntry, 'id' | 'at'>) => void
+  opexTotalMinor: number
   // customers loyalty
   customers: OwnerCustomer[]
   rewardCustomer: (id: string, points: number) => void
@@ -394,7 +398,19 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   }, [wasteSeq, finished, rawQty, extraRaws, logMovement]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const wasteTotalMinor = wasteLog.reduce((a, w) => a + w.lossMinor, 0)
-  const netProfitMinor = finNetMinor + (finBase.wasteMinor - wasteTotalMinor) // base already subtracted seed waste; adjust to live
+
+  /* ── operating expenses — recorded manually by the owner (no seeds; salaries,
+        rent, etc. are outside the platform's knowledge) ── */
+  const [expenses, setExpenses] = useState<ExpenseEntry[]>([])
+  const expSeqRef = useRef(1)
+  const recordExpense = useCallback((e: Omit<ExpenseEntry, 'id' | 'at'>) => {
+    const id = `EX-${String(expSeqRef.current++).padStart(3, '0')}`
+    setExpenses((prev) => [{ ...e, id, at: { en: 'Now', ar: 'الآن' } }, ...prev])
+  }, [])
+  const opexTotalMinor = expenses.reduce((a, e) => a + e.amountMinor, 0)
+
+  // Net = gross − recorded opex − live waste.
+  const netProfitMinor = finGrossMinor - opexTotalMinor - wasteTotalMinor
 
   /* ── customers ── */
   const rewardCustomer = useCallback((id: string, points: number) => setCustomers((prev) => prev.map((c) => {
@@ -488,6 +504,7 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     suppliers, addSupplier,
     invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase,
     wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor,
+    expenses, recordExpense, opexTotalMinor,
     customers, rewardCustomer,
     employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive,
     creditLimits, setCreditLimit,
@@ -498,7 +515,7 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible,
     dismissedExpiry, dismissExpiry,
     cocoaDelta, setCocoa,
-  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, stockTakeReports, addStockTakeReport, movements, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor, customers, rewardCustomer, employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive, creditLimits, setCreditLimit, contracts, renewContract, approvals, advanceApproval, vendors, approveVendor, rejectVendor, inviteVendor, recordVendorPayment, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, dismissedExpiry, dismissExpiry, cocoaDelta])
+  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, stockTakeReports, addStockTakeReport, movements, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor, expenses, recordExpense, opexTotalMinor, customers, rewardCustomer, employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive, creditLimits, setCreditLimit, contracts, renewContract, approvals, advanceApproval, vendors, approveVendor, rejectVendor, inviteVendor, recordVendorPayment, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, dismissedExpiry, dismissExpiry, cocoaDelta])
 
   return <OwnerStateContext.Provider value={value}>{children}</OwnerStateContext.Provider>
 }
