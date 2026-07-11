@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { AlertTriangle, Eye, Download, Clock, X } from 'lucide-react'
+import { AlertTriangle, Eye, Download, Clock, X, FileText, Upload, CheckCircle2 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
+import { useToast } from '@/components/account/Toast'
 import {
   accountOrders, accountOrderItems, members, CANCEL_WINDOW_MS,
   type AccountOrder, type AccountOrderStatus,
@@ -26,12 +27,13 @@ export function OrgOrdersPanel() {
   const [viewNo, setViewNo] = useState<string | null>(null)
   const viewOrder = orders.find((o) => o.orderNo === viewNo) ?? null
   const cancelOrder = (orderNo: string) => setOrders((prev) => prev.map((o) => (o.orderNo === orderNo ? { ...o, cancelled: true } : o)))
+  const attachReceipt = (orderNo: string, name: string) => setOrders((prev) => prev.map((o) => (o.orderNo === orderNo ? { ...o, receipts: [...(o.receipts ?? []), name] } : o)))
   return (
     <div className="flex flex-col gap-lg">
       {/* delivery tracking lives at the top of Orders (the Delivery tab was folded in here) */}
       <DeliverySchedule />
       <MyOrders orders={orders} onView={(o) => setViewNo(o.orderNo)} />
-      <OrderDetailModal order={viewOrder} open={!!viewOrder} onClose={() => setViewNo(null)} onCancel={cancelOrder} />
+      <OrderDetailModal order={viewOrder} open={!!viewOrder} onClose={() => setViewNo(null)} onCancel={cancelOrder} onAttachReceipt={attachReceipt} />
     </div>
   )
 }
@@ -119,8 +121,9 @@ function OrderCard({ order, onView }: { order: AccountOrder; onView: () => void 
 /* ─────────── Lists ─────────── */
 
 /* ─────────── Order detail / invoice ─────────── */
-function OrderDetailModal({ order, open, onClose, onCancel }: { order: AccountOrder | null; open: boolean; onClose: () => void; onCancel: (orderNo: string) => void }) {
+function OrderDetailModal({ order, open, onClose, onCancel, onAttachReceipt }: { order: AccountOrder | null; open: boolean; onClose: () => void; onCancel: (orderNo: string) => void; onAttachReceipt: (orderNo: string, name: string) => void }) {
   const { t, pick, money, locale } = useLocale()
+  const { flash } = useToast()
   const [now, setNow] = useState(() => Date.now())
   const canCancel = !!order && !order.cancelled && CANCELLABLE.has(order.status) && order.placedTs != null && (order.placedTs + CANCEL_WINDOW_MS - now) > 0
   // Tick the countdown while the window is open.
@@ -147,10 +150,15 @@ function OrderDetailModal({ order, open, onClose, onCancel }: { order: AccountOr
   const total = subtotal + vat
   const awaiting = order.status === 'awaiting_approval'
 
-  const download = () => {
-    // Printable invoice — the browser's "Save as PDF" produces the PDF.
+  // Printable invoice — the browser's "Save as PDF" produces the PDF.
+  // 'proforma' is auto-issued with every order; 'tax' is the final invoice attached by Jaz.
+  const printDoc = (kind: 'proforma' | 'tax') => {
     const dir = locale === 'ar' ? 'rtl' : 'ltr'
     const L = (en: string, ar: string) => (locale === 'ar' ? ar : en)
+    const title = kind === 'tax' ? L('Tax invoice', 'فاتورة ضريبية') : L('Proforma invoice', 'فاتورة أولية')
+    const sub = kind === 'tax'
+      ? `Jaz · ${L('ZATCA compliant', 'متوافقة مع هيئة الزكاة والضريبة والجمارك')}`
+      : `Jaz · ${L('Not a tax invoice — the tax invoice is issued by Jaz after payment is confirmed', 'ليست فاتورة ضريبية — تُصدر جاز الفاتورة الضريبية بعد التحقق من السداد')}`
     const rows = lines.map((l) => `<tr><td>${pick(l.found.product.title)}</td><td>${l.qty}</td><td>${money(l.unit)}</td><td>${money(l.total)}</td></tr>`).join('')
     openPrintWindow(`<!doctype html><html dir="${dir}"><head><meta charset="utf-8"><title>${order.orderNo}</title><style>
       @page{size:A4 portrait;margin:12mm}
@@ -166,8 +174,8 @@ function OrderDetailModal({ order, open, onClose, onCancel }: { order: AccountOr
       .foot{margin-top:24px;font-size:11px;color:#999}
       @media print{body{padding:0}}
     </style></head><body>
-      <h1>${L('Tax invoice', 'فاتورة ضريبية')} ${order.orderNo}</h1>
-      <div class="sub">Jaz · ${L('ZATCA compliant', 'متوافقة مع هيئة الزكاة والضريبة والجمارك')}</div>
+      <h1>${title} ${order.orderNo}</h1>
+      <div class="sub">${sub}</div>
       <div class="meta">
         <div><b>${L('PO', 'أمر الشراء')}</b>${order.poNumber}</div>
         <div><b>${L('Buyer', 'المشتري')}</b>${pick(order.buyer)}</div>
@@ -199,7 +207,6 @@ function OrderDetailModal({ order, open, onClose, onCancel }: { order: AccountOr
         </div>
         <div className="flex items-center gap-sm shrink-0">
           {canCancel && <button onClick={doCancel} className="btn btn-sm bg-transparent text-danger border border-danger/40 hover:bg-danger/5"><X size={15} /> {pick({ en: 'Cancel order', ar: 'إلغاء الطلب' })}</button>}
-          {!awaiting && order.status !== 'rejected' && !order.cancelled && <button onClick={download} className={buttonClass('primary', 'sm')}><Download size={15} /> {t('inv.download')}</button>}
           <button onClick={onClose} className={buttonClass('ghost', 'sm')}>{t('cta.back')}</button>
         </div>
       </div>}
@@ -272,6 +279,70 @@ function OrderDetailModal({ order, open, onClose, onCancel }: { order: AccountOr
             <span className="font-serif text-card-title text-ink tabular-nums" dir={locale === 'ar' ? 'rtl' : 'ltr'}>{money(total)}</span>
           </div>
         </div>
+
+        {/* billing process: proforma auto-issued → buyer attaches receipts → Jaz attaches the tax invoice */}
+        {!order.cancelled && order.status !== 'rejected' && (
+          <div className="rounded-lg border border-hairline overflow-hidden">
+            <div className="px-md py-sm bg-surface-2 border-b border-hairline">
+              <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Payment & invoices', ar: 'السداد والفواتير' })}</h4>
+            </div>
+            <div className="divide-y divide-hairline">
+              {/* 1 — proforma, issued automatically with every order */}
+              <div className="flex flex-wrap items-center gap-sm px-md py-sm">
+                <span className="grid place-items-center w-9 h-9 rounded-md bg-primary/10 text-primary-hover shrink-0"><FileText size={16} /></span>
+                <div className="flex-1 min-w-[180px]">
+                  <p className="font-sans text-data text-ink">{pick({ en: 'Proforma invoice', ar: 'الفاتورة الأولية' })} <CheckCircle2 size={13} className="inline text-success" /></p>
+                  <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Issued automatically with the order', ar: 'تصدر تلقائيًا مع الطلب' })}</p>
+                </div>
+                <button onClick={() => printDoc('proforma')} className={buttonClass('secondary', 'sm')}><Download size={14} /> {pick({ en: 'Download', ar: 'تنزيل' })}</button>
+              </div>
+
+              {/* 2 — payment receipts attached by the buyer */}
+              <div className="flex flex-col gap-xs px-md py-sm">
+                <div className="flex flex-wrap items-center gap-sm">
+                  <span className="grid place-items-center w-9 h-9 rounded-md bg-surface-2 text-ink-muted shrink-0"><Upload size={16} /></span>
+                  <div className="flex-1 min-w-[180px]">
+                    <p className="font-sans text-data text-ink">{pick({ en: 'Payment receipts', ar: 'إيصالات السداد' })}{(order.receipts?.length ?? 0) > 0 && <span className="text-ink-subtle"> · {order.receipts!.length}</span>}</p>
+                    <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Attach your transfer receipts for this order', ar: 'أرفق إيصالات التحويل الخاصة بهذا الطلب' })}</p>
+                  </div>
+                  <label className={buttonClass('secondary', 'sm', 'cursor-pointer')}>
+                    <Upload size={14} /> {pick({ en: 'Attach receipt', ar: 'إرفاق إيصال' })}
+                    <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (f) { onAttachReceipt(order.orderNo, f.name); flash(pick({ en: 'Receipt attached', ar: 'أُرفق الإيصال' })) }
+                      e.target.value = ''
+                    }} />
+                  </label>
+                </div>
+                {(order.receipts?.length ?? 0) > 0 && (
+                  <div className="flex flex-wrap gap-xs">
+                    {order.receipts!.map((r, i) => (
+                      <span key={i} className="inline-flex items-center gap-xxs rounded-pill border border-success/25 bg-success/8 px-3 py-1 font-sans text-caption text-ink">
+                        <CheckCircle2 size={12} className="text-success" /> <span dir="ltr">{r}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 3 — the tax invoice, attached by Jaz once payment is confirmed */}
+              <div className="flex flex-wrap items-center gap-sm px-md py-sm">
+                <span className={cn('grid place-items-center w-9 h-9 rounded-md shrink-0', order.taxInvoiceFile ? 'bg-success/10 text-success' : 'bg-surface-2 text-ink-subtle')}><FileText size={16} /></span>
+                <div className="flex-1 min-w-[180px]">
+                  <p className="font-sans text-data text-ink">{pick({ en: 'Tax invoice', ar: 'الفاتورة الضريبية' })} {order.taxInvoiceFile && <CheckCircle2 size={13} className="inline text-success" />}</p>
+                  <p className="font-sans text-caption text-ink-subtle">
+                    {order.taxInvoiceFile
+                      ? <>{pick({ en: 'Attached by Jaz', ar: 'أرفقتها شركة جاز' })} · <span dir="ltr">{order.taxInvoiceFile}</span></>
+                      : pick({ en: 'Issued by Jaz after payment is confirmed', ar: 'تصدرها شركة جاز بعد التحقق من السداد' })}
+                  </p>
+                </div>
+                {order.taxInvoiceFile
+                  ? <button onClick={() => printDoc('tax')} className={buttonClass('secondary', 'sm')}><Download size={14} /> {pick({ en: 'Download', ar: 'تنزيل' })}</button>
+                  : <span className="rounded-pill px-3 py-1 font-sans text-caption font-medium" style={{ color: '#8a6b3f', backgroundColor: '#f6edde' }}>{pick({ en: 'Awaiting issue', ar: 'بانتظار الإصدار' })}</span>}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   )
