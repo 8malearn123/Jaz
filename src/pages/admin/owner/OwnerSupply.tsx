@@ -1138,15 +1138,17 @@ function StockTakeReportsModal({ onClose }: { onClose: () => void }) {
     const L = (en: string, ar: string) => (locale === 'ar' ? ar : en)
     const rows = r.lines.map((ln) => `<tr><td>${pick(ln.name)}</td><td>${ln.system.toLocaleString()}</td><td>${ln.counted.toLocaleString()}</td><td>${(ln.variance > 0 ? '+' : '') + ln.variance}</td><td>${ln.variance === 0 ? '—' : money(ln.valueMinor)}</td></tr>`).join('')
     const html = `<!doctype html><html dir="${dir}"><head><meta charset="utf-8"><title>${r.id}</title><style>
-      @page{size:A4 portrait;margin:12mm}
-      body{font-family:'Segoe UI',Tahoma,sans-serif;padding:32px;color:#2b2b2b}
+      @page{size:A4 portrait;margin:15mm}
+      html,body{margin:0;width:auto}
+      *{box-sizing:border-box}
+      body{font-family:'Segoe UI',Tahoma,sans-serif;padding:24px;color:#2b2b2b;-webkit-print-color-adjust:exact}
       h1{font-size:20px;margin:0 0 4px}
       .sub{color:#777;font-size:12px;margin-bottom:16px}
       .meta{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;font-size:13px;margin:14px 0}
       .meta b{display:block;color:#777;font-weight:600;font-size:11px;text-transform:uppercase}
       .method{font-size:12px;color:#444;margin:10px 0;border:1px solid #ddd;border-radius:6px;padding:10px;background:#faf7f1}
       table{width:100%;border-collapse:collapse;margin-top:10px}
-      th,td{border:1px solid #ccc;padding:6px 10px;font-size:12px;text-align:${locale === 'ar' ? 'right' : 'left'}}
+      th,td{border:1px solid #ccc;padding:6px 10px;font-size:12px;word-break:break-word;text-align:${locale === 'ar' ? 'right' : 'left'}}
       th{background:#f3efe8}
       .net{margin-top:14px;font-size:14px;font-weight:700}
       .foot{margin-top:24px;font-size:11px;color:#999}

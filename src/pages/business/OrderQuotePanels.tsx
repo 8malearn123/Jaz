@@ -161,13 +161,15 @@ function OrderDetailModal({ order, open, onClose, onCancel, onAttachReceipt }: {
       : `Jaz · ${L('Not a tax invoice — the tax invoice is issued by Jaz after payment is confirmed', 'ليست فاتورة ضريبية — تُصدر جاز الفاتورة الضريبية بعد التحقق من السداد')}`
     const rows = lines.map((l) => `<tr><td>${pick(l.found.product.title)}</td><td>${l.qty}</td><td>${money(l.unit)}</td><td>${money(l.total)}</td></tr>`).join('')
     openPrintWindow(`<!doctype html><html dir="${dir}"><head><meta charset="utf-8"><title>${order.orderNo}</title><style>
-      @page{size:A4 portrait;margin:12mm}
-      body{font-family:'Segoe UI',Tahoma,sans-serif;padding:32px;color:#2b2b2b}
+      @page{size:A4 portrait;margin:15mm}
+      html,body{margin:0;width:auto}
+      *{box-sizing:border-box}
+      body{font-family:'Segoe UI',Tahoma,sans-serif;padding:24px;color:#2b2b2b;-webkit-print-color-adjust:exact}
       h1{font-size:20px;margin:0 0 4px} .sub{color:#777;font-size:12px;margin-bottom:16px}
       .meta{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;font-size:13px;margin:14px 0}
       .meta b{display:block;color:#777;font-weight:600;font-size:11px;text-transform:uppercase}
       table{width:100%;border-collapse:collapse;margin-top:10px}
-      th,td{border:1px solid #ccc;padding:6px 10px;font-size:12px;text-align:${locale === 'ar' ? 'right' : 'left'}}
+      th,td{border:1px solid #ccc;padding:6px 10px;font-size:12px;word-break:break-word;text-align:${locale === 'ar' ? 'right' : 'left'}}
       th{background:#f3efe8}
       .totals{margin-top:14px;font-size:13px} .totals div{display:flex;justify-content:space-between;padding:3px 0}
       .totals .net{font-weight:700;font-size:15px;border-top:1px solid #ccc;padding-top:8px;margin-top:6px}
