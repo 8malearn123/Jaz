@@ -9,9 +9,11 @@ export default {
     extend: {
       colors: {
         // Brand & accent — aged gold, used like gold foil
-        primary: '#b08a57',
-        'primary-hover': '#8a6b3f',
-        'primary-bright': '#cdaa77',
+        // Brand accent reads from CSS variables so the owner's "Identity &
+        // appearance" section can retheme the whole system at runtime.
+        primary: 'rgb(var(--brand-primary) / <alpha-value>)',
+        'primary-hover': 'rgb(var(--brand-primary-hover) / <alpha-value>)',
+        'primary-bright': 'rgb(var(--brand-primary-bright) / <alpha-value>)',
         'on-primary': '#2a1a12',
 
         // Ink

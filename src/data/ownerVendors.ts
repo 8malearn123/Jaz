@@ -59,19 +59,3 @@ export const approvalStages: ApprovalStage[] = [
   { label: { en: 'Owner approval', ar: 'اعتماد المالك' }, done: false },
   { label: { en: 'Active', ar: 'مفعّل' }, done: false },
 ]
-
-// ── Export clients (GCC) — own status machine ──
-export type ExportStage = 0 | 1 | 2 | 3
-export const exportFlow: { key: string; label: Bilingual }[] = [
-  { key: 'new', label: { en: 'New', ar: 'جديد' } },
-  { key: 'confirmed', label: { en: 'Confirmed', ar: 'مؤكد' } },
-  { key: 'shipping', label: { en: 'In shipping', ar: 'قيد الشحن' } },
-  { key: 'delivered', label: { en: 'Delivered', ar: 'تم التسليم' } },
-]
-export interface ExportOrder { id: string; client: Bilingual; destination: Bilingual; qty: number; valueMinor: number; stage: ExportStage }
-export const exportOrders: ExportOrder[] = [
-  { id: 'EX-3081', client: { en: 'Gulf Sweets Dist.', ar: 'موزّع حلويات الخليج' }, destination: { en: 'Dubai, UAE', ar: 'دبي، الإمارات' }, qty: 2400, valueMinor: 26400000, stage: 1 },
-  { id: 'EX-3079', client: { en: 'Doha Luxury Foods', ar: 'أطعمة الدوحة الفاخرة' }, destination: { en: 'Doha, Qatar', ar: 'الدوحة، قطر' }, qty: 1600, valueMinor: 17600000, stage: 2 },
-  { id: 'EX-3076', client: { en: 'Kuwait Gourmet', ar: 'ذوّاقة الكويت' }, destination: { en: 'Kuwait City', ar: 'مدينة الكويت' }, qty: 800, valueMinor: 8800000, stage: 0 },
-  { id: 'EX-3072', client: { en: 'Manama Retail', ar: 'تجزئة المنامة' }, destination: { en: 'Manama, Bahrain', ar: 'المنامة، البحرين' }, qty: 1200, valueMinor: 13200000, stage: 3 },
-]

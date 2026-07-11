@@ -817,6 +817,7 @@ export const dict: Dict = {
   'owner.section.vendors': { en: 'Vendors', ar: 'الموردين' },
   'owner.section.export': { en: 'Export clients', ar: 'عملاء التصدير' },
   'owner.section.fin': { en: 'Finance & costs', ar: 'المالية والتكاليف' },
+  'owner.section.brand': { en: 'Identity & appearance', ar: 'الهوية والمظهر' },
   'owner.stub': { en: 'This panel is wired and access-gated; its content lands in the next build step.', ar: 'هذه اللوحة موصولة ومحميّة بالصلاحيات؛ يصل محتواها في الخطوة التالية.' },
 
   // overview KPIs

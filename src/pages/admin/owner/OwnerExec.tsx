@@ -1,9 +1,9 @@
-import { AlertTriangle, Flame } from 'lucide-react'
+import { AlertTriangle, Flame, TrendingUp } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { AreaTrend, UtilizationGauge, TrendPill } from '@/components/charts/Charts'
 import { execKpis, execChannels, execRevenueTotalMinor, factoryUtilPct, factoryLines, execTrend } from '@/data/ownerExec'
-import { rawMaterials } from '@/data/ownerSupply'
+import { rawMaterials, stockUnits, unitFactor, type RawKey } from '@/data/ownerSupply'
 import { platformKpis } from '@/data/staff'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { cn } from '@/lib/cn'
@@ -12,7 +12,28 @@ import { PanelHead, UtilBar } from './_shared'
 export function OwnerExec() {
   const { t, pick, money } = useLocale()
   const { flash } = useToast()
-  const { pendingOrders, lowRaw, rawQty, reorderRaw, dismissedExpiry, dismissExpiry } = useOwnerState()
+  const { pendingOrders, lowRaw, rawQty, reorderRaw, dismissedExpiry, dismissExpiry, invoices } = useOwnerState()
+
+  // Price-increase report — derived purely from purchase invoices: the latest
+  // bought unit price of each material vs the previous one (or the recorded
+  // landed cost when it's the first invoice).
+  const baseUnitCost = (k: RawKey) => {
+    const r = rawMaterials.find((x) => x.key === k)!
+    const cu = stockUnits.find((u) => u.label.en === r.costUnit.en || u.label.ar === r.costUnit.ar)
+    const su = stockUnits.find((u) => u.label.en === r.unit.en || u.label.ar === r.unit.ar)
+    return r.landedMinor / Math.max(1, cu && su ? unitFactor(cu.key, su.key) : 1)
+  }
+  const priceRises = rawMaterials.map((r) => {
+    const hist = invoices.filter((i) => i.rawKey === r.key && i.qty && i.qty > 0) // newest first
+    if (hist.length === 0) return null
+    const latest = hist[0]
+    const latestUnit = latest.totalMinor / latest.qty!
+    const prevUnit = hist.length > 1 ? hist[1].totalMinor / hist[1].qty! : baseUnitCost(r.key)
+    if (prevUnit <= 0) return null
+    const pct = ((latestUnit - prevUnit) / prevUnit) * 100
+    if (pct < 1) return null // report only real increases
+    return { raw: r, latest, latestUnit: Math.round(latestUnit), prevUnit: Math.round(prevUnit), pct: Math.round(pct * 10) / 10 }
+  }).filter(Boolean) as { raw: (typeof rawMaterials)[number]; latest: (typeof invoices)[number]; latestUnit: number; prevUnit: number; pct: number }[]
 
   // Daily platform pulse — migrated from the former shared Overview tab (removed for the owner role).
   const k = platformKpis
@@ -146,6 +167,39 @@ export function OwnerExec() {
           </div>
           <AreaTrend points={execTrend.map((p) => p.amountMinor)} labels={execTrend.map((p) => pick(p.month))} format={(v) => money(v)} />
         </div>
+      </div>
+
+      {/* purchase price increases — straight from purchase invoices */}
+      <div className="card overflow-hidden">
+        <div className="px-lg py-md bg-surface-2 border-b border-hairline flex items-center gap-xs">
+          <TrendingUp size={16} className="text-danger" />
+          <div>
+            <h3 className="font-serif text-card-title text-ink">{pick({ en: 'Purchase price increases', ar: 'تقرير ارتفاع أسعار المواد' })}</h3>
+            <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Latest bought unit price vs the previous one — from purchase invoices', ar: 'آخر سعر شراء للوحدة مقابل السعر السابق — مبني على فواتير المشتريات' })}</p>
+          </div>
+        </div>
+        <ul className="divide-y divide-hairline">
+          {priceRises.map((row) => (
+            <li key={row.raw.key} className="flex flex-wrap items-center gap-md px-lg py-md">
+              <div className="flex-1 min-w-[180px]">
+                <p className="font-sans text-data text-ink truncate">{pick(row.raw.name)}</p>
+                <p className="font-sans text-caption text-ink-subtle truncate">{pick(row.latest.supplier)} · {row.latest.id} · {pick(row.latest.date)}</p>
+              </div>
+              <div className="text-end">
+                <p className="font-sans text-data text-ink tabular-nums">
+                  <span className="text-ink-subtle line-through me-1">{money(row.prevUnit)}</span>
+                  {money(row.latestUnit)} <span className="text-ink-subtle">/ {pick(row.raw.unit)}</span>
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-xxs rounded-pill px-2.5 py-1 font-sans text-caption font-medium tabular-nums" style={{ color: '#b5403b', backgroundColor: '#faeceb' }}>
+                <TrendingUp size={12} /> +{row.pct}%
+              </span>
+            </li>
+          ))}
+          {priceRises.length === 0 && (
+            <li className="px-lg py-md font-sans text-caption text-success">{pick({ en: '✓ No purchase price increases in the recorded invoices', ar: '✓ لا ارتفاعات في أسعار الشراء ضمن الفواتير المسجلة' })}</li>
+          )}
+        </ul>
       </div>
     </div>
   )

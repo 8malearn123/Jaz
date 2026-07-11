@@ -28,6 +28,11 @@
 @layer base {
   :root {
     --focus-ring: rgba(176, 138, 87, 0.6);
+    /* Brand accent as RGB channels — overridable at runtime from the owner's
+       "Identity & appearance" section (BrandContext writes these). */
+    --brand-primary: 176 138 87;
+    --brand-primary-hover: 138 107 63;
+    --brand-primary-bright: 205 170 119;
   }
 
   * {
