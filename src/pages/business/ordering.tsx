@@ -302,19 +302,20 @@ export function OrderRail({ variant = 'full', onReview }: { variant?: 'full' | '
   }
 
   if (variant === 'compact') {
+    // Unobtrusive floating chip in the corner — hidden entirely until something is selected.
+    if (lineCount === 0) return null
     return (
-      <div className="sticky bottom-4 z-10 rounded-xl p-md text-ink-on-dark flex flex-wrap items-center justify-between gap-md shadow-soft-lg" style={{ background: 'linear-gradient(160deg,#2b2019,#17120f)' }}>
-        <div className="flex items-center gap-lg flex-wrap">
-          <div><p className="font-sans text-caption text-ink-on-dark-muted">{t('wsum.selected')}</p><p className="font-serif text-card-title text-ink-on-dark tabular-nums">{lineCount}</p></div>
-          <span className="w-px h-8 bg-hairline-dark" />
-          <div><p className="font-sans text-caption text-ink-on-dark-muted">{t('wsum.subtotal')}</p><p className="font-serif text-card-title text-primary-bright tabular-nums">{money(subtotalMinor)}</p></div>
-          <div className="max-w-[220px]">
-            <div className="h-1.5 w-40 rounded-pill bg-hairline-dark overflow-hidden"><span className="block h-full bg-primary" style={{ width: `${pct}%` }} /></div>
-            <p className={cn('font-sans text-caption mt-1', moqMet ? 'text-success' : 'text-primary-bright')}>{moqMet ? `✓ ${t('wsum.moqMet')}` : fill(t('wsum.moqRemaining'), { n: money(moqRemainingMinor) })}</p>
-          </div>
+      <div className="fixed bottom-6 end-6 z-40 rounded-pill shadow-soft-lg text-ink-on-dark flex items-center gap-md ps-lg pe-2 py-2" style={{ background: 'linear-gradient(160deg,#2b2019,#17120f)' }}>
+        <span className="relative inline-flex shrink-0">
+          <ShoppingCart size={18} className="text-primary-bright" />
+          <span className="absolute -top-2 -end-2 grid place-items-center min-w-[18px] h-[18px] rounded-pill bg-primary text-on-primary font-sans text-[11px] tabular-nums px-1">{lineCount}</span>
+        </span>
+        <div className="flex flex-col min-w-0">
+          <span className="font-sans text-data text-primary-bright tabular-nums leading-tight">{money(subtotalMinor)}</span>
+          <span className={cn('font-sans text-caption leading-tight truncate max-w-[220px]', moqMet ? 'text-success' : 'text-ink-on-dark-muted')}>{moqMet ? `✓ ${t('wsum.moqMet')}` : fill(t('wsum.moqRemaining'), { n: money(moqRemainingMinor) })}</span>
         </div>
-        <button onClick={() => onReview?.()} disabled={lineCount === 0} className={cn('inline-flex items-center gap-xs rounded-md px-4 py-2.5 font-sans text-button uppercase tracking-[0.06em] transition-colors', lineCount > 0 ? 'bg-primary text-on-primary hover:bg-primary-hover' : 'bg-hairline-dark text-ink-on-dark-muted cursor-not-allowed')}>
-          {t('wsum.review')} <ArrowRight size={15} className="rtl:rotate-180" />
+        <button onClick={() => onReview?.()} className="inline-flex items-center gap-xs rounded-pill px-4 py-2 font-sans text-button uppercase tracking-[0.06em] bg-primary text-on-primary hover:bg-primary-hover transition-colors shrink-0">
+          {t('wsum.review')} <ArrowRight size={14} className="rtl:rotate-180" />
         </button>
       </div>
     )
