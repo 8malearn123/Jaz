@@ -1,36 +1,33 @@
 import { useState } from 'react'
-import { TrendingUp, TrendingDown, Trash2 } from 'lucide-react'
+import { Eye } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
-import { useToast } from '@/components/account/Toast'
 import { RankedBars } from '@/components/charts/Charts'
+import { Modal } from '@/components/ui/Modal'
+import { buttonClass } from '@/components/ui/Button'
 import {
-  finBase, finGrossMinor, opexRows, cogsProducts,
-  collectionRows, taxCard, receivables,
+  finBase, finGrossMinor, opexRows,
+  collectionRows, taxCard, receivables, type ReceivableRow,
 } from '@/data/ownerFinance'
-import { rawMaterials, stockUnits, unitFactor, type RawKey } from '@/data/ownerSupply'
-import { RecordWasteModal } from './OwnerSupply'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { cn } from '@/lib/cn'
 import { PanelHead, StatCard, UtilBar } from './_shared'
 
-type FinTab = 'overview' | 'cost' | 'tax' | 'waste'
-
-const finNorm = (s: string) => s.trim().toLowerCase()
-const finMatches = (q: string, name: { en: string; ar: string }) => finNorm(name.ar).includes(finNorm(q)) || finNorm(name.en).includes(finNorm(q))
+// Cost recalibration was removed — unit costs derive from purchase invoices.
+// The waste log lives in Supply chain, not here.
+type FinTab = 'overview' | 'tax'
 
 /** Finance panel. The active sub-view is driven by the sidebar sub-nav (see AdminConsole). */
 export function OwnerFinance({ view = 'overview' }: { view?: FinTab }) {
   const { pick, money } = useLocale()
-  const { cocoaDelta: cocoa, setCocoa, netProfitMinor, wasteTotalMinor, products, bomOf } = useOwnerState()
-  // Recalibration product picker (search-as-you-type over products that have a recipe).
-  const [recalQ, setRecalQ] = useState('')
-  const [recalSku, setRecalSku] = useState('BOX-JASMINE')
+  const { netProfitMinor, wasteTotalMinor } = useOwnerState()
+  // Receivable row opened for inspection via the eye button.
+  const [viewRec, setViewRec] = useState<ReceivableRow | null>(null)
 
   const pctOfRev = (m: number) => `${Math.round((m / finBase.revenueMinor) * 100)}%`
 
   return (
     <div className="flex flex-col gap-lg">
-      <PanelHead title={pick({ en: 'Finance & costs', ar: 'المالية والتكاليف' })} subtitle={pick({ en: 'P&L, cocoa-driven COGS, collection and waste', ar: 'الأرباح، تكلفة الكاكاو، التحصيل والهدر' })} />
+      <PanelHead title={pick({ en: 'Finance & costs', ar: 'المالية والتكاليف' })} subtitle={pick({ en: 'P&L, collection and tax', ar: 'الأرباح والتحصيل والضريبة' })} />
 
       {view === 'overview' && (
         <div className="flex flex-col gap-lg">
@@ -58,109 +55,6 @@ export function OwnerFinance({ view = 'overview' }: { view?: FinTab }) {
           </div>
         </div>
       )}
-
-      {view === 'cost' && (() => {
-        const factor = 1 + cocoa / 100
-        const up = cocoa >= 0
-        // Recalibration rows come from the selected product's real recipe: qty per unit ×
-        // the raw's purchase-derived unit cost (landed cost converted to the stock unit).
-        const producible = [...products.b2c, ...products.b2b, ...products.mega].filter((p) => Object.keys(bomOf(p.sku)).length > 0)
-        const selProd = producible.find((p) => p.sku === recalSku) ?? null
-        const recalMatches = !selProd && recalQ.trim() !== '' ? producible.filter((p) => finMatches(recalQ, p.name)).slice(0, 6) : []
-        const rawUnitCost = (k: RawKey) => {
-          const r = rawMaterials.find((x) => x.key === k)!
-          const cu = stockUnits.find((u) => u.label.en === r.costUnit.en || u.label.ar === r.costUnit.ar)
-          const su = stockUnits.find((u) => u.label.en === r.unit.en || u.label.ar === r.unit.ar)
-          return Math.round(r.landedMinor / Math.max(1, cu && su ? unitFactor(cu.key, su.key) : 1))
-        }
-        const rows = selProd
-          ? (Object.keys(bomOf(selProd.sku)) as RawKey[]).map((k) => {
-            const r = rawMaterials.find((x) => x.key === k)!
-            const per = bomOf(selProd.sku)[k]!
-            return { name: r.name, qty: per, unit: r.unit, costMinor: Math.round(per * rawUnitCost(k)), cocoaLinked: k === 'cacao' }
-          })
-          : []
-        const oldCogs = rows.reduce((a, r) => a + r.costMinor, 0)
-        const newCogs = rows.reduce((a, r) => a + (r.cocoaLinked ? Math.round(r.costMinor * factor) : r.costMinor), 0)
-        return (
-          <div className="flex flex-col gap-lg">
-            <div className="rounded-xl p-lg text-ink-on-dark" style={{ background: 'linear-gradient(160deg,#2b2019,#17120f)' }}>
-              <div className="flex items-center justify-between">
-                <p className="font-sans text-caption uppercase tracking-[0.12em] text-primary-bright">{pick({ en: 'Cocoa price index', ar: 'مؤشّر سعر الكاكاو' })}</p>
-                <span className={cn('inline-flex items-center gap-xxs font-sans text-data tabular-nums rounded-pill px-2.5 py-1', up ? 'bg-danger/20 text-danger' : 'bg-success/20 text-success')}>{up ? <TrendingUp size={14} /> : <TrendingDown size={14} />} {up ? '+' : ''}{cocoa}%</span>
-              </div>
-              <input type="range" min={-20} max={40} value={cocoa} onChange={(e) => setCocoa(Number(e.target.value))} className="w-full mt-md accent-primary" />
-              <p className="font-sans text-caption text-ink-on-dark-muted mt-xs">{pick({ en: 'Drag to model cocoa price movement against COGS and margins.', ar: 'اسحب لمحاكاة حركة سعر الكاكاو على التكلفة والهوامش.' })}</p>
-            </div>
-
-            <div className="card p-lg flex flex-col gap-sm">
-              {/* top search: pick the product to recalibrate */}
-              <div className="flex flex-col gap-xs mb-xs">
-                <input
-                  value={selProd ? pick(selProd.name) : recalQ}
-                  onChange={(e) => { setRecalSku(''); setRecalQ(e.target.value) }}
-                  className="input"
-                  placeholder={pick({ en: 'Search for a product to recalibrate…', ar: 'ابحث عن منتج لإعادة معايرته…' })}
-                />
-                {recalMatches.length > 0 && (
-                  <div className="rounded-md border border-hairline bg-surface-1 shadow-soft max-h-40 overflow-y-auto divide-y divide-hairline">
-                    {recalMatches.map((p) => (
-                      <button key={p.sku} type="button" onClick={() => { setRecalSku(p.sku); setRecalQ('') }} className="w-full flex items-center justify-between gap-sm px-3 py-2 text-start hover:bg-surface-2 transition-colors">
-                        <span className="font-sans text-data text-ink truncate">{pick(p.name)}</span>
-                        <span className="font-sans text-caption text-ink-subtle shrink-0">{pick(p.category)}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {!selProd && recalQ.trim() !== '' && recalMatches.length === 0 && (
-                  <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'No product with a recipe matches', ar: 'لا يوجد منتج بوصفة مكونات مطابق' })}</p>
-                )}
-              </div>
-              {selProd ? (
-                <>
-                  <h3 className="font-serif text-card-title text-ink mb-xs">{pick({ en: 'Recalibration', ar: 'إعادة معايرة' })} · {pick(selProd.name)}</h3>
-                  {rows.map((r, i) => {
-                    const nv = r.cocoaLinked ? Math.round(r.costMinor * factor) : r.costMinor
-                    return (
-                      <div key={i} className="flex items-center justify-between py-1.5">
-                        <span className="font-sans text-data text-ink-muted">{pick(r.name)} <span className="text-ink-subtle text-caption tabular-nums">· {r.qty.toLocaleString()} {pick(r.unit)}</span> {r.cocoaLinked && <span className="text-primary-hover text-caption">· {pick({ en: 'cocoa-linked', ar: 'مرتبط بالكاكاو' })}</span>}</span>
-                        <span className="font-sans text-data tabular-nums text-ink">{r.cocoaLinked && nv !== r.costMinor ? <><span className="text-ink-subtle line-through me-1">{money(r.costMinor)}</span>{money(nv)}</> : money(nv)}</span>
-                      </div>
-                    )
-                  })}
-                  <div className="flex items-center justify-between border-t border-hairline pt-sm mt-xs">
-                    <span className="font-sans text-data text-ink font-medium">{pick({ en: 'Unit COGS', ar: 'تكلفة الوحدة' })}</span>
-                    <span className="font-sans text-data tabular-nums">{oldCogs !== newCogs ? <><span className="text-ink-subtle line-through me-1">{money(oldCogs)}</span><span className={cn('font-semibold', newCogs > oldCogs ? 'text-danger' : 'text-success')}>{money(newCogs)}</span></> : money(newCogs)}</span>
-                  </div>
-                </>
-              ) : (
-                <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Search and pick a product to see its ingredient costs.', ar: 'ابحث واختر منتجًا لعرض تكلفة مكوّناته.' })}</p>
-              )}
-            </div>
-
-            <div className="grid sm:grid-cols-3 gap-sm">
-              {cogsProducts.map((p, i) => {
-                const cocoaNow = Math.round(p.cocoaCostMinor * factor)
-                const cogs = p.fixedCostMinor + cocoaNow
-                const margin = Math.round(((p.priceMinor - cogs) / p.priceMinor) * 100)
-                const base = Math.round(((p.priceMinor - (p.fixedCostMinor + p.cocoaCostMinor)) / p.priceMinor) * 100)
-                const col = margin >= 80 ? '#355c4b' : margin >= 65 ? '#b08a57' : '#b5403b'
-                return (
-                  <div key={i} className="card p-lg flex flex-col gap-xs">
-                    <p className="font-sans text-data text-ink truncate">{pick(p.name)}</p>
-                    <div className="flex items-baseline gap-xs">
-                      <span className="font-serif text-headline tabular-nums" style={{ color: col }}>{margin}%</span>
-                      {margin !== base && <span className="font-sans text-caption text-ink-subtle line-through">{base}%</span>}
-                    </div>
-                    <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'COGS', ar: 'التكلفة' })} {money(cogs)} · {pick({ en: 'price', ar: 'السعر' })} {money(p.priceMinor)}</span>
-                    <UtilBar pct={margin} color={col} />
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )
-      })()}
 
       {view === 'tax' && (
         <div className="flex flex-col gap-lg">
@@ -193,7 +87,7 @@ export function OwnerFinance({ view = 'overview' }: { view?: FinTab }) {
               <table className="w-full border-collapse min-w-[680px]">
                 <thead>
                   <tr className="bg-surface-2 border-b border-hairline">
-                    {[{ h: { en: 'Account', ar: 'الحساب' }, a: 'text-start' }, { h: { en: 'Outstanding', ar: 'المبلغ المستحق' }, a: 'text-end' }, { h: { en: 'Due date', ar: 'تاريخ الاستحقاق' }, a: 'text-start' }, { h: { en: 'Payment status', ar: 'حالة السداد' }, a: 'text-start' }].map((c, i) => (
+                    {[{ h: { en: 'Account', ar: 'الحساب' }, a: 'text-start' }, { h: { en: 'Outstanding', ar: 'المبلغ المستحق' }, a: 'text-end' }, { h: { en: 'Due date', ar: 'تاريخ الاستحقاق' }, a: 'text-start' }, { h: { en: 'Payment status', ar: 'حالة السداد' }, a: 'text-start' }, { h: { en: 'View', ar: 'اطلاع' }, a: 'text-end' }].map((c, i) => (
                       <th key={i} className={cn('font-sans text-caption uppercase tracking-wide text-ink-subtle px-lg py-2.5', c.a)}>{pick(c.h)}</th>
                     ))}
                   </tr>
@@ -212,6 +106,9 @@ export function OwnerFinance({ view = 'overview' }: { view?: FinTab }) {
                           ? <span className="inline-flex items-center gap-xxs rounded-pill px-2.5 py-1 font-sans text-caption font-medium tabular-nums" style={{ color: '#b5403b', backgroundColor: '#faeceb' }}>{pick({ en: 'Late', ar: 'متأخر' })} · {r.daysLate} {pick({ en: 'days', ar: 'يوم' })}</span>
                           : <span className="inline-flex items-center gap-xxs rounded-pill px-2.5 py-1 font-sans text-caption font-medium" style={{ color: '#2f7d5b', backgroundColor: '#e6f2ea' }}>{pick({ en: 'Within terms', ar: 'ضمن المدة' })}</span>}
                       </td>
+                      <td className="px-lg py-md text-end">
+                        <button onClick={() => setViewRec(r)} className="grid place-items-center w-8 h-8 rounded-md border border-hairline text-ink-muted hover:text-ink hover:border-ink/30 transition-colors ms-auto" aria-label={pick({ en: 'View details', ar: 'اطلاع' })}><Eye size={15} /></button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -225,41 +122,33 @@ export function OwnerFinance({ view = 'overview' }: { view?: FinTab }) {
         </div>
       )}
 
-      {view === 'waste' && <WasteTab />}
-    </div>
-  )
-}
-
-function WasteTab() {
-  const { pick, money } = useLocale()
-  const { flash } = useToast()
-  const { wasteLog, wasteTotalMinor } = useOwnerState()
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="flex flex-col gap-lg">
-      <div className="card p-lg flex flex-wrap items-center justify-between gap-md">
-        <div className="min-w-0">
-          <p className="font-sans text-data text-ink">{pick({ en: 'Waste is recorded against real stock', ar: 'الهدر يُسجَّل على منتجات المخزون الفعلية' })}</p>
-          <p className="font-sans text-caption text-ink-subtle mt-xxs">{pick({ en: 'Pick the wasted product (raw or finished) — the loss is valued automatically and stock is deducted.', ar: 'اختر المنتج الذي صار فيه الهدر (خام أو مصنّع) — تُحسب الخسارة تلقائيًا ويُخصم الرصيد من المخزون.' })}</p>
-        </div>
-        <button onClick={() => setOpen(true)} className="btn btn-sm bg-danger text-on-danger hover:bg-danger/90"><Trash2 size={15} /> {pick({ en: 'Record waste', ar: 'تسجيل هدر' })}</button>
-      </div>
-      <div className="card overflow-hidden">
-        <ul className="divide-y divide-hairline">
-          {wasteLog.map((w) => (
-            <li key={w.id} className="flex items-center gap-md px-lg py-md">
-              <span className="grid place-items-center w-9 h-9 rounded-pill bg-danger/10 text-danger shrink-0"><Trash2 size={15} /></span>
-              <div className="flex-1 min-w-0">
-                <p className="font-sans text-data text-ink truncate">{pick(w.item)}{w.qty != null && <span className="text-ink-subtle"> · {w.qty.toLocaleString()} {w.unit ? pick(w.unit) : ''}</span>}</p>
-                <p className="font-sans text-caption text-ink-subtle truncate">{pick(w.reason)} · {pick(w.at)}{w.by && <> · {pick({ en: 'by', ar: 'بواسطة' })} {pick(w.by)}</>}</p>
+      {/* receivable inspection — opened from the eye button */}
+      {viewRec && (
+        <Modal open onClose={() => setViewRec(null)} size="sm" eyebrow={pick({ en: 'Receivable', ar: 'مستحق تحصيل' })} title={pick(viewRec.account)}
+          footer={<button onClick={() => setViewRec(null)} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Close', ar: 'إغلاق' })}</button>}>
+          <div className="flex flex-col gap-md">
+            <div className="rounded-lg border border-hairline divide-y divide-hairline">
+              {[
+                { k: pick({ en: 'Channel', ar: 'القناة' }), v: viewRec.channel === 'MEGA' ? 'B2B' : 'HoReCa' },
+                { k: pick({ en: 'Outstanding', ar: 'المبلغ المستحق' }), v: money(viewRec.outstandingMinor) },
+                { k: pick({ en: 'Due date', ar: 'تاريخ الاستحقاق' }), v: pick(viewRec.dueDate) },
+              ].map((r, i) => (
+                <div key={i} className="flex items-center justify-between px-md py-2">
+                  <span className="font-sans text-caption text-ink-subtle">{r.k}</span>
+                  <span className="font-sans text-data text-ink tabular-nums">{r.v}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between px-md py-2">
+                <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Payment status', ar: 'حالة السداد' })}</span>
+                {viewRec.daysLate > 0
+                  ? <span className="inline-flex items-center gap-xxs rounded-pill px-2.5 py-1 font-sans text-caption font-medium tabular-nums" style={{ color: '#b5403b', backgroundColor: '#faeceb' }}>{pick({ en: 'Late', ar: 'متأخر' })} · {viewRec.daysLate} {pick({ en: 'days', ar: 'يوم' })}</span>
+                  : <span className="inline-flex items-center gap-xxs rounded-pill px-2.5 py-1 font-sans text-caption font-medium" style={{ color: '#2f7d5b', backgroundColor: '#e6f2ea' }}>{pick({ en: 'Within terms', ar: 'ضمن المدة' })}</span>}
               </div>
-              <span className="font-sans text-data text-danger tabular-nums">−{money(w.lossMinor)}</span>
-            </li>
-          ))}
-        </ul>
-        <div className="px-lg py-sm bg-surface-2 border-t border-hairline flex items-center justify-between"><span className="font-sans text-data text-ink-muted">{pick({ en: 'Total waste', ar: 'إجمالي الهدر' })}</span><span className="font-serif text-card-title text-danger tabular-nums">−{money(wasteTotalMinor)}</span></div>
-      </div>
-      {open && <RecordWasteModal flash={flash} onClose={() => setOpen(false)} />}
+            </div>
+            <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'The balance is the sum of this account’s unpaid invoices. It clears automatically once payments are recorded.', ar: 'المبلغ هو مجموع فواتير هذا الحساب غير المسددة، ويُصفَّر تلقائيًا عند تسجيل السداد.' })}</p>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

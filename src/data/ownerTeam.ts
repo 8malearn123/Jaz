@@ -32,9 +32,5 @@ export interface Employee {
   since: Bilingual
 }
 
-export const employeesSeed: Employee[] = [
-  { id: 'E-01', name: { en: 'Salem Al-Ghamdi', ar: 'سالم الغامدي' }, title: { en: 'Warehouse keeper', ar: 'أمين المستودع' }, phone: '+966 55 210 4471', email: 'salem@jaz.sa', perms: ['raw', 'purchases', 'waste', 'reports'], active: true, since: { en: 'Mar 2024', ar: 'مارس ٢٠٢٤' } },
-  { id: 'E-02', name: { en: 'Hind Al-Asiri', ar: 'هند العسيري' }, title: { en: 'Production supervisor', ar: 'مشرفة الإنتاج' }, phone: '+966 50 883 9024', email: 'hind@jaz.sa', perms: ['production', 'raw', 'waste', 'reports'], active: true, since: { en: 'Jan 2023', ar: 'يناير ٢٠٢٣' } },
-  { id: 'E-03', name: { en: 'Majed Al-Shehri', ar: 'ماجد الشهري' }, title: { en: 'B2B sales', ar: 'مبيعات الشركات' }, phone: '+966 54 662 7315', email: 'majed@jaz.sa', perms: ['orders', 'customers'], active: true, since: { en: 'Sep 2024', ar: 'سبتمبر ٢٠٢٤' } },
-  { id: 'E-04', name: { en: 'Noura Al-Zahrani', ar: 'نورة الزهراني' }, title: { en: 'Accountant', ar: 'محاسبة' }, phone: '+966 56 447 1180', email: 'noura@jaz.sa', perms: ['finance', 'purchases', 'reports'], active: false, since: { en: 'Jun 2025', ar: 'يونيو ٢٠٢٥' } },
-]
+// No pre-seeded accounts — the owner creates every staff account from the
+// Team & staff section, and each one becomes a sign-in card on the role picker.

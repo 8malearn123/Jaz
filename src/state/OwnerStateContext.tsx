@@ -7,7 +7,8 @@ import { ownerCustomers, ownerTiers, type OwnerCustomer, type OwnerTier } from '
 import { wasteLog as wasteSeed, finNetMinor, finBase, type WasteEntry } from '@/data/ownerFinance'
 import { contracts as contractsSeed, b2cCatalog, stdCatalog, catTree, storeProductsSeed, type Contract, type CatNode, type StoreProduct } from '@/data/ownerCatalog'
 import { approvalStages as approvalSeed, ownerVendors as ownerVendorsSeed, type ApprovalStage, type OwnerVendor } from '@/data/ownerVendors'
-import { employeesSeed, type Employee, type TeamPermission } from '@/data/ownerTeam'
+import type { Employee, TeamPermission } from '@/data/ownerTeam'
+import { useTeam } from '@/state/TeamContext'
 
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
 const LAST = (ownerOrderStatuses.length - 1) as OwnerOrderStage
@@ -403,17 +404,9 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     return { ...c, spendMinor: spend, tier }
   })), [])
 
-  /* ── team & staff ── */
-  const [employees, setEmployees] = useState<Employee[]>(() => clone(employeesSeed))
-  const empSeqRef = useRef(employeesSeed.length + 1)
-  const addEmployee = useCallback((e: Omit<Employee, 'id' | 'since'>) => {
-    const id = `E-${String(empSeqRef.current++).padStart(2, '0')}`
-    setEmployees((prev) => [{ ...e, id, since: { en: 'Now', ar: 'الآن' } }, ...prev])
-    return id
-  }, [])
-  const removeEmployee = useCallback((id: string) => setEmployees((prev) => prev.filter((e) => e.id !== id)), [])
-  const toggleEmployeePerm = useCallback((id: string, perm: TeamPermission) => setEmployees((prev) => prev.map((e) => (e.id === id ? { ...e, perms: e.perms.includes(perm) ? e.perms.filter((p) => p !== perm) : [...e.perms, perm] } : e))), [])
-  const toggleEmployeeActive = useCallback((id: string) => setEmployees((prev) => prev.map((e) => (e.id === id ? { ...e, active: !e.active } : e))), [])
+  /* ── team & staff — lives in the root TeamProvider (shared with the role picker);
+        re-exposed here so owner panels keep a single state entry point ── */
+  const { employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive } = useTeam()
 
   /* ── credit ── */
   const setCreditLimit = useCallback((id: string, limitMinor: number) => setCreditLimits((prev) => ({ ...prev, [id]: limitMinor })), [])
