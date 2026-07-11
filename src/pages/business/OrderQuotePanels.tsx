@@ -66,41 +66,54 @@ function MyOrders({ orders, onView }: { orders: AccountOrder[]; onView: (o: Acco
   )
 }
 
+/** Compact, scannable order card: id + date on one side, prominent total on the other,
+ *  a minimalist progress bar instead of the wide stepper, and an inline soft alert. */
 function OrderCard({ order, onReorder, onView }: { order: AccountOrder; onReorder: () => void; onView: () => void }) {
   const { t, pick, money, locale } = useLocale()
   const [done, setDone] = useState(false)
+  const journey = order.cancelled
+    ? <p className="inline-flex items-center gap-xs font-sans text-caption text-danger"><X size={13} /> {pick({ en: 'This order was cancelled.', ar: 'أُلغي هذا الطلب.' })}</p>
+    : <OrderJourney status={order.status} variant="mini" />
   return (
-    <div className={cn('card p-lg flex flex-col gap-md', order.cancelled && 'opacity-70')}>
-      <div className="flex flex-wrap items-start justify-between gap-sm">
-        <div>
+    <div className={cn('rounded-2xl bg-surface-1 border border-hairline shadow-soft px-lg py-md flex flex-col gap-sm', order.cancelled && 'opacity-70')}>
+      <div className="flex flex-wrap items-center gap-md">
+        {/* order id · status · meta */}
+        <div className="flex-1 min-w-[190px]">
           <div className="flex items-center gap-sm">
-            <span className="font-sans text-data text-ink">{order.orderNo}</span>
+            <span className="font-sans text-data font-semibold text-ink tabular-nums">{order.orderNo}</span>
             {order.cancelled
               ? <StatusBadge variant="danger">{pick({ en: 'Cancelled', ar: 'ملغى' })}</StatusBadge>
               : <StatusBadge variant={orderStatusVariant[order.status]}>{t(`orders.status.${order.status}`)}</StatusBadge>}
           </div>
-          <p className="font-sans text-caption text-ink-subtle mt-xxs">
+          <p className="font-sans text-caption text-ink-subtle mt-xxs truncate max-w-[420px]">
             {pick(order.summary)} · {t('border.po')} {order.poNumber} · {new Date(order.placedAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-GB', { day: 'numeric', month: 'short' })}
           </p>
         </div>
-        <span className="font-serif text-card-title text-ink tabular-nums">{money(order.totalMinor)}</span>
+
+        {/* minimalist progress (hidden on small screens — repeated below) */}
+        <div className="w-44 shrink-0 hidden md:block">{journey}</div>
+
+        {/* prominent total */}
+        <span className="font-serif text-card-title text-ink tabular-nums ms-auto">{money(order.totalMinor)}</span>
+
+        {/* actions */}
+        <div className="flex items-center gap-xs shrink-0">
+          <button onClick={onView} className={buttonClass('secondary', 'sm')}><Eye size={14} /> {t('order.view')}</button>
+          <button onClick={() => { onReorder(); setDone(true); setTimeout(() => setDone(false), 1400) }} className={buttonClass('secondary', 'sm')}>
+            {done ? <><Check size={14} /> {t('cta.added')}</> : <><Repeat size={14} /> {t('orders.reorder')}</>}
+          </button>
+        </div>
       </div>
 
-      {order.cancelled
-        ? <p className="inline-flex items-center gap-xs font-sans text-caption text-danger"><X size={13} /> {pick({ en: 'This order was cancelled.', ar: 'أُلغي هذا الطلب.' })}</p>
-        : <OrderJourney status={order.status} variant="full" />}
+      {/* progress on small screens */}
+      <div className="md:hidden">{journey}</div>
 
+      {/* inline soft alert */}
       {!order.cancelled && order.status === 'awaiting_approval' && (
-        <p className="inline-flex items-center gap-xs font-sans text-caption text-danger">
-          <AlertTriangle size={13} /> {t('buyer.overYourLimit')}
-        </p>
+        <div className="inline-flex items-center gap-xs self-start rounded-lg bg-danger/8 border border-danger/15 px-md py-1.5 font-sans text-caption font-medium text-danger">
+          <AlertTriangle size={13} className="shrink-0" /> {t('buyer.overYourLimit')}
+        </div>
       )}
-      <div className="flex items-center gap-xs pt-xs border-t border-hairline">
-        <button onClick={onView} className={buttonClass('secondary', 'sm')}><Eye size={14} /> {t('order.view')}</button>
-        <button onClick={() => { onReorder(); setDone(true); setTimeout(() => setDone(false), 1400) }} className={buttonClass('ghost', 'sm')}>
-          {done ? <><Check size={14} /> {t('cta.added')}</> : <><Repeat size={14} /> {t('orders.reorder')}</>}
-        </button>
-      </div>
     </div>
   )
 }
