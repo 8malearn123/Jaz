@@ -22,8 +22,8 @@ export const execKpis: OwnerKpi[] = [
 export interface ChannelRevenue { label: Bilingual; amountMinor: number; pct: number; color: string }
 export const execChannels: ChannelRevenue[] = [
   { label: { en: 'B2C retail', ar: 'التجزئة B2C' }, amountMinor: 119595000, pct: 42, color: '#b08a57' },
-  { label: { en: 'B2B standard', ar: 'الجملة B2B' }, amountMinor: 93967500, pct: 33, color: '#355c4b' },
-  { label: { en: 'B2B mega', ar: 'B2B ضخم' }, amountMinor: 71187500, pct: 25, color: '#365766' },
+  { label: { en: 'HoReCa', ar: 'HoReCa' }, amountMinor: 93967500, pct: 33, color: '#355c4b' },
+  { label: { en: 'B2B', ar: 'B2B' }, amountMinor: 71187500, pct: 25, color: '#365766' },
 ]
 export const execRevenueTotalMinor = 284750000
 

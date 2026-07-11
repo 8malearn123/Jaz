@@ -18,8 +18,8 @@ export const ownerOrderStatuses: OwnerOrderStatusDef[] = [
 
 export const ownerChannelMeta: Record<OwnerChannel, { label: Bilingual; bg: string; color: string }> = {
   B2C: { label: { en: 'B2C', ar: 'B2C' }, bg: '#f6edde', color: '#8a6b3f' },
-  B2B: { label: { en: 'B2B', ar: 'B2B' }, bg: '#e8f0ec', color: '#355c4b' },
-  MEGA: { label: { en: 'B2B MEGA', ar: 'B2B ضخم' }, bg: '#e7eef1', color: '#365766' },
+  B2B: { label: { en: 'HoReCa', ar: 'HoReCa' }, bg: '#e8f0ec', color: '#355c4b' },
+  MEGA: { label: { en: 'B2B', ar: 'B2B' }, bg: '#e7eef1', color: '#365766' },
 }
 
 export interface OwnerOrder {

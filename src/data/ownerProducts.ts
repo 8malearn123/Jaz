@@ -8,8 +8,8 @@ export type ProdChannel = 'b2c' | 'b2b' | 'mega'
 
 export const prodChannelMeta: Record<ProdChannel, { label: Bilingual; color: string; unit: Bilingual; needsMoq: boolean; threshold: number }> = {
   b2c: { label: { en: 'B2C · retail', ar: 'B2C · تجزئة' }, color: '#b08a57', unit: { en: 'piece', ar: 'قطعة' }, needsMoq: false, threshold: 200 },
-  b2b: { label: { en: 'B2B · standard', ar: 'B2B · قياسي' }, color: '#355c4b', unit: { en: 'carton', ar: 'كرتون' }, needsMoq: true, threshold: 20 },
-  mega: { label: { en: 'B2B · mega', ar: 'B2B · ضخم' }, color: '#365766', unit: { en: 'pallet', ar: 'طبلية' }, needsMoq: true, threshold: 3 },
+  b2b: { label: { en: 'HoReCa', ar: 'HoReCa' }, color: '#355c4b', unit: { en: 'carton', ar: 'كرتون' }, needsMoq: true, threshold: 20 },
+  mega: { label: { en: 'B2B', ar: 'B2B' }, color: '#365766', unit: { en: 'pallet', ar: 'طبلية' }, needsMoq: true, threshold: 3 },
 }
 
 export interface OwnerProduct {
