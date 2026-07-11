@@ -91,3 +91,5 @@ React 18 · Vite 5 · TypeScript (strict) · Tailwind CSS 3 · React Router 6 ·
 ---
 
 *Confidential & proprietary. © 2026 JAZ Chocolate Food Industries Company, Abu Arish, Jazan, Kingdom of Saudi Arabia. Prepared by Qimma Code.*
+
+<!-- deploy connectivity check -->
