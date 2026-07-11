@@ -42,8 +42,8 @@ export const cogsProducts: CogsProduct[] = [
 export interface CollectionRow { label: Bilingual; pct: number; note: Bilingual }
 export const collectionRows: CollectionRow[] = [
   { label: { en: 'Cash · B2C', ar: 'نقدًا · B2C' }, pct: 100, note: { en: 'Collected at checkout', ar: 'يُحصّل عند الدفع' } },
-  { label: { en: 'Receivables · B2B std', ar: 'ذمم · B2B قياسي' }, pct: 68, note: { en: 'Net 30 terms', ar: 'شروط صافي ٣٠' } },
-  { label: { en: 'Milestone · mega', ar: 'مراحل · ضخم' }, pct: 45, note: { en: 'On delivery milestones', ar: 'عند مراحل التسليم' } },
+  { label: { en: 'Receivables · HoReCa', ar: 'ذمم · HoReCa' }, pct: 68, note: { en: 'Net 30 terms', ar: 'شروط صافي ٣٠' } },
+  { label: { en: 'Milestone · B2B', ar: 'مراحل · B2B' }, pct: 45, note: { en: 'On delivery milestones', ar: 'عند مراحل التسليم' } },
 ]
 
 export const taxCard = { outputMinor: 4271200, inputMinor: 2798400, netMinor: 1472800, dueDate: { en: '31 Jul 2026', ar: '٣١ يوليو ٢٠٢٦' } }

@@ -203,7 +203,7 @@ export function OwnerFinance({ view = 'overview' }: { view?: FinTab }) {
                     <tr key={r.id} className="border-b border-hairline last:border-0 hover:bg-surface-2/30 transition-colors">
                       <td className="px-lg py-md">
                         <p className="font-sans text-data text-ink truncate max-w-[240px]">{pick(r.account)}</p>
-                        <p className="font-sans text-caption text-ink-subtle">{r.channel === 'MEGA' ? pick({ en: 'B2B MEGA', ar: 'B2B ضخم' }) : 'B2B'}</p>
+                        <p className="font-sans text-caption text-ink-subtle">{r.channel === 'MEGA' ? 'B2B' : 'HoReCa'}</p>
                       </td>
                       <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums whitespace-nowrap">{money(r.outstandingMinor)}</td>
                       <td className="px-lg py-md font-sans text-data text-ink-muted">{pick(r.dueDate)}</td>
