@@ -37,6 +37,12 @@ export interface OwnerOrder {
 }
 
 export const ownerOrdersSeed: OwnerOrder[] = [
+  // GCC export requests are ordinary orders (they used to live in a separate
+  // "Export clients" section) — destination and cold-chain noted on the line.
+  { id: 'EX-3081', customer: { en: 'Gulf Sweets Dist.', ar: 'موزّع حلويات الخليج' }, chan: 'MEGA', items: { en: 'Export — Dubai, UAE · cold-chain', ar: 'تصدير — دبي، الإمارات · شحن مبرّد' }, qty: 2400, amountMinor: 26400000, date: { en: '06 Jul', ar: '٠٦ يوليو' }, stage: 1, sla: false },
+  { id: 'EX-3079', customer: { en: 'Doha Luxury Foods', ar: 'أطعمة الدوحة الفاخرة' }, chan: 'MEGA', items: { en: 'Export — Doha, Qatar · cold-chain', ar: 'تصدير — الدوحة، قطر · شحن مبرّد' }, qty: 1600, amountMinor: 17600000, date: { en: '05 Jul', ar: '٠٥ يوليو' }, stage: 4, sla: false },
+  { id: 'EX-3076', customer: { en: 'Kuwait Gourmet', ar: 'ذوّاقة الكويت' }, chan: 'MEGA', items: { en: 'Export — Kuwait City · cold-chain', ar: 'تصدير — مدينة الكويت · شحن مبرّد' }, qty: 800, amountMinor: 8800000, date: { en: '06 Jul', ar: '٠٦ يوليو' }, stage: 0, sla: false },
+  { id: 'EX-3072', customer: { en: 'Manama Retail', ar: 'تجزئة المنامة' }, chan: 'MEGA', items: { en: 'Export — Manama, Bahrain · cold-chain', ar: 'تصدير — المنامة، البحرين · شحن مبرّد' }, qty: 1200, amountMinor: 13200000, date: { en: '02 Jul', ar: '٠٢ يوليو' }, stage: 5, sla: false },
   { id: 'JZ-2618', customer: { en: 'Badi Trading Est.', ar: 'مؤسسة بادي للتجارة' }, chan: 'B2B', items: { en: 'Jasmine luxury box', ar: 'بوكس الفُل الفاخر' }, qty: 120, amountMinor: 2016000, date: { en: '06 Jul', ar: '٠٦ يوليو' }, stage: 0, sla: true },
   { id: 'JZ-2617', customer: { en: 'Salma Al-Otaibi', ar: 'سلمى العتيبي' }, chan: 'B2C', items: { en: 'Dark 70% + Milk bar', ar: 'لوح داكن ٧٠٪ + لوح حليب' }, qty: 6, amountMinor: 24600, date: { en: '06 Jul', ar: '٠٦ يوليو' }, stage: 0, sla: false },
   { id: 'JZ-2615', customer: { en: 'Al-Dana Markets', ar: 'أسواق الدانة' }, chan: 'MEGA', items: { en: 'Assorted bar pallets', ar: 'طبليات ألواح مشكّلة' }, qty: 1800, amountMinor: 19840000, date: { en: '05 Jul', ar: '٠٥ يوليو' }, stage: 1, sla: true },
