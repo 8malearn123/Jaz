@@ -59,6 +59,34 @@ export const flavors: Record<FlavorId, Flavor> = {
     accent: '#3b241a',
     onAccent: '#f3eee5',
   },
+  dark60: {
+    id: 'dark60',
+    name: { en: 'Dark 60%', ar: 'الداكنة ٦٠٪' },
+    note: { en: 'Rounder dark, cocoa-forward', ar: 'داكنة أنعم، غنيّة بالكاكاو' },
+    accent: '#5a3a26',
+    onAccent: '#f3eee5',
+  },
+  seasalt: {
+    id: 'seasalt',
+    name: { en: 'Sea Salt', ar: 'ملح البحر' },
+    note: { en: 'Dark chocolate, Red Sea salt', ar: 'شوكولاتة داكنة وملح البحر الأحمر' },
+    accent: '#7c8a8f',
+    onAccent: '#141a1c',
+  },
+  chili: {
+    id: 'chili',
+    name: { en: 'Chili', ar: 'الفلفل الحار' },
+    note: { en: 'Dark chocolate, slow chili heat', ar: 'شوكولاتة داكنة وحرارة فلفل هادئة' },
+    accent: '#a83a29',
+    onAccent: '#fdf1ee',
+  },
+  banana: {
+    id: 'banana',
+    name: { en: 'Banana', ar: 'الموز' },
+    note: { en: 'Dark chocolate, sun-dried banana', ar: 'شوكولاتة داكنة وموز مجفف بالشمس' },
+    accent: '#c9a227',
+    onAccent: '#241a08',
+  },
 }
 
 export const flavorList: Flavor[] = Object.values(flavors)

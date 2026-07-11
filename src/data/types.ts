@@ -3,7 +3,7 @@
 
 export type Bilingual = { en: string; ar: string }
 
-export type FlavorId = 'milk' | 'lavender' | 'rose' | 'jasmine' | 'papaya' | 'mango' | 'coffee' | 'dark'
+export type FlavorId = 'milk' | 'lavender' | 'rose' | 'jasmine' | 'papaya' | 'mango' | 'coffee' | 'dark' | 'dark60' | 'seasalt' | 'chili' | 'banana'
 
 export interface Flavor {
   id: FlavorId
@@ -35,7 +35,7 @@ export interface ProductVariant {
 export interface ArtCard {
   artworkTitle: Bilingual
   artistName: Bilingual
-  year: number
+  year?: number
   description: Bilingual
 }
 
