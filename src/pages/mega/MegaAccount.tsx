@@ -12,6 +12,7 @@ import { useBilling } from '@/state/BillingContext'
 import { openPrintWindow } from '@/lib/printWindow'
 import { AreaTrend, UtilizationGauge } from '@/components/charts/Charts'
 import { Modal } from '@/components/ui/Modal'
+import { ConfirmDialog } from '@/components/ui/Confirm'
 import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
 import { useTab } from '@/lib/useTab'
@@ -583,6 +584,7 @@ function TrackModal({ order, onClose }: { order: MegaOrder; onClose: () => void 
   const mm = String(Math.floor(remaining / 60000)).padStart(2, '0')
   const ss = String(Math.floor((remaining % 60000) / 1000)).padStart(2, '0')
 
+  const [confirmCancel, setConfirmCancel] = useState(false)
   const doCancel = () => { cancelOrder(order.id); flash(`${pick({ en: 'Order cancelled', ar: 'أُلغي الطلب' })} · ${order.id}`); onClose() }
 
   return (
@@ -598,7 +600,7 @@ function TrackModal({ order, onClose }: { order: MegaOrder; onClose: () => void 
           ) : null}
         </div>
         <div className="flex items-center gap-sm shrink-0">
-          {canCancel && <button onClick={doCancel} className="btn btn-sm bg-transparent text-danger border border-danger/40 hover:bg-danger/5"><X size={15} /> {pick({ en: 'Cancel order', ar: 'إلغاء الطلب' })}</button>}
+          {canCancel && <button onClick={() => setConfirmCancel(true)} className="btn btn-sm bg-transparent text-danger border border-danger/40 hover:bg-danger/5"><X size={15} /> {pick({ en: 'Cancel order', ar: 'إلغاء الطلب' })}</button>}
           <button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Close', ar: 'إغلاق' })}</button>
         </div>
       </div>}>
@@ -689,6 +691,16 @@ function TrackModal({ order, onClose }: { order: MegaOrder; onClose: () => void 
           </>
         )}
       </div>
+
+      {/* cancelling is destructive — it never happens on one click */}
+      <ConfirmDialog
+        open={confirmCancel}
+        onClose={() => setConfirmCancel(false)}
+        onConfirm={doCancel}
+        title={pick({ en: 'Cancel this export order?', ar: 'إلغاء طلب التصدير هذا؟' })}
+        message={pick({ en: `Order ${order.id} (${order.pallets} pallets · ${money(order.valueMinor)}) will be cancelled and will not ship. This cannot be undone.`, ar: `سيُلغى الطلب ${order.id} (${order.pallets} طبلية · ${money(order.valueMinor)}) ولن يُشحن. لا يمكن التراجع عن الإلغاء.` })}
+        confirmLabel={pick({ en: 'Yes, cancel the order', ar: 'نعم، إلغاء الطلب' })}
+      />
     </Modal>
   )
 }
