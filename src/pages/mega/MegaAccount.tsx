@@ -2,11 +2,14 @@ import { useState, useEffect } from 'react'
 import {
   LayoutGrid, Boxes, Package, Ship, Landmark, Plus, Minus, ArrowRight, Check, X,
   MapPin, Download, ShieldCheck, Snowflake, PackageCheck, Truck, Globe, FileText, Container, Clock,
+  Upload, CheckCircle2,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { AccountShell, type TabDef } from '@/components/account/AccountShell'
 import { ToastProvider, useToast } from '@/components/account/Toast'
 import { MegaStateProvider, useMegaState } from '@/state/MegaStateContext'
+import { useBilling } from '@/state/BillingContext'
+import { openPrintWindow } from '@/lib/printWindow'
 import { AreaTrend, UtilizationGauge } from '@/components/charts/Charts'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
@@ -20,7 +23,7 @@ import {
   megaMarkets, megaExportTrend, type MegaOrder, type ShipStage,
 } from '@/data/mega'
 
-const TABS = ['overview', 'catalog', 'orders', 'shipments', 'finance'] as const
+const TABS = ['overview', 'catalog', 'orders', 'finance'] as const
 type Tab = (typeof TABS)[number]
 
 /** Fixed fulfilment notice: all MEGA orders are picked up at the site — no branch delivery. */
@@ -47,14 +50,14 @@ export function MegaAccount() {
 function MegaContent() {
   const { pick } = useLocale()
   const [activeRaw, setActive] = useTab('overview')
-  const active = (TABS.includes(activeRaw as Tab) ? activeRaw : 'overview') as Tab
+  // 'shipments' merged into 'orders' — old links land on the merged board
+  const active = (TABS.includes(activeRaw as Tab) ? activeRaw : activeRaw === 'shipments' ? 'orders' : 'overview') as Tab
   const { openShipments } = useMegaState()
 
   const tabs: TabDef[] = [
     { id: 'overview', label: pick({ en: 'Overview', ar: 'نظرة عامة' }), icon: LayoutGrid },
     { id: 'catalog', label: pick({ en: 'Pallet catalog', ar: 'كتالوج الطبليات' }), icon: Boxes },
-    { id: 'orders', label: pick({ en: 'Orders', ar: 'الطلبات' }), icon: Package },
-    { id: 'shipments', label: pick({ en: 'Shipments', ar: 'الشحنات' }), icon: Ship },
+    { id: 'orders', label: pick({ en: 'Orders & shipments', ar: 'الطلبات والشحنات' }), icon: Package },
     { id: 'finance', label: pick({ en: 'Finance', ar: 'المالية' }), icon: Landmark },
   ]
 
@@ -76,7 +79,6 @@ function MegaContent() {
       {active === 'overview' && <Overview onTab={setActive} />}
       {active === 'catalog' && <Catalog onTab={setActive} />}
       {active === 'orders' && <Orders />}
-      {active === 'shipments' && <Shipments />}
       {active === 'finance' && <Finance />}
     </AccountShell>
   )
@@ -154,7 +156,7 @@ function ActiveShipmentCard({ order, onTab }: { order: MegaOrder; onTab: (id: st
         {order.stage < SHIP_LAST
           ? <button onClick={() => { advanceShipment(order.id); flash(`${order.id} → ${pick(shipFlow[order.stage + 1].label)}`) }} className={buttonClass('primary', 'sm')}><ArrowRight size={14} className="rtl:rotate-180" /> {pick({ en: 'Advance', ar: 'تقديم' })}</button>
           : <span className="font-sans text-caption text-success">{pick({ en: 'Delivered', ar: 'تم التسليم' })} ✓</span>}
-        <button onClick={() => onTab('shipments')} className="link-gold text-caption">{pick({ en: 'All shipments', ar: 'كل الشحنات' })}</button>
+        <button onClick={() => onTab('orders')} className="link-gold text-caption">{pick({ en: 'All orders & shipments', ar: 'كل الطلبات والشحنات' })}</button>
       </div>
     </div>
   )
@@ -347,70 +349,52 @@ function ReviewOrderModal({ open, onClose, onTab }: { open: boolean; onClose: ()
   )
 }
 
-/* ═══════════ Orders — commercial ledger ═══════════ */
+/* ═══════════ Orders & shipments — one board: commercial ledger + cold-chain tracking ═══════════ */
 function Orders() {
-  const { pick, money } = useLocale()
-  const { orders } = useMegaState()
-  const [track, setTrack] = useState<string | null>(null)
-  const tracked = orders.find((o) => o.id === track) ?? null
-
-  return (
-    <div className="flex flex-col gap-lg">
-      <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse min-w-[680px]">
-            <thead><tr className="bg-surface-2 border-b border-hairline">
-              {[{ en: 'Order', ar: 'الطلب' }, { en: 'Pallets', ar: 'طبليات' }, { en: 'Receiving', ar: 'الاستلام' }, { en: 'Incoterm', ar: 'الشروط' }, { en: 'Value', ar: 'القيمة' }, { en: 'Status', ar: 'الحالة' }].map((h, i) => (
-                <th key={i} className={cn('font-sans text-caption uppercase tracking-wide text-ink-subtle px-lg py-2.5', i > 0 && i < 4 ? 'text-center' : i >= 4 ? 'text-end' : 'text-start')}>{pick(h)}</th>
-              ))}
-            </tr></thead>
-            <tbody>
-              {orders.map((o) => (
-                <tr key={o.id} className={cn('border-b border-hairline last:border-0 hover:bg-surface-2/50 cursor-pointer', o.cancelled && 'opacity-60')} onClick={() => setTrack(o.id)}>
-                  <td className="px-lg py-md"><p className="font-sans text-data text-ink tabular-nums">{o.id}</p><p className="font-sans text-caption text-ink-subtle truncate max-w-[220px]">{pick(o.items)} · {pick(o.placedAt)}</p></td>
-                  <td className="px-lg py-md text-center font-sans text-data text-ink tabular-nums">{o.pallets}</td>
-                  <td className="px-lg py-md text-center font-sans text-caption text-ink-muted">{pick(o.destination)}</td>
-                  <td className="px-lg py-md text-center"><StatusBadge variant="neutral">{o.incoterm}</StatusBadge></td>
-                  <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums">{money(o.valueMinor)}</td>
-                  <td className="px-lg py-md text-end">{o.cancelled ? <StatusBadge variant="danger">{pick({ en: 'Cancelled', ar: 'ملغى' })}</StatusBadge> : <StatusBadge variant={o.stage >= SHIP_LAST ? 'success' : 'gold'}>{pick(shipFlow[o.stage].label)}</StatusBadge>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="px-lg py-sm bg-surface-2 border-t border-hairline font-sans text-caption text-ink-subtle">{orders.length} {pick({ en: 'export orders · tap a row to track', ar: 'طلب تصدير · اضغط صفًّا للتتبّع' })}</div>
-      </div>
-      {tracked && <TrackModal order={tracked} onClose={() => setTrack(null)} />}
-    </div>
-  )
-}
-
-/* ═══════════ Shipments — cold-chain ops board ═══════════ */
-function Shipments() {
   const { pick, money } = useLocale()
   const { orders, advanceShipment } = useMegaState()
   const { flash } = useToast()
+  const [track, setTrack] = useState<string | null>(null)
+  const tracked = orders.find((o) => o.id === track) ?? null
+  const open = orders.filter((o) => !o.cancelled && o.stage < SHIP_LAST).length
+  const delivered = orders.filter((o) => !o.cancelled && o.stage >= SHIP_LAST).length
+  const cancelled = orders.filter((o) => o.cancelled).length
 
   return (
     <div className="flex flex-col gap-md">
+      {/* one board: every export order with its commercial info and shipment progress */}
+      <div className="flex flex-wrap items-center gap-xs font-sans text-caption">
+        <span className="rounded-pill bg-surface-2 border border-hairline px-3 py-1 text-ink-muted tabular-nums">{orders.length} {pick({ en: 'export orders', ar: 'طلب تصدير' })}</span>
+        <span className="rounded-pill px-3 py-1 font-medium tabular-nums" style={{ color: '#8a6b3f', backgroundColor: '#f6edde' }}>{open} {pick({ en: 'in progress', ar: 'قيد التنفيذ' })}</span>
+        <span className="rounded-pill px-3 py-1 font-medium tabular-nums" style={{ color: '#2f7d5b', backgroundColor: '#e6f2ea' }}>{delivered} {pick({ en: 'delivered', ar: 'سُلّمت' })}</span>
+        {cancelled > 0 && <span className="rounded-pill px-3 py-1 font-medium tabular-nums" style={{ color: '#b5403b', backgroundColor: '#faeceb' }}>{cancelled} {pick({ en: 'cancelled', ar: 'ملغاة' })}</span>}
+      </div>
+
       {orders.map((o) => (
         <div key={o.id} className={cn('card p-lg flex flex-col gap-md', o.cancelled && 'opacity-60')}>
           <div className="flex flex-wrap items-center gap-md">
             <span className="grid place-items-center w-10 h-10 rounded-md bg-surface-2 border border-hairline text-primary-hover shrink-0"><Ship size={18} /></span>
-            <div className="flex-1 min-w-[180px]">
-              <div className="flex items-center gap-sm"><span className="font-sans text-data text-ink tabular-nums">{o.id}</span>{o.cancelled ? <StatusBadge variant="danger">{pick({ en: 'Cancelled', ar: 'ملغى' })}</StatusBadge> : <StatusBadge variant={o.stage >= SHIP_LAST ? 'success' : 'gold'}>{pick(shipFlow[o.stage].label)}</StatusBadge>}</div>
-              <p className="font-sans text-caption text-ink-subtle inline-flex items-center gap-xxs"><MapPin size={11} /> {pick(o.destination)} · {o.pallets} {pick({ en: 'pallets', ar: 'طبلية' })} · {o.incoterm}</p>
+            <div className="flex-1 min-w-[200px]">
+              <div className="flex flex-wrap items-center gap-sm">
+                <span className="font-sans text-data text-ink tabular-nums">{o.id}</span>
+                {o.cancelled ? <StatusBadge variant="danger">{pick({ en: 'Cancelled', ar: 'ملغى' })}</StatusBadge> : <StatusBadge variant={o.stage >= SHIP_LAST ? 'success' : 'gold'}>{pick(shipFlow[o.stage].label)}</StatusBadge>}
+                <StatusBadge variant="neutral">{o.incoterm}</StatusBadge>
+              </div>
+              <p className="font-sans text-caption text-ink-subtle truncate">{pick(o.items)} · {pick(o.placedAt)}</p>
+              <p className="font-sans text-caption text-ink-subtle inline-flex items-center gap-xxs"><MapPin size={11} /> {pick(o.destination)} · {o.pallets} {pick({ en: 'pallets', ar: 'طبلية' })}</p>
             </div>
             <span className="font-sans text-data text-ink tabular-nums">{money(o.valueMinor)}</span>
-            {o.cancelled
-              ? <span className="font-sans text-caption text-danger whitespace-nowrap">{pick({ en: 'Cancelled', ar: 'ملغى' })}</span>
-              : o.stage < SHIP_LAST
+            <div className="flex items-center gap-xs">
+              <button onClick={() => setTrack(o.id)} className={buttonClass('secondary', 'sm')}><FileText size={14} /> {pick({ en: 'Details & invoices', ar: 'التفاصيل والفواتير' })}</button>
+              {!o.cancelled && (o.stage < SHIP_LAST
                 ? <button onClick={() => { advanceShipment(o.id); flash(`${o.id} → ${pick(shipFlow[o.stage + 1].label)}`) }} className={buttonClass('primary', 'sm')}><ArrowRight size={14} className="rtl:rotate-180" /> {pick(shipFlow[o.stage + 1].label)}</button>
-                : <span className="font-sans text-caption text-success whitespace-nowrap">{pick({ en: 'Delivered', ar: 'سُلّم' })} ✓</span>}
+                : <span className="font-sans text-caption text-success whitespace-nowrap">{pick({ en: 'Delivered', ar: 'سُلّم' })} ✓</span>)}
+            </div>
           </div>
           {!o.cancelled && <ShipTimeline stage={o.stage} />}
         </div>
       ))}
+      {tracked && <TrackModal order={tracked} onClose={() => setTrack(null)} />}
     </div>
   )
 }
@@ -533,10 +517,58 @@ function ShipTimeline({ stage, compact }: { stage: ShipStage; compact?: boolean 
 }
 
 function TrackModal({ order, onClose }: { order: MegaOrder; onClose: () => void }) {
-  const { pick, money } = useLocale()
+  const { pick, money, locale } = useLocale()
   const { cancelOrder } = useMegaState()
+  // Billing lives in the shared store, so receipts and the tax invoice are the
+  // same trail the Jaz billing desk works with — exactly like the B2B account.
+  const { billingFor, attachReceipt } = useBilling()
   const { flash } = useToast()
   const [now, setNow] = useState(() => Date.now())
+  const billing = billingFor(order.id)
+
+  // Printable invoice — the browser's "Save as PDF" produces the PDF. Exports
+  // are zero-rated for VAT; the proforma is auto-issued with every order.
+  const printDoc = (kind: 'proforma' | 'tax') => {
+    const dir = locale === 'ar' ? 'rtl' : 'ltr'
+    const L = (en: string, ar: string) => (locale === 'ar' ? ar : en)
+    const title = kind === 'tax' ? L('Tax invoice', 'فاتورة ضريبية') : L('Proforma invoice', 'فاتورة أولية')
+    const sub = kind === 'tax'
+      ? `Jaz · ${L('ZATCA compliant', 'متوافقة مع هيئة الزكاة والضريبة والجمارك')}`
+      : `Jaz · ${L('Not a tax invoice — the tax invoice is issued by Jaz after payment is confirmed', 'ليست فاتورة ضريبية — تُصدر جاز الفاتورة الضريبية بعد التحقق من السداد')}`
+    openPrintWindow(`<!doctype html><html dir="${dir}"><head><meta charset="utf-8"><title>${order.id}</title><style>
+      @page{size:A4 portrait;margin:15mm}
+      html,body{margin:0;width:auto}
+      *{box-sizing:border-box}
+      body{font-family:'Segoe UI',Tahoma,sans-serif;padding:24px;color:#2b2b2b;-webkit-print-color-adjust:exact}
+      h1{font-size:20px;margin:0 0 4px} .sub{color:#777;font-size:12px;margin-bottom:16px}
+      .meta{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;font-size:13px;margin:14px 0}
+      .meta b{display:block;color:#777;font-weight:600;font-size:11px;text-transform:uppercase}
+      table{width:100%;border-collapse:collapse;margin-top:10px}
+      th,td{border:1px solid #ccc;padding:6px 10px;font-size:12px;word-break:break-word;text-align:${locale === 'ar' ? 'right' : 'left'}}
+      th{background:#f3efe8}
+      .totals{margin-top:14px;font-size:13px} .totals div{display:flex;justify-content:space-between;padding:3px 0}
+      .totals .net{font-weight:700;font-size:15px;border-top:1px solid #ccc;padding-top:8px;margin-top:6px}
+      .foot{margin-top:24px;font-size:11px;color:#999}
+      @media print{body{padding:0}}
+    </style></head><body>
+      <h1>${title} ${order.id}</h1>
+      <div class="sub">${sub}</div>
+      <div class="meta">
+        <div><b>${L('Buyer', 'المشتري')}</b>${pick(megaAccount.legalName)}</div>
+        <div><b>${L('Date', 'التاريخ')}</b>${pick(order.placedAt)}</div>
+        <div><b>${L('Incoterm', 'شروط التسليم')}</b>${order.incoterm} — ${pick(order.destination)}</div>
+        <div><b>${L('Pallets', 'الطبليات')}</b>${order.pallets}</div>
+      </div>
+      <table><thead><tr><th>${L('Item', 'الصنف')}</th><th>${L('Pallets', 'الطبليات')}</th><th>${L('Total', 'الإجمالي')}</th></tr></thead>
+        <tbody><tr><td>${pick(order.items)}</td><td>${order.pallets}</td><td>${money(order.valueMinor)}</td></tr></tbody></table>
+      <div class="totals">
+        <div><span>${L('Subtotal', 'المجموع الفرعي')}</span><span>${money(order.valueMinor)}</span></div>
+        <div><span>${L('VAT 0% — zero-rated export', 'ضريبة القيمة المضافة ٠٪ — تصدير')}</span><span>${money(0)}</span></div>
+        <div class="net"><span>${L('Total', 'الإجمالي')}</span><span>${money(order.valueMinor)}</span></div>
+      </div>
+      <div class="foot">${L('Generated from the Jaz export portal.', 'صدرت من بوابة تصدير جاز.')}</div>
+    </body></html>`)
+  }
 
   const remaining = order.placedTs != null ? order.placedTs + CANCEL_WINDOW_MS - now : -1
   const withinWindow = remaining > 0
@@ -554,7 +586,7 @@ function TrackModal({ order, onClose }: { order: MegaOrder; onClose: () => void 
   const doCancel = () => { cancelOrder(order.id); flash(`${pick({ en: 'Order cancelled', ar: 'أُلغي الطلب' })} · ${order.id}`); onClose() }
 
   return (
-    <Modal open onClose={onClose} size="md" eyebrow={order.id} title={pick({ en: 'Shipment tracking', ar: 'تتبّع الشحنة' })}
+    <Modal open onClose={onClose} size="lg" eyebrow={order.id} title={pick({ en: 'Order details & invoices', ar: 'تفاصيل الطلب والفواتير' })}
       footer={<div className="flex items-center justify-between w-full gap-md">
         <div className="min-w-0">
           {order.cancelled ? (
@@ -590,6 +622,70 @@ function TrackModal({ order, onClose }: { order: MegaOrder; onClose: () => void 
               ))}
             </ul>
             {canCancel && <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'You can cancel this order free of charge within 30 minutes of placing it, before it ships.', ar: 'يمكنك إلغاء هذا الطلب مجانًا خلال ٣٠ دقيقة من تقديمه وقبل شحنه.' })}</p>}
+
+            {/* billing process: proforma auto-issued → buyer attaches receipts → Jaz attaches the tax invoice */}
+            <div className="rounded-lg border border-hairline overflow-hidden">
+              <div className="px-md py-sm bg-surface-2 border-b border-hairline">
+                <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Payment & invoices', ar: 'السداد والفواتير' })}</h4>
+              </div>
+              <div className="divide-y divide-hairline">
+                {/* 1 — proforma, issued automatically with every order */}
+                <div className="flex flex-wrap items-center gap-sm px-md py-sm">
+                  <span className="grid place-items-center w-9 h-9 rounded-md bg-primary/10 text-primary-hover shrink-0"><FileText size={16} /></span>
+                  <div className="flex-1 min-w-[180px]">
+                    <p className="font-sans text-data text-ink">{pick({ en: 'Proforma invoice', ar: 'الفاتورة الأولية' })} <CheckCircle2 size={13} className="inline text-success" /></p>
+                    <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Issued automatically with the order', ar: 'تصدر تلقائيًا مع الطلب' })}</p>
+                  </div>
+                  <button onClick={() => printDoc('proforma')} className={buttonClass('secondary', 'sm')}><Download size={14} /> {pick({ en: 'Download', ar: 'تنزيل' })}</button>
+                </div>
+
+                {/* 2 — payment receipts attached by the buyer */}
+                <div className="flex flex-col gap-xs px-md py-sm">
+                  <div className="flex flex-wrap items-center gap-sm">
+                    <span className="grid place-items-center w-9 h-9 rounded-md bg-surface-2 text-ink-muted shrink-0"><Upload size={16} /></span>
+                    <div className="flex-1 min-w-[180px]">
+                      <p className="font-sans text-data text-ink">{pick({ en: 'Payment receipts', ar: 'إيصالات السداد' })}{billing.receipts.length > 0 && <span className="text-ink-subtle"> · {billing.receipts.length}</span>}</p>
+                      <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Attach your transfer receipts for this order', ar: 'أرفق إيصالات التحويل الخاصة بهذا الطلب' })}</p>
+                    </div>
+                    <label className={buttonClass('secondary', 'sm', 'cursor-pointer')}>
+                      <Upload size={14} /> {pick({ en: 'Attach receipt', ar: 'إرفاق إيصال' })}
+                      <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (f) { attachReceipt(order.id, { name: f.name, url: URL.createObjectURL(f), at: new Date().toISOString() }); flash(pick({ en: 'Receipt attached', ar: 'أُرفق الإيصال' })) }
+                        e.target.value = ''
+                      }} />
+                    </label>
+                  </div>
+                  {billing.receipts.length > 0 && (
+                    <div className="flex flex-wrap gap-xs">
+                      {billing.receipts.map((r, i) => (
+                        <span key={i} className="inline-flex items-center gap-xxs rounded-pill border border-success/25 bg-success/8 px-3 py-1 font-sans text-caption text-ink">
+                          <CheckCircle2 size={12} className="text-success" /> <span dir="ltr">{r.name}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3 — the tax invoice, attached by Jaz once payment is confirmed */}
+                <div className="flex flex-wrap items-center gap-sm px-md py-sm">
+                  <span className={cn('grid place-items-center w-9 h-9 rounded-md shrink-0', billing.taxInvoice ? 'bg-success/10 text-success' : 'bg-surface-2 text-ink-subtle')}><FileText size={16} /></span>
+                  <div className="flex-1 min-w-[180px]">
+                    <p className="font-sans text-data text-ink">{pick({ en: 'Tax invoice', ar: 'الفاتورة الضريبية' })} {billing.taxInvoice && <CheckCircle2 size={13} className="inline text-success" />}</p>
+                    <p className="font-sans text-caption text-ink-subtle">
+                      {billing.taxInvoice
+                        ? <>{pick({ en: 'Attached by Jaz', ar: 'أرفقتها شركة جاز' })} · <span dir="ltr">{billing.taxInvoice.name}</span></>
+                        : pick({ en: 'Issued by Jaz after payment is confirmed', ar: 'تصدرها شركة جاز بعد التحقق من السداد' })}
+                    </p>
+                  </div>
+                  {billing.taxInvoice
+                    ? (billing.taxInvoice.url
+                      ? <a href={billing.taxInvoice.url} download={billing.taxInvoice.name} className={buttonClass('secondary', 'sm')}><Download size={14} /> {pick({ en: 'Download', ar: 'تنزيل' })}</a>
+                      : <button onClick={() => printDoc('tax')} className={buttonClass('secondary', 'sm')}><Download size={14} /> {pick({ en: 'Download', ar: 'تنزيل' })}</button>)
+                    : <span className="rounded-pill px-3 py-1 font-sans text-caption font-medium" style={{ color: '#8a6b3f', backgroundColor: '#f6edde' }}>{pick({ en: 'Awaiting issue', ar: 'بانتظار الإصدار' })}</span>}
+                </div>
+              </div>
+            </div>
           </>
         )}
       </div>
