@@ -3,7 +3,7 @@ import type { Bilingual } from '@/data/types'
 import { ownerOrdersSeed, ownerOrderStatuses, type OwnerOrder, type OwnerChannel, type OwnerOrderStage } from '@/data/ownerOrders'
 import { rawMaterials, finishedBatches, bomBySku, purchaseInvoices, suppliers as suppliersSeed, stockMovementsSeed, stockUnits, unitFactor, type RawKey, type FinishedBatch, type PurchaseInvoice, type ExtraRaw, type Supplier, type SupplierContact, type StockMovement, type StockTakeReport } from '@/data/ownerSupply'
 import { ownerProductsByChannel, type OwnerProduct, type ProdChannel } from '@/data/ownerProducts'
-import { ownerCustomers, ownerTiers, type OwnerCustomer, type OwnerTier } from '@/data/ownerCustomers'
+import { ownerCustomers, ownerTiers, loyaltyLedgerSeed, type OwnerCustomer, type OwnerTier, type LoyaltyLedgerEntry } from '@/data/ownerCustomers'
 
 // Owner-tunable loyalty mechanics: how points are earned/redeemed, when they
 // expire, and the spend thresholds that move customers between tiers.
@@ -106,7 +106,9 @@ interface OwnerStateValue {
   opexTotalMinor: number
   // customers loyalty
   customers: OwnerCustomer[]
-  rewardCustomer: (id: string, points: number) => void
+  rewardCustomer: (id: string, points: number, note?: string) => void
+  // loyalty point sources per customer (order earns, grants, campaigns, redemptions)
+  loyaltyLedgers: Record<string, LoyaltyLedgerEntry[]>
   loyalty: LoyaltyConfig
   setLoyalty: (patch: Partial<LoyaltyConfig>) => void
   // team & staff — add/remove employees and grant/revoke per-section permissions
@@ -436,12 +438,21 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   })
   const setLoyalty = useCallback((patch: Partial<LoyaltyConfig>) => setLoyaltyState((prev) => ({ ...prev, ...patch, thresholds: { ...prev.thresholds, ...(patch.thresholds ?? {}) } })), [])
 
-  const rewardCustomer = useCallback((id: string, points: number) => setCustomers((prev) => prev.map((c) => {
-    if (c.id !== id) return c
-    const spend = c.spendMinor + points
-    const tier = ([...ownerTiers].reverse().find((t) => spend >= loyalty.thresholds[t.key])?.key ?? 'basic') as OwnerTier
-    return { ...c, spendMinor: spend, tier }
-  })), [loyalty])
+  const [loyaltyLedgers, setLoyaltyLedgers] = useState<Record<string, LoyaltyLedgerEntry[]>>(() => clone(loyaltyLedgerSeed))
+  const ledgerSeqRef = useRef(1)
+  const rewardCustomer = useCallback((id: string, points: number, note?: string) => {
+    setCustomers((prev) => prev.map((c) => {
+      if (c.id !== id) return c
+      const spend = c.spendMinor + points
+      const tier = ([...ownerTiers].reverse().find((t) => spend >= loyalty.thresholds[t.key])?.key ?? 'basic') as OwnerTier
+      return { ...c, spendMinor: spend, tier }
+    }))
+    // every grant lands in the ledger, so the balance always traces to its sources
+    setLoyaltyLedgers((prev) => ({
+      ...prev,
+      [id]: [{ id: `lg-g${ledgerSeqRef.current++}`, kind: 'grant', source: note ? { en: note, ar: note } : { en: 'Owner grant', ar: 'منح من المالك' }, points: Math.round(points / 100), at: { en: 'Just now', ar: 'الآن' } }, ...(prev[id] ?? [])],
+    }))
+  }, [loyalty])
 
   /* ── team & staff — lives in the root TeamProvider (shared with the role picker);
         re-exposed here so owner panels keep a single state entry point ── */
@@ -528,7 +539,7 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase,
     wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor,
     expenses, recordExpense, opexTotalMinor,
-    customers, rewardCustomer, loyalty, setLoyalty,
+    customers, rewardCustomer, loyaltyLedgers, loyalty, setLoyalty,
     employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive,
     creditLimits, setCreditLimit,
     contracts, renewContract,
@@ -538,7 +549,7 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible,
     dismissedExpiry, dismissExpiry,
     cocoaDelta, setCocoa,
-  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, stockTakeReports, addStockTakeReport, movements, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor, expenses, recordExpense, opexTotalMinor, customers, rewardCustomer, loyalty, setLoyalty, employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive, creditLimits, setCreditLimit, contracts, renewContract, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment, vendorDocs, attachVendorDoc, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, dismissedExpiry, dismissExpiry, cocoaDelta])
+  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, stockTakeReports, addStockTakeReport, movements, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor, expenses, recordExpense, opexTotalMinor, customers, rewardCustomer, loyaltyLedgers, loyalty, setLoyalty, employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive, creditLimits, setCreditLimit, contracts, renewContract, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment, vendorDocs, attachVendorDoc, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, dismissedExpiry, dismissExpiry, cocoaDelta])
 
   return <OwnerStateContext.Provider value={value}>{children}</OwnerStateContext.Provider>
 }
