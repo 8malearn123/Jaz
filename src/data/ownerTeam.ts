@@ -5,7 +5,7 @@ import type { Bilingual } from './types'
 
 export type TeamPermission =
   | 'orders' | 'purchases' | 'raw' | 'production' | 'waste'
-  | 'products' | 'customers' | 'suppliers' | 'finance' | 'reports'
+  | 'products' | 'customers' | 'suppliers' | 'reports'
 
 export interface TeamPermDef { key: TeamPermission; label: Bilingual; desc: Bilingual }
 export const teamPermissions: TeamPermDef[] = [
@@ -17,7 +17,6 @@ export const teamPermissions: TeamPermDef[] = [
   { key: 'products', label: { en: 'Products', ar: 'المنتجات' }, desc: { en: 'Products, variants & pricing', ar: 'المنتجات والأصناف والتسعير' } },
   { key: 'customers', label: { en: 'Customers', ar: 'العملاء' }, desc: { en: 'Customers & loyalty', ar: 'العملاء والولاء' } },
   { key: 'suppliers', label: { en: 'Suppliers', ar: 'الموردون' }, desc: { en: 'Suppliers directory', ar: 'دليل الموردين' } },
-  { key: 'finance', label: { en: 'Finance', ar: 'المالية' }, desc: { en: 'P&L, costs & collection', ar: 'الأرباح والتكاليف والتحصيل' } },
   { key: 'reports', label: { en: 'Reports', ar: 'التقارير' }, desc: { en: 'Stock-take reports & printing', ar: 'تقارير الجرد والطباعة' } },
 ]
 
