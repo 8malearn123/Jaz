@@ -1,11 +1,18 @@
+import { useState } from 'react'
 import { Gem, Check, Plus, Gift, Ticket, Sparkles, Wallet as WalletIcon } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useCustomer } from '@/state/CustomerContext'
 import { customer, tierOrder, type LoyaltyTier } from '@/data/account'
 import { buttonClass } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 import { StatusBadge } from '@/components/ui/Misc'
 import { useToast } from '@/components/account/Toast'
 import { cn } from '@/lib/cn'
+
+// Redemption mechanics shown to the customer before confirming:
+// 500 points are deducted for one single-use code worth ﷼ 25 (100 pts = ﷼ 5).
+const REDEEM_COST_POINTS = 500
+const REDEEM_VALUE_MINOR = 2500
 
 // Tiers + headline benefits mirror the owner-side program (ownerCustomers.ts).
 const PERKS: Record<LoyaltyTier, { en: string; ar: string }[]> = {
@@ -24,9 +31,14 @@ export function WalletLoyaltyPanel() {
   const nextTier = customer.loyalty.nextTier
   const progress = nextTierAt ? Math.min(100, (lifetimeSpendMinor / nextTierAt) * 100) : 100
 
-  const generateCode = () => {
-    const code = redeemPointsForCode()
+  // Redeeming asks for confirmation first — the customer sees exactly what
+  // will be deducted and what the code is worth before anything happens.
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const canRedeem = points >= REDEEM_COST_POINTS
+  const confirmRedeem = () => {
+    const code = redeemPointsForCode(REDEEM_COST_POINTS)
     if (code) flash(`${t('loyalty.codeToast')} · ${code}`)
+    setConfirmOpen(false)
   }
 
   return (
@@ -87,9 +99,16 @@ export function WalletLoyaltyPanel() {
                 <span className="inline-flex items-center gap-xxs font-sans text-caption text-success"><Check size={13} /> {t('loyalty.codeReady')}</span>
               </div>
             ) : (
-              <button onClick={generateCode} className={buttonClass('primary', 'sm', 'w-full')}>
-                <Ticket size={15} /> {t('loyalty.generateCode')}
-              </button>
+              <>
+                <button onClick={() => setConfirmOpen(true)} disabled={!canRedeem} className={buttonClass('primary', 'sm', 'w-full')}>
+                  <Ticket size={15} /> {t('loyalty.generateCode')}
+                </button>
+                <p className="font-sans text-caption text-ink-subtle text-center">
+                  {canRedeem
+                    ? pick({ en: `${REDEEM_COST_POINTS} pts → ﷼ ${REDEEM_VALUE_MINOR / 100} code`, ar: `${REDEEM_COST_POINTS} نقطة ← كود بقيمة ${REDEEM_VALUE_MINOR / 100} ﷼` })
+                    : pick({ en: `You need ${REDEEM_COST_POINTS} points to redeem`, ar: `تحتاج ${REDEEM_COST_POINTS} نقطة للاستبدال` })}
+                </p>
+              </>
             )}
           </div>
         </div>
@@ -120,6 +139,34 @@ export function WalletLoyaltyPanel() {
         <span className="font-sans text-data text-ink-muted">{t('loyalty.lifetime')}</span>
         <span className="font-serif text-headline text-ink tabular-nums">{money(lifetimeSpendMinor)}</span>
       </div>
+
+      {/* redemption confirmation — mechanics and exact deduction, before anything happens */}
+      {confirmOpen && (
+        <Modal open onClose={() => setConfirmOpen(false)} size="sm" eyebrow={t('loyalty.points')} title={pick({ en: 'Confirm redemption', ar: 'تأكيد عملية الاستبدال' })}
+          footer={<>
+            <button onClick={() => setConfirmOpen(false)} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button>
+            <button onClick={confirmRedeem} className={buttonClass('primary', 'sm')}><Ticket size={15} /> {pick({ en: 'Confirm & generate code', ar: 'تأكيد وتوليد الكود' })}</button>
+          </>}>
+          <div className="flex flex-col gap-md">
+            <div className="rounded-lg border border-hairline divide-y divide-hairline">
+              {[
+                { k: pick({ en: 'Current balance', ar: 'رصيدك الحالي' }), v: `${points.toLocaleString()} ${t('loyalty.points')}` },
+                { k: pick({ en: 'Will be deducted', ar: 'سيُخصم من رصيدك' }), v: `−${REDEEM_COST_POINTS.toLocaleString()} ${t('loyalty.points')}`, tone: 'danger' as const },
+                { k: pick({ en: 'You get', ar: 'ستحصل على' }), v: pick({ en: `Discount code worth ﷼ ${REDEEM_VALUE_MINOR / 100}`, ar: `كود خصم بقيمة ${REDEEM_VALUE_MINOR / 100} ﷼` }), tone: 'success' as const },
+                { k: pick({ en: 'Balance after', ar: 'رصيدك بعد الاستبدال' }), v: `${(points - REDEEM_COST_POINTS).toLocaleString()} ${t('loyalty.points')}` },
+              ].map((r, i) => (
+                <div key={i} className="flex items-center justify-between px-md py-2.5">
+                  <span className="font-sans text-caption text-ink-subtle">{r.k}</span>
+                  <span className={cn('font-sans text-data tabular-nums', r.tone === 'danger' ? 'text-danger' : r.tone === 'success' ? 'text-success' : 'text-ink')}>{r.v}</span>
+                </div>
+              ))}
+            </div>
+            <p className="font-sans text-caption text-ink-subtle">
+              {pick({ en: 'How it works: every 100 points = ﷼ 5. The code is single-use and applied as a discount at checkout — it never expires.', ar: 'آلية الاستبدال: كل ١٠٠ نقطة = ٥ ﷼. الكود يُستخدم مرة واحدة ويُطبق كخصم عند إتمام الطلب، ولا تنتهي صلاحيته.' })}
+            </p>
+          </div>
+        </Modal>
+      )}
 
       <div className="card overflow-hidden">
         <div className="px-lg py-md bg-surface-2 border-b border-hairline"><h3 className="font-serif text-card-title text-ink">{t('loyalty.history')}</h3></div>
