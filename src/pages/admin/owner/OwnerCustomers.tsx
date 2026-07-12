@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { Gift, Eye, Settings2, Check } from 'lucide-react'
+import { Gift, Eye, Settings2, Check, ShoppingBag, Sparkles, BadgePercent } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
-import { loyaltyStats, ownerTiers, type OwnerTier, type OwnerCustomer } from '@/data/ownerCustomers'
+import { loyaltyStats, ownerTiers, customerOrders, type OwnerTier, type OwnerCustomer, type LoyaltyLedgerEntry, type LoyaltySourceKind } from '@/data/ownerCustomers'
 import { useOwnerState, type LoyaltyConfig } from '@/state/OwnerStateContext'
 import { cn } from '@/lib/cn'
 import { PanelHead, StatCard, FilterChips, Pill, UtilBar } from './_shared'
@@ -14,7 +14,7 @@ const tierOf = (k: OwnerTier) => ownerTiers.find((t) => t.key === k)!
 export function OwnerCustomers() {
   const { pick, money } = useLocale()
   const { flash } = useToast()
-  const { customers: allCustomers, rewardCustomer, loyalty, setLoyalty } = useOwnerState()
+  const { customers: allCustomers, rewardCustomer, loyaltyLedgers, loyalty, setLoyalty } = useOwnerState()
   // Loyalty is a B2C program — business (B2B) accounts live under their own sections.
   const customers = allCustomers.filter((c) => c.type === 'B2C')
   const [tier, setTier] = useState<OwnerTier | 'all'>('all')
@@ -31,7 +31,7 @@ export function OwnerCustomers() {
   const shown = tier === 'all' ? customers : customers.filter((c) => c.tier === tier)
 
   const grant = (c: OwnerCustomer, pts: number, note?: string) => {
-    rewardCustomer(c.id, pts * 100)
+    rewardCustomer(c.id, pts * 100, note)
     flash(`+${pts.toLocaleString()} ${pick({ en: 'pts to', ar: 'نقطة لـ' })} ${pick(c.name)}${note ? ` · ${note}` : ''}`)
   }
 
@@ -87,7 +87,7 @@ export function OwnerCustomers() {
       {/* points are granted explicitly: pick the amount, confirm, then it applies */}
       {rewardTarget && <RewardModal customer={rewardTarget} onClose={() => setRewardId(null)} onGrant={(pts, note) => grant(rewardTarget, pts, note)} />}
 
-      {detail && <CustomerDetail customer={detail} loyalty={loyalty} onClose={() => setDetailId(null)} onReward={() => { setRewardId(detail.id) }} />}
+      {detail && <CustomerDetail customer={detail} loyalty={loyalty} ledger={loyaltyLedgers[detail.id] ?? []} onClose={() => setDetailId(null)} onReward={() => { setRewardId(detail.id) }} />}
 
       {settingsOpen && <LoyaltySettingsModal loyalty={loyalty} onClose={() => setSettingsOpen(false)} onSave={(patch) => { setLoyalty(patch); flash(pick({ en: 'Loyalty settings saved', ar: 'حُفظت إعدادات الولاء' })) }} />}
     </div>
@@ -235,7 +235,21 @@ function LoyaltySettingsModal({ loyalty, onClose, onSave }: { loyalty: LoyaltyCo
   )
 }
 
-function CustomerDetail({ customer, loyalty, onClose, onReward }: { customer: OwnerCustomer; loyalty: LoyaltyConfig; onClose: () => void; onReward: () => void }) {
+// visual vocabulary for each loyalty point source
+const sourceMeta: Record<LoyaltySourceKind, { label: { en: string; ar: string }; icon: typeof Gift; color: string }> = {
+  order: { label: { en: 'Order', ar: 'طلب' }, icon: ShoppingBag, color: '#355c4b' },
+  grant: { label: { en: 'Owner grant', ar: 'منح المالك' }, icon: Gift, color: '#8a6b3f' },
+  campaign: { label: { en: 'Campaign', ar: 'حملة' }, icon: Sparkles, color: '#365766' },
+  redeem: { label: { en: 'Redemption', ar: 'استبدال' }, icon: BadgePercent, color: '#b5403b' },
+}
+
+const orderStatusMeta = {
+  delivered: { label: { en: 'Delivered', ar: 'تم التوصيل' }, color: '#2f7d5b', bg: '#e6f2ea' },
+  shipped: { label: { en: 'Shipped', ar: 'مشحون' }, color: '#365766', bg: '#e7eef1' },
+  preparing: { label: { en: 'Preparing', ar: 'قيد التجهيز' }, color: '#8a6b3f', bg: '#f6edde' },
+} as const
+
+function CustomerDetail({ customer, loyalty, ledger, onClose, onReward }: { customer: OwnerCustomer; loyalty: LoyaltyConfig; ledger: LoyaltyLedgerEntry[]; onClose: () => void; onReward: () => void }) {
   const { pick, money } = useLocale()
   const td = tierOf(customer.tier)
   const idx = ownerTiers.findIndex((t) => t.key === customer.tier)
@@ -245,8 +259,9 @@ function CustomerDetail({ customer, loyalty, onClose, onReward }: { customer: Ow
   const toNext = next ? nextThreshold - customer.spendMinor : 0
   const progress = next ? Math.min(100, Math.round(((customer.spendMinor - curThreshold) / (nextThreshold - curThreshold)) * 100)) : 100
   const initials = pick(customer.name).split(' ').map((w) => w[0]).slice(0, 2).join('')
+  const orders = customerOrders[customer.id] ?? []
   return (
-    <Modal open onClose={onClose} size="md" eyebrow={customer.id} title={pick(customer.name)}
+    <Modal open onClose={onClose} size="lg" eyebrow={customer.id} title={pick(customer.name)}
       footer={<div className="flex items-center justify-between w-full">
         <button onClick={onReward} className={buttonClass('secondary', 'sm')}><Gift size={14} /> {pick({ en: 'Grant points', ar: 'منح نقاط' })}</button>
         <button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Close', ar: 'إغلاق' })}</button>
@@ -273,6 +288,51 @@ function CustomerDetail({ customer, loyalty, onClose, onReward }: { customer: Ow
             {next ? <span className="text-ink-subtle">{pick(next.label)} · {money(toNext)} {pick({ en: 'to go', ar: 'متبقٍّ' })}</span> : <span className="text-success">{pick({ en: 'Top tier', ar: 'أعلى فئة' })}</span>}
           </div>
           <UtilBar pct={progress} color={td.color} />
+        </div>
+
+        {/* recent orders */}
+        <div className="flex flex-col gap-sm">
+          <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Orders', ar: 'الطلبات' })}</h4>
+          <div className="rounded-lg border border-hairline divide-y divide-hairline">
+            {orders.length === 0 && <p className="px-md py-sm font-sans text-caption text-ink-subtle">{pick({ en: 'No orders on file yet.', ar: 'لا طلبات مسجلة بعد.' })}</p>}
+            {orders.map((o) => {
+              const st = orderStatusMeta[o.status]
+              return (
+                <div key={o.id} className="flex flex-wrap items-center gap-md px-md py-sm">
+                  <span className="grid place-items-center w-8 h-8 rounded-md bg-surface-2 text-ink-subtle shrink-0"><ShoppingBag size={14} /></span>
+                  <span className="font-sans text-data text-ink tabular-nums flex-1">{o.id} <span className="text-ink-subtle text-caption">· {pick(o.date)}</span></span>
+                  <span className="font-sans text-data text-ink tabular-nums">{money(o.amountMinor)}</span>
+                  <span className="inline-flex items-center rounded-pill px-2.5 py-1 font-sans text-caption font-medium" style={{ color: st.color, backgroundColor: st.bg }}>{pick(st.label)}</span>
+                </div>
+              )
+            })}
+            {orders.length > 0 && orders.length < customer.orders && (
+              <p className="px-md py-2 font-sans text-caption text-ink-subtle bg-surface-2">{pick({ en: `Showing the latest ${orders.length} of ${customer.orders} orders.`, ar: `تُعرض أحدث ${orders.length} من أصل ${customer.orders} طلبًا.` })}</p>
+            )}
+          </div>
+        </div>
+
+        {/* loyalty point sources — the ledger behind the balance */}
+        <div className="flex flex-col gap-sm">
+          <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Loyalty point sources', ar: 'مصادر نقاط الولاء' })}</h4>
+          <div className="rounded-lg border border-hairline divide-y divide-hairline">
+            {ledger.length === 0 && <p className="px-md py-sm font-sans text-caption text-ink-subtle">{pick({ en: 'No point movements yet.', ar: 'لا حركات نقاط بعد.' })}</p>}
+            {ledger.map((e) => {
+              const m = sourceMeta[e.kind]
+              const Icon = m.icon
+              return (
+                <div key={e.id} className="flex flex-wrap items-center gap-md px-md py-sm">
+                  <span className="grid place-items-center w-8 h-8 rounded-md shrink-0" style={{ backgroundColor: m.color + '18', color: m.color }}><Icon size={14} /></span>
+                  <div className="flex-1 min-w-[160px]">
+                    <p className="font-sans text-data text-ink truncate">{pick(e.source)}</p>
+                    <p className="font-sans text-caption text-ink-subtle">{pick(m.label)} · {pick(e.at)}</p>
+                  </div>
+                  <span className={cn('font-sans text-data font-medium tabular-nums', e.points < 0 ? 'text-danger' : 'text-success')} dir="ltr">{e.points > 0 ? '+' : ''}{e.points.toLocaleString()}</span>
+                </div>
+              )
+            })}
+          </div>
+          <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Every point traces to a source: order earns, owner grants, campaigns and redemptions.', ar: 'كل نقطة لها مصدر واضح: كسب من الطلبات، منح المالك، الحملات، والاستبدال.' })}</p>
         </div>
       </div>
     </Modal>

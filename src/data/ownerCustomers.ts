@@ -42,3 +42,69 @@ export const ownerCustomers: OwnerCustomer[] = [
   { id: 'c-9', name: { en: 'Salma Al-Otaibi', ar: 'سلمى العتيبي' }, type: 'B2C', orders: 6, spendMinor: 84000, tier: 'basic' },
   { id: 'c-10', name: { en: 'Khalid Al-Mutairi', ar: 'خالد المطيري' }, type: 'B2C', orders: 4, spendMinor: 41000, tier: 'basic' },
 ]
+
+// ── Per-customer recent orders (loyalty file) ──
+export interface CustomerOrder { id: string; date: Bilingual; amountMinor: number; status: 'delivered' | 'shipped' | 'preparing' }
+export const customerOrders: Record<string, CustomerOrder[]> = {
+  'c-3': [
+    { id: 'JZ-2731', date: { en: '08 Jul', ar: '٠٨ يوليو' }, amountMinor: 42000, status: 'preparing' },
+    { id: 'JZ-2694', date: { en: '02 Jul', ar: '٠٢ يوليو' }, amountMinor: 61500, status: 'shipped' },
+    { id: 'JZ-2618', date: { en: '24 Jun', ar: '٢٤ يونيو' }, amountMinor: 38000, status: 'delivered' },
+    { id: 'JZ-2547', date: { en: '12 Jun', ar: '١٢ يونيو' }, amountMinor: 27500, status: 'delivered' },
+    { id: 'JZ-2489', date: { en: '30 May', ar: '٣٠ مايو' }, amountMinor: 54000, status: 'delivered' },
+  ],
+  'c-5': [
+    { id: 'JZ-2744', date: { en: '10 Jul', ar: '١٠ يوليو' }, amountMinor: 88000, status: 'preparing' },
+    { id: 'JZ-2661', date: { en: '28 Jun', ar: '٢٨ يونيو' }, amountMinor: 46500, status: 'delivered' },
+    { id: 'JZ-2590', date: { en: '18 Jun', ar: '١٨ يونيو' }, amountMinor: 72000, status: 'delivered' },
+    { id: 'JZ-2502', date: { en: '02 Jun', ar: '٠٢ يونيو' }, amountMinor: 39500, status: 'delivered' },
+  ],
+  'c-7': [
+    { id: 'JZ-2705', date: { en: '04 Jul', ar: '٠٤ يوليو' }, amountMinor: 21500, status: 'shipped' },
+    { id: 'JZ-2611', date: { en: '22 Jun', ar: '٢٢ يونيو' }, amountMinor: 18000, status: 'delivered' },
+    { id: 'JZ-2533', date: { en: '08 Jun', ar: '٠٨ يونيو' }, amountMinor: 26000, status: 'delivered' },
+  ],
+  'c-9': [
+    { id: 'JZ-2688', date: { en: '01 Jul', ar: '٠١ يوليو' }, amountMinor: 14500, status: 'delivered' },
+    { id: 'JZ-2570', date: { en: '15 Jun', ar: '١٥ يونيو' }, amountMinor: 19000, status: 'delivered' },
+  ],
+  'c-10': [
+    { id: 'JZ-2726', date: { en: '07 Jul', ar: '٠٧ يوليو' }, amountMinor: 12500, status: 'shipped' },
+    { id: 'JZ-2498', date: { en: '01 Jun', ar: '٠١ يونيو' }, amountMinor: 9800, status: 'delivered' },
+  ],
+}
+
+// ── Loyalty point sources (the ledger behind each balance): order earns,
+// owner grants, campaigns and redemptions. Owner grants append live.
+export type LoyaltySourceKind = 'order' | 'grant' | 'campaign' | 'redeem'
+export interface LoyaltyLedgerEntry { id: string; kind: LoyaltySourceKind; source: Bilingual; points: number; at: Bilingual }
+export const loyaltyLedgerSeed: Record<string, LoyaltyLedgerEntry[]> = {
+  'c-3': [
+    { id: 'lg-31', kind: 'order', source: { en: 'Order JZ-2731', ar: 'طلب JZ-2731' }, points: 420, at: { en: '08 Jul', ar: '٠٨ يوليو' } },
+    { id: 'lg-30', kind: 'order', source: { en: 'Order JZ-2694', ar: 'طلب JZ-2694' }, points: 615, at: { en: '02 Jul', ar: '٠٢ يوليو' } },
+    { id: 'lg-29', kind: 'campaign', source: { en: 'Eid campaign — double points', ar: 'حملة العيد — نقاط مضاعفة' }, points: 380, at: { en: '24 Jun', ar: '٢٤ يونيو' } },
+    { id: 'lg-28', kind: 'order', source: { en: 'Order JZ-2618', ar: 'طلب JZ-2618' }, points: 380, at: { en: '24 Jun', ar: '٢٤ يونيو' } },
+    { id: 'lg-27', kind: 'redeem', source: { en: 'Redeemed at checkout', ar: 'استبدال عند الدفع' }, points: -500, at: { en: '18 Jun', ar: '١٨ يونيو' } },
+    { id: 'lg-26', kind: 'order', source: { en: 'Order JZ-2547', ar: 'طلب JZ-2547' }, points: 275, at: { en: '12 Jun', ar: '١٢ يونيو' } },
+  ],
+  'c-5': [
+    { id: 'lg-45', kind: 'order', source: { en: 'Order JZ-2744', ar: 'طلب JZ-2744' }, points: 880, at: { en: '10 Jul', ar: '١٠ يوليو' } },
+    { id: 'lg-44', kind: 'grant', source: { en: 'Service recovery', ar: 'تعويض خدمة' }, points: 500, at: { en: '30 Jun', ar: '٣٠ يونيو' } },
+    { id: 'lg-43', kind: 'order', source: { en: 'Order JZ-2661', ar: 'طلب JZ-2661' }, points: 465, at: { en: '28 Jun', ar: '٢٨ يونيو' } },
+    { id: 'lg-42', kind: 'order', source: { en: 'Order JZ-2590', ar: 'طلب JZ-2590' }, points: 720, at: { en: '18 Jun', ar: '١٨ يونيو' } },
+    { id: 'lg-41', kind: 'redeem', source: { en: 'Redeemed at checkout', ar: 'استبدال عند الدفع' }, points: -1000, at: { en: '05 Jun', ar: '٠٥ يونيو' } },
+  ],
+  'c-7': [
+    { id: 'lg-52', kind: 'order', source: { en: 'Order JZ-2705', ar: 'طلب JZ-2705' }, points: 215, at: { en: '04 Jul', ar: '٠٤ يوليو' } },
+    { id: 'lg-51', kind: 'order', source: { en: 'Order JZ-2611', ar: 'طلب JZ-2611' }, points: 180, at: { en: '22 Jun', ar: '٢٢ يونيو' } },
+    { id: 'lg-50', kind: 'campaign', source: { en: 'Welcome bonus', ar: 'مكافأة الانضمام' }, points: 100, at: { en: '08 Jun', ar: '٠٨ يونيو' } },
+  ],
+  'c-9': [
+    { id: 'lg-61', kind: 'order', source: { en: 'Order JZ-2688', ar: 'طلب JZ-2688' }, points: 145, at: { en: '01 Jul', ar: '٠١ يوليو' } },
+    { id: 'lg-60', kind: 'order', source: { en: 'Order JZ-2570', ar: 'طلب JZ-2570' }, points: 190, at: { en: '15 Jun', ar: '١٥ يونيو' } },
+  ],
+  'c-10': [
+    { id: 'lg-71', kind: 'order', source: { en: 'Order JZ-2726', ar: 'طلب JZ-2726' }, points: 125, at: { en: '07 Jul', ar: '٠٧ يوليو' } },
+    { id: 'lg-70', kind: 'campaign', source: { en: 'Welcome bonus', ar: 'مكافأة الانضمام' }, points: 100, at: { en: '01 Jun', ar: '٠١ يونيو' } },
+  ],
+}
