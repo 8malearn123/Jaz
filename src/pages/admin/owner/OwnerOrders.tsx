@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Eye, ArrowRight, Check, X, AlertTriangle, Plus } from 'lucide-react'
+import { Eye, ArrowRight, Check, X, AlertTriangle, Plus, Upload, Download, CheckCircle2, FileText, RefreshCw } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
@@ -10,6 +10,7 @@ import {
 } from '@/data/ownerOrders'
 import type { OwnerProduct, ProdChannel } from '@/data/ownerProducts'
 import { useOwnerState } from '@/state/OwnerStateContext'
+import { useBilling } from '@/state/BillingContext'
 import { cn } from '@/lib/cn'
 import { PanelHead, StatCard, FilterChips, Pill } from './_shared'
 import { BillingDesk } from './OwnerBilling'
@@ -20,6 +21,7 @@ export function OwnerOrders() {
   const { pick, money } = useLocale()
   const { flash } = useToast()
   const { orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pipelineValueMinor } = useOwnerState()
+  const { billingFor, attachTaxInvoice } = useBilling()
   const [chan, setChan] = useState<OwnerChannel | 'all'>('all')
   const [status, setStatus] = useState<string>('all')
   const [sel, setSel] = useState<string | null>(null)
@@ -162,6 +164,56 @@ export function OwnerOrders() {
               <p className="font-sans text-data text-ink">{pick(order.items)}</p>
               <p className="font-sans text-caption text-ink-subtle tabular-nums mt-xxs">{order.qty.toLocaleString()} {pick({ en: 'units', ar: 'وحدة' })} · {money(order.amountMinor)}</p>
             </div>
+
+            {/* billing trail for this order — buyer receipts in, tax invoice out (shared store) */}
+            {!order.cancelled && (() => {
+              const b = billingFor(order.id)
+              return (
+                <div className="rounded-lg border border-hairline overflow-hidden">
+                  <div className="px-md py-sm bg-surface-2 border-b border-hairline">
+                    <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Payment & invoices', ar: 'السداد والفواتير' })}</h4>
+                  </div>
+                  <div className="divide-y divide-hairline">
+                    {/* buyer receipts */}
+                    <div className="flex flex-col gap-xs px-md py-sm">
+                      <div className="flex items-center gap-sm">
+                        <span className="grid place-items-center w-9 h-9 rounded-md bg-surface-2 text-ink-muted shrink-0"><FileText size={16} /></span>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-sans text-data text-ink">{pick({ en: 'Payment receipts', ar: 'إيصالات السداد' })}{b.receipts.length > 0 && <span className="text-ink-subtle"> · {b.receipts.length}</span>}</p>
+                          <p className="font-sans text-caption text-ink-subtle">{b.receipts.length === 0 ? pick({ en: 'Nothing attached by the buyer yet', ar: 'لم يُرفق العميل شيئًا بعد' }) : pick({ en: 'Attached by the buyer — click to open', ar: 'أرفقها العميل — اضغط للاطلاع' })}</p>
+                        </div>
+                      </div>
+                      {b.receipts.length > 0 && (
+                        <div className="flex flex-wrap gap-xs">
+                          {b.receipts.map((r, i) => r.url
+                            ? <button key={i} onClick={() => window.open(r.url, '_blank', 'noopener')} className="inline-flex items-center gap-xs rounded-pill border border-hairline-strong bg-surface-1 px-3 py-1 font-sans text-caption text-ink hover:border-ink/40 transition-colors"><Eye size={12} className="text-ink-subtle" /> <span dir="ltr">{r.name}</span></button>
+                            : <span key={i} className="inline-flex items-center gap-xxs rounded-pill border border-success/25 bg-success/8 px-3 py-1 font-sans text-caption text-ink"><CheckCircle2 size={12} className="text-success" /> <span dir="ltr">{r.name}</span></span>)}
+                        </div>
+                      )}
+                    </div>
+                    {/* tax invoice */}
+                    <div className="flex flex-wrap items-center gap-sm px-md py-sm">
+                      <span className={cn('grid place-items-center w-9 h-9 rounded-md shrink-0', b.taxInvoice ? 'bg-success/10 text-success' : 'bg-surface-2 text-ink-subtle')}><FileText size={16} /></span>
+                      <div className="flex-1 min-w-[160px]">
+                        <p className="font-sans text-data text-ink">{pick({ en: 'Tax invoice', ar: 'الفاتورة الضريبية' })} {b.taxInvoice && <CheckCircle2 size={13} className="inline text-success" />}</p>
+                        <p className="font-sans text-caption text-ink-subtle">{b.taxInvoice ? <span dir="ltr">{b.taxInvoice.name}</span> : pick({ en: 'Attach it here — it appears on the buyer’s order instantly', ar: 'أرفقها هنا — تظهر على طلب العميل فورًا' })}</p>
+                      </div>
+                      {b.taxInvoice?.url && (
+                        <a href={b.taxInvoice.url} download={b.taxInvoice.name} title={pick({ en: 'Download', ar: 'تنزيل' })} className="grid place-items-center w-8 h-8 rounded-md border border-hairline-strong text-ink-muted hover:text-ink hover:border-ink/40 transition-colors"><Download size={14} /></a>
+                      )}
+                      <label className={buttonClass('secondary', 'sm', 'cursor-pointer')}>
+                        {b.taxInvoice ? <><RefreshCw size={14} /> {pick({ en: 'Replace', ar: 'استبدال' })}</> : <><Upload size={14} /> {pick({ en: 'Attach tax invoice', ar: 'إرفاق الفاتورة الضريبية' })}</>}
+                        <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => {
+                          const f = e.target.files?.[0]
+                          if (f) { attachTaxInvoice(order.id, { name: f.name, url: URL.createObjectURL(f), at: new Date().toISOString() }); flash(pick({ en: `Tax invoice attached to ${order.id}`, ar: `أُرفقت الفاتورة الضريبية للطلب ${order.id}` })) }
+                          e.target.value = ''
+                        }} />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
           </div>
         )}
       </Modal>
