@@ -35,6 +35,9 @@ export const ownerVendors: OwnerVendor[] = [
 // that already passed the relevant onboarding stage; the owner attaches or
 // replaces files from the vendor profile.
 export type VendorDocKind = 'contract' | 'cr' | 'vat'
+// A stored document: seeded copies carry just the file name; files the owner
+// attaches in-session also carry an object URL so they can be previewed as-is.
+export interface VendorDoc { name: string; url?: string }
 export const vendorDocMeta: Record<VendorDocKind, { label: Bilingual; desc: Bilingual }> = {
   contract: { label: { en: 'Signed contract', ar: 'العقد الموقّع' }, desc: { en: 'Commercial terms signed by both parties', ar: 'الشروط التجارية بتوقيع الطرفين' } },
   cr: { label: { en: 'Commercial registration', ar: 'السجل التجاري' }, desc: { en: 'CR certificate from the Ministry of Commerce', ar: 'شهادة السجل من وزارة التجارة' } },

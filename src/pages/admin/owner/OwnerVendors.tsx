@@ -5,7 +5,7 @@ import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import type { Bilingual } from '@/data/types'
-import { poByVendor, onboardingStages, vendorDocMeta, type PoPayStatus, type OwnerVendor, type VendorDocKind } from '@/data/ownerVendors'
+import { poByVendor, onboardingStages, vendorDocMeta, type PoPayStatus, type OwnerVendor, type VendorDoc, type VendorDocKind } from '@/data/ownerVendors'
 import { collectionRows, receivables, type ReceivableRow } from '@/data/ownerFinance'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { cn } from '@/lib/cn'
@@ -194,6 +194,27 @@ export function OwnerVendors() {
                       </li>
                     ))}
                   </ol>
+                  {/* onboarding papers — attached right on the request, stored in the vendor file */}
+                  <div className="flex flex-col gap-xs pt-sm border-t border-hairline">
+                    <span className="label !mb-0">{pick({ en: 'Registration documents', ar: 'مستندات التسجيل' })}</span>
+                    <div className="flex flex-wrap gap-xs">
+                      {(Object.keys(vendorDocMeta) as VendorDocKind[]).map((kind) => {
+                        const file = (vendorDocs[v.id] ?? {})[kind]
+                        return (
+                          <label key={kind} className={cn('inline-flex items-center gap-xs rounded-pill border px-3 py-1.5 font-sans text-caption cursor-pointer transition-colors', file ? 'border-success/30 bg-success/8 text-ink' : 'border-hairline-strong text-ink-muted hover:text-ink hover:border-ink/30')}>
+                            {file ? <CheckCircle2 size={13} className="text-success" /> : <Upload size={13} />}
+                            {pick(vendorDocMeta[kind].label)}
+                            <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => {
+                              const f = e.target.files?.[0]
+                              if (f) { attachVendorDoc(v.id, kind, { name: f.name, url: URL.createObjectURL(f) }); flash(`${pick({ en: 'Attached', ar: 'أُرفق' })} · ${pick(vendorDocMeta[kind].label)} · ${pick(v.name)}`) }
+                              e.target.value = ''
+                            }} />
+                          </label>
+                        )
+                      })}
+                    </div>
+                    <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Attached files land in the vendor profile — open View to preview them.', ar: 'الملفات المرفقة تُحفظ في ملف المورّد — افتح "عرض" لمعاينتها.' })}</p>
+                  </div>
                   <div className="flex flex-wrap items-center gap-xs pt-sm border-t border-hairline">
                     <button
                       onClick={() => {
@@ -247,7 +268,7 @@ export function OwnerVendors() {
           docs={vendorDocs[profileVendor.id] ?? {}}
           onClose={() => setProfileId(null)}
           onSaveLimit={(minor) => { setCreditLimit(profileVendor.id, minor); flash(`${pick({ en: 'Credit limit saved for', ar: 'حُفظ الحد الائتماني لـ' })} ${pick(profileVendor.name)}`) }}
-          onAttachDoc={(kind, name) => { attachVendorDoc(profileVendor.id, kind, name); flash(`${pick({ en: 'Attached', ar: 'أُرفق' })} · ${pick(vendorDocMeta[kind].label)}`) }}
+          onAttachDoc={(kind, doc) => { attachVendorDoc(profileVendor.id, kind, doc); flash(`${pick({ en: 'Attached', ar: 'أُرفق' })} · ${pick(vendorDocMeta[kind].label)}`) }}
           onPay={profileVendor.status === 'active' ? () => setPayId(profileVendor.id) : undefined}
         />
       )}
@@ -297,14 +318,15 @@ export function OwnerVendors() {
 function VendorProfileModal({ vendor, limitMinor, docs, onClose, onSaveLimit, onAttachDoc, onPay }: {
   vendor: OwnerVendor
   limitMinor: number
-  docs: Partial<Record<VendorDocKind, string>>
+  docs: Partial<Record<VendorDocKind, VendorDoc>>
   onClose: () => void
   onSaveLimit: (minor: number) => void
-  onAttachDoc: (kind: VendorDocKind, fileName: string) => void
+  onAttachDoc: (kind: VendorDocKind, doc: VendorDoc) => void
   onPay?: () => void
 }) {
   const { pick, money } = useLocale()
   const [draft, setDraft] = useState<number | null>(null)
+  const [preview, setPreview] = useState<VendorDocKind | null>(null)
   const active = vendor.status === 'active'
   const availableMinor = limitMinor - vendor.outstandingMinor
   const utilPct = limitMinor > 0 ? Math.round((vendor.outstandingMinor / limitMinor) * 100) : 0
@@ -370,16 +392,17 @@ function VendorProfileModal({ vendor, limitMinor, docs, onClose, onSaveLimit, on
                   <span className={cn('grid place-items-center w-9 h-9 rounded-md shrink-0', file ? 'bg-success/10 text-success' : 'bg-surface-2 text-ink-subtle')}><FileText size={16} /></span>
                   <div className="flex-1 min-w-[160px]">
                     <p className="font-sans text-data text-ink">{pick(meta.label)}</p>
-                    <p className="font-sans text-caption text-ink-subtle">{file ? <span dir="ltr">{file}</span> : pick(meta.desc)}</p>
+                    <p className="font-sans text-caption text-ink-subtle">{file ? <span dir="ltr">{file.name}</span> : pick(meta.desc)}</p>
                   </div>
                   {file
                     ? <span className="inline-flex items-center gap-xxs rounded-pill border border-success/25 bg-success/8 px-2.5 py-1 font-sans text-caption text-ink"><CheckCircle2 size={12} className="text-success" /> {pick({ en: 'Attached', ar: 'مرفق' })}</span>
                     : <Pill color="#b5403b" bg="#faeceb">{pick({ en: 'Missing', ar: 'غير مرفق' })}</Pill>}
+                  {file && <button onClick={() => setPreview(kind)} className={buttonClass('secondary', 'sm')}><Eye size={13} /> {pick({ en: 'View', ar: 'عرض' })}</button>}
                   <label className={buttonClass('secondary', 'sm', 'cursor-pointer')}>
                     <Upload size={13} /> {file ? pick({ en: 'Replace', ar: 'استبدال' }) : pick({ en: 'Attach', ar: 'إرفاق' })}
                     <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => {
                       const f = e.target.files?.[0]
-                      if (f) onAttachDoc(kind, f.name)
+                      if (f) onAttachDoc(kind, { name: f.name, url: URL.createObjectURL(f) })
                       e.target.value = ''
                     }} />
                   </label>
@@ -427,7 +450,61 @@ function VendorProfileModal({ vendor, limitMinor, docs, onClose, onSaveLimit, on
             })}
           </div>
         </div>
+
+        {/* document preview — freshly attached files render as-is (object URL);
+            stored copies render as a formatted document card */}
+        {preview && docs[preview] && (
+          <DocPreviewModal vendor={vendor} kind={preview} doc={docs[preview]!} onClose={() => setPreview(null)} />
+        )}
       </div>
+    </Modal>
+  )
+}
+
+/** Preview a vendor document. Files attached in this session carry an object
+ *  URL and render directly (PDF in a frame, images inline); seeded copies get
+ *  a formatted paper view built from the vendor's verification data. */
+function DocPreviewModal({ vendor, kind, doc, onClose }: { vendor: OwnerVendor; kind: VendorDocKind; doc: VendorDoc; onClose: () => void }) {
+  const { pick } = useLocale()
+  const meta = vendorDocMeta[kind]
+  const isImage = /\.(png|jpe?g|webp|gif)$/i.test(doc.name)
+  const row = (k: string, v: ReactNode) => (
+    <div className="flex items-center justify-between gap-sm py-2 border-b border-hairline last:border-0">
+      <span className="font-sans text-caption text-ink-subtle">{k}</span>
+      <span className="font-sans text-data text-ink text-end">{v}</span>
+    </div>
+  )
+  return (
+    <Modal open onClose={onClose} size="lg" eyebrow={pick(meta.label)} title={pick(vendor.name)}
+      footer={<button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Close', ar: 'إغلاق' })}</button>}>
+      {doc.url ? (
+        isImage
+          ? <img src={doc.url} alt={doc.name} className="w-full max-h-[70vh] object-contain rounded-lg border border-hairline bg-surface-2" />
+          : <iframe src={doc.url} title={doc.name} className="w-full h-[70vh] rounded-lg border border-hairline bg-white" />
+      ) : (
+        <div className="rounded-lg border border-hairline bg-surface-1 p-lg flex flex-col gap-md">
+          <div className="flex items-center justify-between border-b-2 border-ink/80 pb-md">
+            <div>
+              <p className="font-serif text-headline text-ink">{pick(meta.label)}</p>
+              <p className="font-sans text-caption text-ink-subtle mt-xxs">{pick(meta.desc)}</p>
+            </div>
+            <span className="grid place-items-center w-12 h-12 rounded-md bg-primary/10 text-primary-hover"><FileText size={22} /></span>
+          </div>
+          <div className="flex flex-col">
+            {row(pick({ en: 'Business name', ar: 'اسم المنشأة' }), pick(vendor.name))}
+            {row(pick({ en: 'Activity', ar: 'النشاط' }), pick(vendor.type))}
+            {kind !== 'vat' && vendor.crNumber && row(pick({ en: 'CR number', ar: 'رقم السجل التجاري' }), <span dir="ltr" className="tabular-nums">{vendor.crNumber}</span>)}
+            {kind !== 'cr' && vendor.vatNumber && row(pick({ en: 'VAT number', ar: 'الرقم الضريبي' }), <span dir="ltr" className="tabular-nums">{vendor.vatNumber}</span>)}
+            {vendor.address && row(pick({ en: 'National address', ar: 'العنوان الوطني' }), pick(vendor.address))}
+            {kind === 'contract' && vendor.since && row(pick({ en: 'Contract effective since', ar: 'سريان العقد منذ' }), pick(vendor.since))}
+            {kind === 'contract' && row(pick({ en: 'Signatories', ar: 'الموقّعون' }), `${pick({ en: 'JAZ Chocolate', ar: 'جاز للشوكولاتة' })} · ${vendor.contact ? pick(vendor.contact) : pick(vendor.name)}`)}
+            {row(pick({ en: 'File', ar: 'الملف' }), <span dir="ltr">{doc.name}</span>)}
+          </div>
+          <p className="font-sans text-caption text-ink-subtle rounded-lg bg-surface-2 border border-hairline p-md">
+            {pick({ en: 'A stored copy from the vendor file, captured during onboarding. Replace it any time to preview the original file itself.', ar: 'نسخة محفوظة من ملف المورّد أُرفقت أثناء التسجيل. عند استبدالها بملف جديد تُعرض معاينة الملف الأصلي نفسه.' })}
+          </p>
+        </div>
+      )}
     </Modal>
   )
 }
