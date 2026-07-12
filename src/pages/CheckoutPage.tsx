@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CheckCircle2, CreditCard, Landmark, Wallet, ShieldCheck, AlertTriangle, MapPin, Plus, Pencil, Gift } from 'lucide-react'
+import { CheckCircle2, CreditCard, Landmark, Wallet, ShieldCheck, AlertTriangle, MapPin, Plus, Pencil, Gift, ExternalLink, Lock } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useCart } from '@/state/CartContext'
 import { useChannel, type Channel } from '@/state/ChannelContext'
 import { customer } from '@/data/account'
 import { organization, availableCreditMinor } from '@/data/organization'
 import { members, orgAddresses } from '@/data/business'
+import { variantById } from '@/data/products'
 import type { Bilingual } from '@/data/types'
+import { openPrintWindow } from '@/lib/printWindow'
+import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import { Eyebrow, StatusBadge } from '@/components/ui/Misc'
 import { OrderSummary } from '@/components/ui/OrderSummary'
@@ -20,11 +23,24 @@ type PayMethod = 'mada' | 'card' | 'applepay' | 'tabby' | 'tamara' | 'bank_trans
 export function CheckoutPage() {
   const { t, pick, money } = useLocale()
   const { channel } = useChannel()
-  const { totalMinor, lines, clear } = useCart()
+  const { totalMinor, lines, clear, unitPrice } = useCart()
   const [placed, setPlaced] = useState(false)
   const [method, setMethod] = useState<PayMethod>('mada')
   // Bank-transfer receipt (B2B): attached in the same flow, required before placing the order.
   const [receipt, setReceipt] = useState<string | null>(null)
+  // B2C never collects card data on-site — checkout hands off to the payment gateway.
+  const [gatewayOpen, setGatewayOpen] = useState(false)
+  // Snapshot of the order at placement, so the confirmation screen can print an invoice.
+  const [snap, setSnap] = useState<OrderSnap | null>(null)
+
+  const place = () => {
+    const items = lines
+      .map((l) => { const found = variantById(l.variantId); return found ? { title: found.product.title, qty: l.qty, unitMinor: unitPrice(l.variantId, l.qty) } : null })
+      .filter(Boolean) as OrderSnap['items']
+    setSnap({ orderNo: 'JAZ-2026-' + String(Math.floor(100000 + Math.random() * 800000)), items, totalMinor })
+    clear()
+    setPlaced(true)
+  }
 
   useEffect(() => {
     // keep a sensible default method per channel
@@ -47,7 +63,7 @@ export function CheckoutPage() {
     )
   }
 
-  if (placed) return <OrderConfirmed onReset={() => setPlaced(false)} />
+  if (placed) return <OrderConfirmed onReset={() => setPlaced(false)} order={snap} />
 
   return (
     <section className="container-jaz py-xl">
@@ -67,22 +83,80 @@ export function CheckoutPage() {
         {/* summary + credit */}
         <div className="lg:sticky lg:top-28 flex flex-col gap-md">
           {channel === 'b2b' && method === 'credit' ? (
-            <CreditCheckout baseTotalMinor={totalMinor} onPlace={() => { clear(); setPlaced(true) }} />
+            <CreditCheckout baseTotalMinor={totalMinor} onPlace={place} />
           ) : (
             <OrderSummary>
-              <button onClick={() => { clear(); setPlaced(true) }} disabled={needsReceipt} className={buttonClass('primary', 'md', cn('w-full mt-md', needsReceipt && 'opacity-50 cursor-not-allowed'))}>
-                {t('checkout.placeOrder')} · {money(totalMinor)}
+              {/* B2C: hand off to the payment gateway; B2B bank transfer places directly (receipt attached) */}
+              <button onClick={() => (channel === 'b2b' ? place() : setGatewayOpen(true))} disabled={needsReceipt} className={buttonClass('primary', 'md', cn('w-full mt-md', needsReceipt && 'opacity-50 cursor-not-allowed'))}>
+                {channel === 'b2b' ? <>{t('checkout.placeOrder')} · {money(totalMinor)}</> : <><ExternalLink size={15} /> {pick({ en: 'Continue to payment', ar: 'المتابعة إلى الدفع' })} · {money(totalMinor)}</>}
               </button>
               {needsReceipt && <p className="font-sans text-caption text-danger text-center mt-xs">{pick({ en: 'Attach the transfer receipt before placing the order.', ar: 'أرفق إيصال التحويل قبل إرسال الطلب.' })}</p>}
             </OrderSummary>
           )}
           <p className="flex items-center justify-center gap-xs font-sans text-caption text-ink-subtle">
             <ShieldCheck size={14} className="text-success" />
-            {pick({ en: 'PCI-DSS · card data is tokenised, never stored', ar: 'متوافق مع PCI-DSS · بيانات البطاقة مُرمَّزة ولا تُخزَّن' })}
+            {pick({ en: 'PCI-DSS · payment completes at the secure gateway, nothing stored here', ar: 'متوافق مع PCI-DSS · الدفع يتم لدى وسيط الدفع الآمن ولا يُخزَّن شيء هنا' })}
           </p>
         </div>
       </div>
+
+      {gatewayOpen && (
+        <PaymentGatewayModal
+          methodLabel={method === 'mada' ? t('checkout.pay.mada') : method === 'card' ? t('checkout.pay.card') : method === 'applepay' ? t('checkout.pay.applepay') : method === 'tabby' ? t('checkout.pay.tabby') : t('checkout.pay.tamara')}
+          amountMinor={totalMinor}
+          onClose={() => setGatewayOpen(false)}
+          onSuccess={() => { setGatewayOpen(false); place() }}
+        />
+      )}
     </section>
+  )
+}
+
+// Order snapshot captured at placement — powers the confirmation-screen invoice.
+interface OrderSnap { orderNo: string; items: { title: Bilingual; qty: number; unitMinor: number }[]; totalMinor: number }
+
+/** Simulated hand-off to the external payment gateway: a short redirect phase,
+ *  then the gateway screen where the payment is completed. */
+function PaymentGatewayModal({ methodLabel, amountMinor, onClose, onSuccess }: { methodLabel: string; amountMinor: number; onClose: () => void; onSuccess: () => void }) {
+  const { pick, money } = useLocale()
+  const [phase, setPhase] = useState<'redirecting' | 'pay'>('redirecting')
+  useEffect(() => {
+    const id = setTimeout(() => setPhase('pay'), 1400)
+    return () => clearTimeout(id)
+  }, [])
+
+  return (
+    <Modal open onClose={onClose} size="sm" eyebrow={pick({ en: 'Secure payment', ar: 'دفع آمن' })} title={pick({ en: 'Payment gateway', ar: 'بوابة وسيط الدفع' })}
+      footer={phase === 'pay' ? <button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel & return', ar: 'إلغاء والعودة' })}</button> : undefined}>
+      {phase === 'redirecting' ? (
+        <div className="flex flex-col items-center gap-md py-lg text-center">
+          <span className="w-10 h-10 rounded-pill border-[3px] border-primary border-t-transparent animate-spin" />
+          <p className="font-sans text-data text-ink">{pick({ en: 'Redirecting you to the secure payment gateway…', ar: 'جارٍ تحويلك إلى بوابة وسيط الدفع الآمنة…' })}</p>
+          <p className="font-sans text-caption text-ink-subtle inline-flex items-center gap-xxs"><Lock size={12} /> {pick({ en: 'Encrypted connection', ar: 'اتصال مشفّر' })}</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-md">
+          <div className="rounded-lg border border-hairline divide-y divide-hairline">
+            <div className="flex items-center justify-between px-md py-2.5">
+              <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Payment method', ar: 'وسيلة الدفع' })}</span>
+              <span className="font-sans text-data text-ink">{methodLabel}</span>
+            </div>
+            <div className="flex items-center justify-between px-md py-2.5">
+              <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Amount', ar: 'المبلغ' })}</span>
+              <span className="font-sans text-data text-ink tabular-nums">{money(amountMinor)}</span>
+            </div>
+            <div className="flex items-center justify-between px-md py-2.5">
+              <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Merchant', ar: 'التاجر' })}</span>
+              <span className="font-sans text-data text-ink">JAZ Chocolate</span>
+            </div>
+          </div>
+          <button onClick={onSuccess} className={buttonClass('primary', 'md', 'w-full')}>
+            <Lock size={15} /> {pick({ en: 'Complete payment', ar: 'إتمام الدفع' })} · {money(amountMinor)}
+          </button>
+          <p className="font-sans text-caption text-ink-subtle text-center">{pick({ en: 'You complete the payment on the gateway — Jaz never sees your card data.', ar: 'تُتم الدفع لدى وسيط الدفع — جاز لا تطّلع على بيانات بطاقتك إطلاقًا.' })}</p>
+        </div>
+      )}
+    </Modal>
   )
 }
 
@@ -357,15 +431,15 @@ function PaymentSection({ channel, method, setMethod, receipt, setReceipt }: { c
           )
         })}
       </div>
-      {method === 'card' || method === 'mada' ? (
-        <div className="flex flex-col gap-md pt-sm">
-          <Field label={pick({ en: 'Card number', ar: 'رقم البطاقة' })} placeholder="4242 4242 4242 4242" inputMode="numeric" />
-          <div className="flex gap-md">
-            <Field label={pick({ en: 'Expiry', ar: 'الانتهاء' })} placeholder="MM/YY" />
-            <Field label="CVC" placeholder="123" inputMode="numeric" />
-          </div>
+      {/* No card fields on-site — payment completes at the payment gateway. */}
+      {channel !== 'b2b' && (
+        <div className="flex items-start gap-sm rounded-md bg-surface-2 border border-hairline px-md py-sm">
+          <ExternalLink size={16} className="text-primary-hover mt-0.5 shrink-0" />
+          <p className="font-sans text-caption text-ink-muted">
+            {pick({ en: 'After confirming, you are redirected to the secure payment gateway to complete the payment with your chosen method. No card data is entered or stored here.', ar: 'بعد التأكيد سيتم تحويلك إلى بوابة وسيط الدفع الآمنة لإتمام العملية بالوسيلة التي اخترتها — لا تُدخل أي بيانات بطاقة هنا ولا تُخزَّن.' })}
+          </p>
         </div>
-      ) : null}
+      )}
 
       {/* bank transfer: the receipt is attached in the same flow, required before placing the order */}
       {channel === 'b2b' && method === 'bank_transfer' && (
@@ -540,9 +614,44 @@ function LimitIncreaseForm({ requestedMinor }: { requestedMinor: number }) {
 }
 
 /* ─────────────── confirmation ─────────────── */
-function OrderConfirmed({ onReset }: { onReset: () => void }) {
-  const { t, pick } = useLocale()
-  const orderNo = 'JAZ-2026-' + String(Math.floor(100000 + Math.random() * 800000))
+function OrderConfirmed({ onReset, order }: { onReset: () => void; order: { orderNo: string; items: { title: Bilingual; qty: number; unitMinor: number }[]; totalMinor: number } | null }) {
+  const { t, pick, money, locale } = useLocale()
+  const orderNo = order?.orderNo ?? 'JAZ-2026-' + String(Math.floor(100000 + Math.random() * 800000))
+
+  // Printable invoice for the confirmed order — the browser's "Save as PDF" produces the file.
+  const downloadInvoice = () => {
+    if (!order) return
+    const dir = locale === 'ar' ? 'rtl' : 'ltr'
+    const L = (en: string, ar: string) => (locale === 'ar' ? ar : en)
+    const subtotal = Math.round(order.totalMinor / 1.15)
+    const vat = order.totalMinor - subtotal
+    const rows = order.items.map((it) => `<tr><td>${pick(it.title)}</td><td>${it.qty}</td><td>${money(it.unitMinor)}</td><td>${money(it.unitMinor * it.qty)}</td></tr>`).join('')
+    openPrintWindow(`<!doctype html><html dir="${dir}"><head><meta charset="utf-8"><title>${orderNo}</title><style>
+      @page{size:A4 portrait;margin:15mm}
+      html,body{margin:0;width:auto}
+      *{box-sizing:border-box}
+      body{font-family:'Segoe UI',Tahoma,sans-serif;padding:24px;color:#2b2b2b;-webkit-print-color-adjust:exact}
+      h1{font-size:20px;margin:0 0 4px} .sub{color:#777;font-size:12px;margin-bottom:16px}
+      table{width:100%;border-collapse:collapse;margin-top:10px}
+      th,td{border:1px solid #ccc;padding:6px 10px;font-size:12px;word-break:break-word;text-align:${locale === 'ar' ? 'right' : 'left'}}
+      th{background:#f3efe8}
+      .totals{margin-top:14px;font-size:13px} .totals div{display:flex;justify-content:space-between;padding:3px 0}
+      .totals .net{font-weight:700;font-size:15px;border-top:1px solid #ccc;padding-top:8px;margin-top:6px}
+      .foot{margin-top:24px;font-size:11px;color:#999}
+      @media print{body{padding:0}}
+    </style></head><body>
+      <h1>${L('Tax invoice', 'فاتورة ضريبية')} ${orderNo}</h1>
+      <div class="sub">Jaz · ${L('ZATCA compliant', 'متوافقة مع هيئة الزكاة والضريبة والجمارك')}</div>
+      <table><thead><tr><th>${L('Item', 'الصنف')}</th><th>${L('Qty', 'الكمية')}</th><th>${L('Unit price', 'سعر الوحدة')}</th><th>${L('Total', 'الإجمالي')}</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="totals">
+        <div><span>${L('Subtotal', 'المجموع الفرعي')}</span><span>${money(subtotal)}</span></div>
+        <div><span>${L('VAT 15%', 'ضريبة القيمة المضافة ١٥٪')}</span><span>${money(vat)}</span></div>
+        <div class="net"><span>${L('Total', 'الإجمالي')}</span><span>${money(order.totalMinor)}</span></div>
+      </div>
+      <div class="foot">${L('Issued from the Jaz store.', 'صدرت من متجر جاز.')}</div>
+    </body></html>`)
+  }
+
   return (
     <section className="container-narrow py-section min-h-[60vh] grid place-items-center text-center">
       <div className="flex flex-col items-center gap-md max-w-lg">
@@ -559,10 +668,15 @@ function OrderConfirmed({ onReset }: { onReset: () => void }) {
             <span className="font-sans text-body text-ink tabular-nums">{orderNo}</span>
           </div>
         </div>
-        <div className="flex gap-sm mt-sm">
+        <div className="flex flex-wrap justify-center gap-sm mt-sm">
           <Link to="/shop" onClick={onReset} className={buttonClass('primary')}>
             {t('cta.continueShopping')}
           </Link>
+          {order && (
+            <button onClick={downloadInvoice} className={buttonClass('secondary')}>
+              {pick({ en: 'Download invoice', ar: 'تنزيل الفاتورة' })}
+            </button>
+          )}
           <Link to="/account" onClick={onReset} className={buttonClass('secondary')}>
             {t('nav.account')}
           </Link>
