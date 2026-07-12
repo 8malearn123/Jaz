@@ -16,7 +16,7 @@ export interface LoyaltyConfig {
 }
 import { wasteLog as wasteSeed, finGrossMinor, type WasteEntry, type ExpenseEntry } from '@/data/ownerFinance'
 import { contracts as contractsSeed, b2cCatalog, stdCatalog, catTree, storeProductsSeed, type Contract, type CatNode, type StoreProduct } from '@/data/ownerCatalog'
-import { ownerVendors as ownerVendorsSeed, onboardingStages, vendorDocsSeed, type OwnerVendor, type VendorDocKind } from '@/data/ownerVendors'
+import { ownerVendors as ownerVendorsSeed, onboardingStages, vendorDocsSeed, type OwnerVendor, type VendorDoc, type VendorDocKind } from '@/data/ownerVendors'
 import type { Employee, TeamPermission } from '@/data/ownerTeam'
 import { useTeam } from '@/state/TeamContext'
 
@@ -129,8 +129,8 @@ interface OwnerStateValue {
   inviteVendor: (v: { name: Bilingual; type: Bilingual; email: string }) => string
   recordVendorPayment: (id: string, amountMinor: number) => void
   // vendor profile documents: signed contract + verification papers
-  vendorDocs: Record<string, Partial<Record<VendorDocKind, string>>>
-  attachVendorDoc: (id: string, kind: VendorDocKind, fileName: string) => void
+  vendorDocs: Record<string, Partial<Record<VendorDocKind, VendorDoc>>>
+  attachVendorDoc: (id: string, kind: VendorDocKind, doc: VendorDoc) => void
   // catalog overlay (persisted across navigation)
   catalog: Catalog
   setCatalogPrice: (id: string, minor: number) => void
@@ -473,8 +473,9 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     return id
   }, [])
   const recordVendorPayment = useCallback((id: string, amountMinor: number) => setVendors((prev) => prev.map((v) => (v.id === id ? { ...v, outstandingMinor: Math.max(0, v.outstandingMinor - amountMinor) } : v))), [])
-  const [vendorDocs, setVendorDocs] = useState<Record<string, Partial<Record<VendorDocKind, string>>>>(() => clone(vendorDocsSeed))
-  const attachVendorDoc = useCallback((id: string, kind: VendorDocKind, fileName: string) => setVendorDocs((prev) => ({ ...prev, [id]: { ...prev[id], [kind]: fileName } })), [])
+  const [vendorDocs, setVendorDocs] = useState<Record<string, Partial<Record<VendorDocKind, VendorDoc>>>>(() =>
+    Object.fromEntries(Object.entries(vendorDocsSeed).map(([id, d]) => [id, Object.fromEntries(Object.entries(d).map(([k, name]) => [k, { name }]))])))
+  const attachVendorDoc = useCallback((id: string, kind: VendorDocKind, doc: VendorDoc) => setVendorDocs((prev) => ({ ...prev, [id]: { ...prev[id], [kind]: doc } })), [])
 
   /* ── catalog overlay ── */
   const setCatalogPrice = useCallback((id: string, minor: number) => setCatalog((p) => ({ ...p, price: { ...p.price, [id]: minor } })), [])
