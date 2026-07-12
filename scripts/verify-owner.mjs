@@ -27,16 +27,14 @@ const OWNER_EN = [
   ['owner_products', ['Production', 'buildable', 'Dark 70% bar']],
   ['owner_customers', ['Customers &amp; loyalty', 'Loyalty members', 'Najd Hospitality Group']],
   ['owner_catalog', ['Products', 'Dark 70% bar', 'New product']],
-  ['owner_vendors', ['Vendors &amp; credit', 'Outstanding', 'Credit limit']],
+  ['owner_vendors', ['Vendors &amp; credit', 'Outstanding', 'Payment']],
   ['owner_export', ['Export clients', 'EX-3081', 'Dubai']],
-  ['owner_fin', ['Finance &amp; costs', 'Net profit', 'Revenue']],
 ]
 const OWNER_AR = [
   ['owner_exec', ['النظرة التنفيذية', 'الإيراد حسب القناة']],
   ['owner_orders', ['صندوق الطلبات', 'B2B ضخم']],
   ['owner_supply', ['سلسلة الإمداد', 'المواد الخام']],
   ['owner_customers', ['العملاء والولاء']],
-  ['owner_fin', ['المالية والتكاليف']],
 ]
 try {
   const { renderAdmin } = await vite.ssrLoadModule('/scripts/owner-harness.tsx')

@@ -10,16 +10,8 @@ export const finBase = {
 export const finGrossMinor = finBase.revenueMinor - finBase.cogsMinor
 
 // Operating expenses are NOT seeded — salaries, rent and the like are the owner's
-// own affairs; the platform can't know them. They're recorded manually from the
-// finance panel, and the P&L reflects only what was actually recorded.
+// own affairs; the platform can't know them.
 export interface ExpenseEntry { id: string; category: Bilingual; amountMinor: number; note?: string; at: Bilingual }
-export const expenseCategories: Bilingual[] = [
-  { en: 'Salaries', ar: 'الرواتب' },
-  { en: 'Rent & utilities', ar: 'الإيجار والمرافق' },
-  { en: 'Logistics', ar: 'اللوجستيات' },
-  { en: 'Marketing', ar: 'التسويق' },
-  { en: 'General & admin', ar: 'عمومية وإدارية' },
-]
 
 export interface CollectionRow { label: Bilingual; pct: number; note: Bilingual }
 export const collectionRows: CollectionRow[] = [
@@ -27,8 +19,6 @@ export const collectionRows: CollectionRow[] = [
   { label: { en: 'Receivables · HoReCa', ar: 'ذمم · HoReCa' }, pct: 68, note: { en: 'Net 30 terms', ar: 'شروط صافي ٣٠' } },
   { label: { en: 'Milestone · B2B', ar: 'مراحل · B2B' }, pct: 45, note: { en: 'On delivery milestones', ar: 'عند مراحل التسليم' } },
 ]
-
-export const taxCard = { outputMinor: 4271200, inputMinor: 2798400, netMinor: 1472800, dueDate: { en: '31 Jul 2026', ar: '٣١ يوليو ٢٠٢٦' } }
 
 // ── Receivables by account (collection tab): who owes what, and how late ──
 export interface ReceivableRow {

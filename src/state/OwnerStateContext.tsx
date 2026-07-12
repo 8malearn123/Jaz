@@ -16,7 +16,7 @@ export interface LoyaltyConfig {
 }
 import { wasteLog as wasteSeed, finGrossMinor, type WasteEntry, type ExpenseEntry } from '@/data/ownerFinance'
 import { contracts as contractsSeed, b2cCatalog, stdCatalog, catTree, storeProductsSeed, type Contract, type CatNode, type StoreProduct } from '@/data/ownerCatalog'
-import { approvalStages as approvalSeed, ownerVendors as ownerVendorsSeed, type ApprovalStage, type OwnerVendor } from '@/data/ownerVendors'
+import { ownerVendors as ownerVendorsSeed, onboardingStages, vendorDocsSeed, type OwnerVendor, type VendorDocKind } from '@/data/ownerVendors'
 import type { Employee, TeamPermission } from '@/data/ownerTeam'
 import { useTeam } from '@/state/TeamContext'
 
@@ -121,15 +121,16 @@ interface OwnerStateValue {
   // contracts
   contracts: Contract[]
   renewContract: (id: string) => void
-  // merchant onboarding approvals
-  approvals: ApprovalStage[]
-  advanceApproval: () => boolean
-  // vendor credit accounts (live): approve/reject applications, invite new vendors, record settlements
+  // vendor credit accounts (live): walk join requests through the onboarding
+  // chain (final stage activates the account), reject, invite, record settlements
   vendors: OwnerVendor[]
-  approveVendor: (id: string) => void
+  advanceVendorStage: (id: string) => void
   rejectVendor: (id: string) => void
   inviteVendor: (v: { name: Bilingual; type: Bilingual; email: string }) => string
   recordVendorPayment: (id: string, amountMinor: number) => void
+  // vendor profile documents: signed contract + verification papers
+  vendorDocs: Record<string, Partial<Record<VendorDocKind, string>>>
+  attachVendorDoc: (id: string, kind: VendorDocKind, fileName: string) => void
   // catalog overlay (persisted across navigation)
   catalog: Catalog
   setCatalogPrice: (id: string, minor: number) => void
@@ -177,7 +178,6 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   const [customers, setCustomers] = useState<OwnerCustomer[]>(() => clone(ownerCustomers))
   const [creditLimits, setCreditLimits] = useState<Record<string, number>>({})
   const [contracts, setContracts] = useState<Contract[]>(() => clone(contractsSeed))
-  const [approvals, setApprovals] = useState<ApprovalStage[]>(() => clone(approvalSeed))
   const [catSeq, setCatSeq] = useState(1)
   const [catalog, setCatalog] = useState<Catalog>(() => ({
     price: {},
@@ -453,22 +453,19 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   /* ── contracts ── */
   const renewContract = useCallback((id: string) => setContracts((prev) => prev.map((c) => (c.id === id ? { ...c, status: 'active' } : c))), [])
 
-  /* ── approvals: advance the current stage forward one step ── */
-  const advanceApproval = useCallback((): boolean => {
-    let advanced = false
-    setApprovals((prev) => {
-      const i = prev.findIndex((s) => s.current)
-      if (i < 0 || i >= prev.length - 1) return prev
-      advanced = true
-      return prev.map((s, idx) => idx === i ? { ...s, done: true, current: false } : idx === i + 1 ? { ...s, current: true } : s)
-    })
-    return advanced
-  }, [])
-
   /* ── vendor credit accounts (live) ── */
   const [vendors, setVendors] = useState<OwnerVendor[]>(() => clone(ownerVendorsSeed))
   const vendSeqRef = useRef(ownerVendorsSeed.length + 1)
-  const approveVendor = useCallback((id: string) => setVendors((prev) => prev.map((v) => (v.id === id ? { ...v, status: 'active' } : v))), [])
+  // Approve the join request's current onboarding stage: an invited account
+  // enters the chain, a pending one moves a step, and clearing the final
+  // stage (permissions) is what activates the account.
+  const advanceVendorStage = useCallback((id: string) => setVendors((prev) => prev.map((v) => {
+    if (v.id !== id || v.status === 'active') return v
+    if (v.status === 'invited') return { ...v, status: 'pending', stage: 1 }
+    const next = (v.stage ?? 0) + 1
+    if (next >= onboardingStages.length) return { ...v, status: 'active', stage: undefined }
+    return { ...v, stage: next }
+  })), [])
   const rejectVendor = useCallback((id: string) => setVendors((prev) => prev.filter((v) => v.id !== id)), [])
   const inviteVendor = useCallback((v: { name: Bilingual; type: Bilingual; email: string }) => {
     const id = `V-${String(vendSeqRef.current++).padStart(2, '0')}`
@@ -476,6 +473,8 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     return id
   }, [])
   const recordVendorPayment = useCallback((id: string, amountMinor: number) => setVendors((prev) => prev.map((v) => (v.id === id ? { ...v, outstandingMinor: Math.max(0, v.outstandingMinor - amountMinor) } : v))), [])
+  const [vendorDocs, setVendorDocs] = useState<Record<string, Partial<Record<VendorDocKind, string>>>>(() => clone(vendorDocsSeed))
+  const attachVendorDoc = useCallback((id: string, kind: VendorDocKind, fileName: string) => setVendorDocs((prev) => ({ ...prev, [id]: { ...prev[id], [kind]: fileName } })), [])
 
   /* ── catalog overlay ── */
   const setCatalogPrice = useCallback((id: string, minor: number) => setCatalog((p) => ({ ...p, price: { ...p.price, [id]: minor } })), [])
@@ -532,13 +531,13 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive,
     creditLimits, setCreditLimit,
     contracts, renewContract,
-    approvals, advanceApproval,
-    vendors, approveVendor, rejectVendor, inviteVendor, recordVendorPayment,
+    vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment,
+    vendorDocs, attachVendorDoc,
     catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes,
     storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible,
     dismissedExpiry, dismissExpiry,
     cocoaDelta, setCocoa,
-  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, stockTakeReports, addStockTakeReport, movements, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor, expenses, recordExpense, opexTotalMinor, customers, rewardCustomer, loyalty, setLoyalty, employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive, creditLimits, setCreditLimit, contracts, renewContract, approvals, advanceApproval, vendors, approveVendor, rejectVendor, inviteVendor, recordVendorPayment, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, dismissedExpiry, dismissExpiry, cocoaDelta])
+  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, stockTakeReports, addStockTakeReport, movements, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor, expenses, recordExpense, opexTotalMinor, customers, rewardCustomer, loyalty, setLoyalty, employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive, creditLimits, setCreditLimit, contracts, renewContract, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment, vendorDocs, attachVendorDoc, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, dismissedExpiry, dismissExpiry, cocoaDelta])
 
   return <OwnerStateContext.Provider value={value}>{children}</OwnerStateContext.Provider>
 }

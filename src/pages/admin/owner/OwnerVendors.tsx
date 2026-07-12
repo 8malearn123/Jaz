@@ -1,11 +1,11 @@
-import { useState } from 'react'
-import { ShieldCheck, Check, X, Send, UserPlus, HandCoins, Upload, CheckCircle2, Eye } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { ShieldCheck, Check, X, Send, UserPlus, HandCoins, Upload, CheckCircle2, Eye, Search, FileText } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import type { Bilingual } from '@/data/types'
-import { poByVendor, creditRules, type PoPayStatus } from '@/data/ownerVendors'
+import { poByVendor, onboardingStages, vendorDocMeta, type PoPayStatus, type OwnerVendor, type VendorDocKind } from '@/data/ownerVendors'
 import { collectionRows, receivables, type ReceivableRow } from '@/data/ownerFinance'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { cn } from '@/lib/cn'
@@ -18,33 +18,36 @@ const poMeta: Record<PoPayStatus, { label: { en: string; ar: string }; color: st
   preparing: { label: { en: 'Preparing', ar: 'قيد التجهيز' }, color: '#365766', bg: '#e7eef1' },
 }
 
+const utilColor = (pct: number) => (pct >= 100 ? '#b5403b' : pct >= 85 ? '#b08a57' : '#355c4b')
+
 export function OwnerVendors() {
   const { pick, money } = useLocale()
   const { flash } = useToast()
-  const { creditLimits: limits, setCreditLimit, approvals, advanceApproval, vendors, approveVendor, rejectVendor, inviteVendor, recordVendorPayment } = useOwnerState() // limits are overlay only — never written to shared org credit
+  const { creditLimits: limits, setCreditLimit, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment, vendorDocs, attachVendorDoc } = useOwnerState() // limits are overlay only — never written to shared org credit
   const [subTab, setSubTab] = useState<'accounts' | 'collection' | 'credit'>('accounts')
-  const [sel, setSel] = useState('V-01')
-  const [draft, setDraft] = useState<{ id: string; val: number } | null>(null)
-  const [payDraft, setPayDraft] = useState<{ id: string; val: number } | null>(null)
-  // Payments can NEVER be recorded without the settlement receipt attached.
-  const [payReceipt, setPayReceipt] = useState<{ id: string; name: string } | null>(null)
+  const [query, setQuery] = useState('')
+  const [profileId, setProfileId] = useState<string | null>(null)
+  const [payId, setPayId] = useState<string | null>(null)
   const [viewRec, setViewRec] = useState<ReceivableRow | null>(null)
   const [inviteOpen, setInviteOpen] = useState(false)
 
   const tabs = [
     { id: 'accounts' as const, label: pick({ en: 'Accounts', ar: 'الحسابات' }) },
     { id: 'collection' as const, label: pick({ en: 'Collection', ar: 'التحصيل' }) },
-    { id: 'credit' as const, label: pick({ en: 'Credit policy', ar: 'سياسة الائتمان' }) },
+    { id: 'credit' as const, label: pick({ en: 'Join requests', ar: 'طلبات الانضمام' }) },
   ]
   const activeVendors = vendors.filter((v) => v.status === 'active')
-  const requests = vendors.filter((v) => v.status !== 'active')
-  const vendor = activeVendors.find((v) => v.id === sel) ?? activeVendors[0]
-  const limitMinor = vendor ? (limits[vendor.id] ?? vendor.limitMinor) : 0
-  const availableMinor = vendor ? limitMinor - vendor.outstandingMinor : 0
-  const utilPct = vendor && limitMinor > 0 ? Math.round((vendor.outstandingMinor / limitMinor) * 100) : 0
-  const statusInfo = utilPct >= 100 ? { en: 'Over limit · orders blocked', ar: 'تجاوز الحد · إيقاف الطلبات', col: '#b5403b' } : utilPct >= 85 ? { en: 'Near limit', ar: 'قريب من الحد', col: '#b08a57' } : { en: 'Within limit', ar: 'ضمن الحد', col: '#355c4b' }
-  const payVal = vendor && payDraft && payDraft.id === vendor.id ? payDraft.val : 0
-  const receiptName = vendor && payReceipt && payReceipt.id === vendor.id ? payReceipt.name : null
+  const requests = vendors.filter((v) => v.status === 'pending')
+  const invitations = vendors.filter((v) => v.status === 'invited')
+
+  // directory search — matches name, activity, id, email or CR number in either language
+  const q = query.trim().toLowerCase()
+  const shownVendors = q === ''
+    ? activeVendors
+    : activeVendors.filter((v) => [v.name.en, v.name.ar, v.type.en, v.type.ar, v.id, v.email ?? '', v.crNumber ?? ''].some((s) => s.toLowerCase().includes(q)))
+
+  const profileVendor = vendors.find((v) => v.id === profileId) ?? null
+  const payVendor = vendors.find((v) => v.id === payId) ?? null
 
   return (
     <div className="flex flex-col gap-lg">
@@ -54,122 +57,43 @@ export function OwnerVendors() {
 
       {subTab === 'accounts' ? (
         <div className="flex flex-col gap-lg">
-          {/* join requests & pending invitations — accept, reject or resend */}
-          {requests.length > 0 && (
-            <div className="card overflow-hidden">
-              <div className="px-lg py-md bg-surface-2 border-b border-hairline"><h3 className="font-serif text-card-title text-ink">{pick({ en: 'Join requests & invitations', ar: 'طلبات الانضمام والدعوات' })}</h3></div>
-              <ul className="divide-y divide-hairline">
-                {requests.map((v) => (
-                  <li key={v.id} className="flex flex-wrap items-center gap-md px-lg py-md">
-                    <div className="flex-1 min-w-[180px]">
-                      <p className="font-sans text-data text-ink truncate">{pick(v.name)}</p>
-                      <p className="font-sans text-caption text-ink-subtle truncate">{pick(v.type)} · {v.id}{v.email && <span dir="ltr"> · {v.email}</span>}</p>
-                    </div>
-                    {v.status === 'pending' ? (
-                      <div className="flex items-center gap-xs">
-                        <Pill color="#8a6b3f" bg="#f6edde">{pick({ en: 'Awaiting approval', ar: 'بانتظار الاعتماد' })}</Pill>
-                        <button onClick={() => { approveVendor(v.id); setSel(v.id); flash(`${pick({ en: 'Approved', ar: 'اعتُمد' })} · ${pick(v.name)}`) }} className={buttonClass('primary', 'sm')}><Check size={14} /> {pick({ en: 'Approve', ar: 'اعتماد' })}</button>
-                        <button onClick={() => { rejectVendor(v.id); flash(`${pick({ en: 'Rejected', ar: 'رُفض' })} · ${pick(v.name)}`) }} className="btn btn-sm bg-transparent text-danger border border-danger/40 hover:bg-danger/5"><X size={14} /> {pick({ en: 'Reject', ar: 'رفض' })}</button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-xs">
-                        <Pill color="#365766" bg="#e7eef1">{pick({ en: 'Invitation sent', ar: 'دعوة مُرسلة' })}</Pill>
-                        <button onClick={() => flash(`${pick({ en: 'Invitation resent to', ar: 'أُعيد إرسال الدعوة إلى' })} ${pick(v.name)}`)} className={buttonClass('secondary', 'sm')}><Send size={14} /> {pick({ en: 'Resend', ar: 'إعادة إرسال' })}</button>
-                        <button onClick={() => { rejectVendor(v.id); flash(`${pick({ en: 'Invitation cancelled', ar: 'أُلغيت الدعوة' })} · ${pick(v.name)}`) }} className="btn btn-sm bg-transparent text-danger border border-danger/40 hover:bg-danger/5"><X size={14} /> {pick({ en: 'Cancel', ar: 'إلغاء' })}</button>
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* searchable directory — same pattern as the customers list */}
+          <div className="relative">
+            <Search size={16} className="absolute top-1/2 -translate-y-1/2 start-3.5 text-ink-subtle pointer-events-none" />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} className="input ps-10" placeholder={pick({ en: 'Search by name, activity, ID, email or CR number…', ar: 'ابحث بالاسم أو النشاط أو الرقم أو البريد أو السجل التجاري…' })} />
+          </div>
 
-          <div className="grid lg:grid-cols-[300px_1fr] gap-lg items-start">
-          {/* vendor list */}
           <div className="card overflow-hidden">
             <ul className="divide-y divide-hairline">
-              {activeVendors.map((v) => {
+              {shownVendors.length === 0 && (
+                <li className="px-lg py-md font-sans text-data text-ink-subtle">{pick({ en: 'No vendors match this search.', ar: 'لا يوجد مورّد مطابق لهذا البحث.' })}</li>
+              )}
+              {shownVendors.map((v) => {
                 const lm = limits[v.id] ?? v.limitMinor
                 const up = lm > 0 ? Math.round((v.outstandingMinor / lm) * 100) : 0
-                const on = vendor && v.id === vendor.id
+                const col = utilColor(up)
+                const initials = pick(v.name).split(' ').map((w) => w[0]).slice(0, 2).join('')
                 return (
-                  <li key={v.id}>
-                    <button onClick={() => setSel(v.id)} className={cn('w-full text-start px-lg py-md flex flex-col gap-xs transition-colors', on ? 'bg-primary/[0.06]' : 'hover:bg-surface-2')}>
-                      <div className="flex items-center justify-between gap-sm"><span className="font-sans text-data text-ink truncate">{pick(v.name)}</span><span className="font-sans text-caption text-ink-subtle tabular-nums">{up}%</span></div>
-                      <UtilBar pct={up} color={up >= 100 ? '#b5403b' : up >= 85 ? '#b08a57' : '#355c4b'} />
-                    </button>
+                  <li key={v.id} className="flex flex-wrap items-center gap-md px-lg py-md">
+                    <span className="grid place-items-center w-10 h-10 rounded-pill shrink-0 font-serif text-card-title" style={{ backgroundColor: col + '22', color: col }}>{initials}</span>
+                    <div className="flex-1 min-w-[180px]">
+                      <p className="font-sans text-data text-ink truncate">{pick(v.name)} <span className="text-ink-subtle">· {pick(v.type)}</span></p>
+                      <p className="font-sans text-caption text-ink-subtle tabular-nums truncate">{v.id} · {pick({ en: 'Outstanding', ar: 'المستحق' })} {money(v.outstandingMinor)} · {pick({ en: 'Limit', ar: 'الحد' })} {money(lm)}</p>
+                    </div>
+                    <div className="hidden sm:flex flex-col gap-xxs w-28 shrink-0">
+                      <span className="font-sans text-caption text-ink-subtle tabular-nums text-end">{up}%</span>
+                      <UtilBar pct={up} color={col} />
+                    </div>
+                    {/* actions: view profile, then payment last */}
+                    <div className="flex items-center gap-xs">
+                      <button onClick={() => setProfileId(v.id)} className={buttonClass('secondary', 'sm')}><Eye size={14} /> {pick({ en: 'View', ar: 'عرض' })}</button>
+                      <button onClick={() => setPayId(v.id)} className={buttonClass('primary', 'sm')}><HandCoins size={14} /> {pick({ en: 'Payment', ar: 'سداد' })}</button>
+                    </div>
                   </li>
                 )
               })}
             </ul>
           </div>
-
-          {/* credit account detail */}
-          {vendor && (
-          <div className="flex flex-col gap-lg">
-            <div className="card p-lg flex flex-col gap-md">
-              <div className="flex items-center justify-between">
-                <div><h3 className="font-serif text-card-title text-ink">{pick(vendor.name)}</h3><p className="font-sans text-caption text-ink-subtle">{pick(vendor.type)} · {vendor.id}</p></div>
-                <span className="inline-flex items-center gap-xxs rounded-pill px-2.5 py-1 font-sans text-caption" style={{ color: statusInfo.col, backgroundColor: statusInfo.col + '18' }}>{pick({ en: statusInfo.en, ar: statusInfo.ar })}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-md">
-                <div className="flex flex-col gap-xxs"><span className="label !mb-0">{pick({ en: 'Outstanding', ar: 'المستحق' })}</span><span className="font-serif text-card-title text-ink tabular-nums">{money(vendor.outstandingMinor)}</span></div>
-                <div className="flex flex-col gap-xxs"><span className="label !mb-0">{pick({ en: 'Available', ar: 'المتاح' })}</span><span className={cn('font-serif text-card-title tabular-nums', availableMinor < 0 ? 'text-danger' : 'text-success')}>{money(availableMinor)}</span></div>
-                <div className="flex flex-col gap-xxs"><span className="label !mb-0">{pick({ en: 'Utilization', ar: 'الاستغلال' })}</span><span className="font-serif text-card-title text-ink tabular-nums">{utilPct}%</span></div>
-              </div>
-              <UtilBar pct={utilPct} color={statusInfo.col} />
-              <div className="flex flex-wrap items-end gap-sm pt-sm border-t border-hairline">
-                <label className="flex flex-col gap-xs flex-1 min-w-[160px]"><span className="label">{pick({ en: 'Credit limit (﷼)', ar: 'الحد الائتماني (﷼)' })}</span>
-                  <input value={draft && draft.id === vendor.id ? draft.val : Math.round(limitMinor / 100)} onChange={(e) => setDraft({ id: vendor.id, val: parseInt(e.target.value.replace(/\D/g, ''), 10) || 0 })} className="input tabular-nums" inputMode="numeric" /></label>
-                <button onClick={() => { if (draft && draft.id === vendor.id) { setCreditLimit(vendor.id, draft.val * 100); setDraft(null); flash(`${pick({ en: 'Credit limit saved for', ar: 'حُفظ الحد الائتماني لـ' })} ${pick(vendor.name)}`) } }} disabled={!draft || draft.id !== vendor.id || draft.val * 100 === limitMinor} className={buttonClass('primary', 'sm')}>{pick({ en: 'Save limit', ar: 'حفظ الحد' })}</button>
-              </div>
-              {/* record a settlement against the outstanding balance — the receipt
-                  attachment is MANDATORY: no receipt, no recorded payment. */}
-              <div className="flex flex-col gap-sm pt-sm border-t border-hairline">
-                <div className="flex flex-wrap items-end gap-sm">
-                  <label className="flex flex-col gap-xs flex-1 min-w-[160px]"><span className="label">{pick({ en: 'Record payment (﷼)', ar: 'تسجيل سداد (﷼)' })}</span>
-                    <input value={payVal || ''} onChange={(e) => setPayDraft({ id: vendor.id, val: parseInt(e.target.value.replace(/\D/g, ''), 10) || 0 })} className={cn('input tabular-nums', payVal * 100 > vendor.outstandingMinor && 'border-danger')} inputMode="numeric" placeholder="0" />
-                    <span className={cn('font-sans text-caption tabular-nums', payVal * 100 > vendor.outstandingMinor ? 'text-danger' : 'text-ink-subtle')}>{pick({ en: 'Outstanding', ar: 'المستحق حاليًا' })}: {money(vendor.outstandingMinor)}</span>
-                  </label>
-                  <label className={buttonClass('secondary', 'sm', 'cursor-pointer')}>
-                    <Upload size={14} /> {receiptName ? pick({ en: 'Replace receipt', ar: 'استبدال الإيصال' }) : pick({ en: 'Attach receipt', ar: 'إرفاق الإيصال' })}
-                    <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => {
-                      const f = e.target.files?.[0]
-                      if (f) setPayReceipt({ id: vendor.id, name: f.name })
-                      e.target.value = ''
-                    }} />
-                  </label>
-                  <button onClick={() => { recordVendorPayment(vendor.id, payVal * 100); setPayDraft(null); setPayReceipt(null); flash(`${pick({ en: 'Payment recorded', ar: 'سُجّل سداد' })} ${money(payVal * 100)} · ${pick(vendor.name)}`) }} disabled={payVal <= 0 || payVal * 100 > vendor.outstandingMinor || !receiptName} className={buttonClass('secondary', 'sm')}><HandCoins size={15} /> {pick({ en: 'Record payment', ar: 'تسجيل السداد' })}</button>
-                </div>
-                {receiptName ? (
-                  <span className="inline-flex items-center gap-xxs self-start rounded-pill border border-success/25 bg-success/8 px-3 py-1 font-sans text-caption text-ink"><CheckCircle2 size={12} className="text-success" /> <span dir="ltr">{receiptName}</span></span>
-                ) : (
-                  <p className="font-sans text-caption text-danger">{pick({ en: 'No payment can be recorded without attaching the settlement receipt.', ar: 'لا يُقبل تسجيل أي سداد بدون إرفاق ملف الإيصال.' })}</p>
-                )}
-              </div>
-            </div>
-
-            {/* vendor POs */}
-            <div className="card overflow-hidden">
-              <div className="px-lg py-md bg-surface-2 border-b border-hairline"><h3 className="font-serif text-card-title text-ink">{pick({ en: 'Purchase orders', ar: 'أوامر الشراء' })} · {pick(vendor.name)}</h3></div>
-              <ul className="divide-y divide-hairline">
-                {(poByVendor[vendor.id] ?? []).length === 0 && <li className="px-lg py-md font-sans text-caption text-ink-subtle">{pick({ en: 'No purchase orders yet.', ar: 'لا أوامر شراء بعد.' })}</li>}
-                {(poByVendor[vendor.id] ?? []).map((po) => {
-                  const m = poMeta[po.status]
-                  return (
-                    <li key={po.id} className="flex items-center gap-md px-lg py-md">
-                      <span className="font-sans text-data text-ink tabular-nums flex-1">{po.id} <span className="text-ink-subtle text-caption">· {pick(po.date)}</span></span>
-                      <span className="font-sans text-data text-ink tabular-nums">{money(po.amountMinor)}</span>
-                      <Pill color={m.color} bg={m.bg}>{pick(m.label)}</Pill>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          </div>
-          )}
-          </div>
-
         </div>
       ) : subTab === 'collection' ? (
         <div className="flex flex-col gap-lg">
@@ -227,40 +151,115 @@ export function OwnerVendors() {
           </div>
         </div>
       ) : (
-        <div className="grid lg:grid-cols-2 gap-lg items-start">
-          <div className="card overflow-hidden">
-            <div className="px-lg py-md bg-surface-2 border-b border-hairline"><h3 className="font-serif text-card-title text-ink">{pick({ en: 'Credit rules', ar: 'قواعد الائتمان' })}</h3></div>
-            <ul className="divide-y divide-hairline">
-              {creditRules.map((r, i) => (
-                <li key={i} className="px-lg py-md"><p className="font-sans text-data text-ink">{pick(r.title)}</p><p className="font-sans text-caption text-ink-subtle mt-xxs">{pick(r.detail)}</p></li>
-              ))}
-            </ul>
+        <div className="flex flex-col gap-lg">
+          {/* B2B partner registration (SOP 3.2.1): every join request walks the
+              same approval chain, and permissions unlock only at the last stage. */}
+          <div className="rounded-lg bg-primary/[0.05] border border-primary/20 p-md flex items-start gap-sm">
+            <ShieldCheck size={18} className="text-primary-hover shrink-0 mt-0.5" />
+            <p className="font-sans text-data text-ink-muted">
+              {pick({ en: 'Partner registration (B2B): ', ar: 'تسجيل الشركاء (B2B): ' })}
+              {onboardingStages.map((s) => pick(s.label)).join(pick({ en: ' → ', ar: ' ← ' }))}
+            </p>
           </div>
-          <div className="card p-lg flex flex-col gap-md">
-            <h3 className="font-serif text-card-title text-ink inline-flex items-center gap-xs"><ShieldCheck size={17} className="text-primary-hover" /> {pick({ en: 'Merchant onboarding', ar: 'اعتماد التجار' })}</h3>
-            <ol className="flex flex-col gap-0">
-              {approvals.map((s, i) => (
-                <li key={i} className="flex items-center gap-md pb-md last:pb-0">
-                  <span className={cn('grid place-items-center w-8 h-8 rounded-pill border-2 shrink-0', s.done ? 'bg-success/15 border-success text-success' : s.current ? 'bg-primary/10 border-primary text-primary-hover animate-pulse' : 'bg-surface-2 border-hairline-strong text-ink-subtle')}>{s.done ? <Check size={14} /> : i + 1}</span>
-                  <span className={cn('font-sans text-data', s.done || s.current ? 'text-ink' : 'text-ink-subtle')}>{pick(s.label)}</span>
-                </li>
-              ))}
-            </ol>
-            {(() => {
-              const cur = approvals.find((s) => s.current)
-              const atEnd = !cur || cur === approvals[approvals.length - 1]
-              const next = cur ? approvals[approvals.indexOf(cur) + 1] : undefined
+
+          {requests.length === 0 && invitations.length === 0 && (
+            <div className="card p-lg font-sans text-data text-ink-subtle">{pick({ en: 'No join requests right now — new requests and invitations appear here with their approval chain.', ar: 'لا توجد طلبات انضمام حاليًا — الطلبات والدعوات الجديدة تظهر هنا مع سلسلة اعتمادها.' })}</div>
+          )}
+
+          {/* one card per join request, with its position in the chain */}
+          <div className="grid lg:grid-cols-2 gap-lg items-start">
+            {requests.map((v) => {
+              const stage = Math.min(v.stage ?? 0, onboardingStages.length - 1)
+              const last = stage === onboardingStages.length - 1
               return (
-                <button onClick={() => { if (advanceApproval() && next) flash(`${pick({ en: 'Approved →', ar: 'اعتُمد ←' })} ${pick(next.label)}`) }} disabled={atEnd} className={buttonClass('secondary', 'sm', 'self-start')}>
-                  {atEnd ? pick({ en: 'Onboarding complete', ar: 'اكتمل الاعتماد' }) : `${pick({ en: 'Approve', ar: 'اعتماد' })}: ${pick(cur!.label)}`}
-                </button>
+                <div key={v.id} className="card p-lg flex flex-col gap-md">
+                  <div className="flex flex-wrap items-start justify-between gap-sm">
+                    <div>
+                      <h3 className="font-serif text-card-title text-ink">{pick(v.name)}</h3>
+                      <p className="font-sans text-caption text-ink-subtle">{pick(v.type)} · {v.id}{v.email && <span dir="ltr"> · {v.email}</span>}</p>
+                    </div>
+                    <div className="flex items-center gap-xs">
+                      <Pill color="#8a6b3f" bg="#f6edde">{pick({ en: 'Stage', ar: 'المرحلة' })} {stage + 1}/{onboardingStages.length}</Pill>
+                      <button onClick={() => setProfileId(v.id)} className={buttonClass('secondary', 'sm')}><Eye size={14} /> {pick({ en: 'View', ar: 'عرض' })}</button>
+                    </div>
+                  </div>
+                  <ol className="flex flex-col gap-0">
+                    {onboardingStages.map((s, i) => (
+                      <li key={i} className="flex items-start gap-md pb-md last:pb-0">
+                        <span className={cn('grid place-items-center w-8 h-8 rounded-pill border-2 shrink-0', i < stage ? 'bg-success/15 border-success text-success' : i === stage ? 'bg-primary/10 border-primary text-primary-hover animate-pulse' : 'bg-surface-2 border-hairline-strong text-ink-subtle')}>{i < stage ? <Check size={14} /> : i + 1}</span>
+                        <span className="flex flex-col gap-xxs min-w-0">
+                          <span className={cn('font-sans text-data', i <= stage ? 'text-ink' : 'text-ink-subtle')}>{pick(s.label)}</span>
+                          <span className="font-sans text-caption text-ink-subtle">{pick(s.desc)}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                  <div className="flex flex-wrap items-center gap-xs pt-sm border-t border-hairline">
+                    <button
+                      onClick={() => {
+                        advanceVendorStage(v.id)
+                        if (last) { setProfileId(v.id); setSubTab('accounts'); flash(`${pick({ en: 'Account activated', ar: 'فُعّل الحساب وأُتيحت صلاحياته' })} · ${pick(v.name)}`) }
+                        else flash(`${pick({ en: 'Stage approved →', ar: 'اعتُمدت المرحلة ←' })} ${pick(onboardingStages[stage + 1].label)}`)
+                      }}
+                      className={buttonClass('primary', 'sm')}
+                    >
+                      <Check size={14} /> {last ? pick({ en: 'Activate & grant permissions', ar: 'تفعيل الحساب وإتاحة الصلاحيات' }) : `${pick({ en: 'Approve', ar: 'اعتماد' })}: ${pick(onboardingStages[stage].label)}`}
+                    </button>
+                    <button onClick={() => { rejectVendor(v.id); flash(`${pick({ en: 'Request rejected', ar: 'رُفض الطلب' })} · ${pick(v.name)}`) }} className="btn btn-sm bg-transparent text-danger border border-danger/40 hover:bg-danger/5"><X size={14} /> {pick({ en: 'Reject request', ar: 'رفض الطلب' })}</button>
+                  </div>
+                </div>
               )
-            })()}
+            })}
           </div>
+
+          {/* invitations sent but not yet registered — the chain starts once the account is created */}
+          {invitations.length > 0 && (
+            <div className="card overflow-hidden">
+              <div className="px-lg py-md bg-surface-2 border-b border-hairline"><h3 className="font-serif text-card-title text-ink">{pick({ en: 'Invitations awaiting registration', ar: 'دعوات بانتظار التسجيل' })}</h3></div>
+              <ul className="divide-y divide-hairline">
+                {invitations.map((v) => (
+                  <li key={v.id} className="flex flex-wrap items-center gap-md px-lg py-md">
+                    <div className="flex-1 min-w-[180px]">
+                      <p className="font-sans text-data text-ink truncate">{pick(v.name)}</p>
+                      <p className="font-sans text-caption text-ink-subtle truncate">{pick(v.type)} · {v.id}{v.email && <span dir="ltr"> · {v.email}</span>}</p>
+                    </div>
+                    <div className="flex items-center gap-xs">
+                      <Pill color="#365766" bg="#e7eef1">{pick({ en: 'Awaiting initial account', ar: 'بانتظار إنشاء الحساب الأولي' })}</Pill>
+                      <button onClick={() => { advanceVendorStage(v.id); flash(`${pick({ en: 'Account created — chain started', ar: 'أُنشئ الحساب — بدأت سلسلة الاعتماد' })} · ${pick(v.name)}`) }} className={buttonClass('secondary', 'sm')}><Check size={14} /> {pick({ en: 'Registered', ar: 'تم التسجيل' })}</button>
+                      <button onClick={() => flash(`${pick({ en: 'Invitation resent to', ar: 'أُعيد إرسال الدعوة إلى' })} ${pick(v.name)}`)} className={buttonClass('secondary', 'sm')}><Send size={14} /> {pick({ en: 'Resend', ar: 'إعادة إرسال' })}</button>
+                      <button onClick={() => { rejectVendor(v.id); flash(`${pick({ en: 'Invitation cancelled', ar: 'أُلغيت الدعوة' })} · ${pick(v.name)}`) }} className="btn btn-sm bg-transparent text-danger border border-danger/40 hover:bg-danger/5"><X size={14} /> {pick({ en: 'Cancel', ar: 'إلغاء' })}</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
       {inviteOpen && <InviteVendorModal onClose={() => setInviteOpen(false)} onSubmit={(v) => { inviteVendor(v); flash(`${pick({ en: 'Invitation sent to', ar: 'أُرسلت الدعوة إلى' })} ${pick(v.name)}`) }} />}
+
+      {/* full vendor profile — verification data, contract & documents, credit and POs */}
+      {profileVendor && (
+        <VendorProfileModal
+          vendor={profileVendor}
+          limitMinor={limits[profileVendor.id] ?? profileVendor.limitMinor}
+          docs={vendorDocs[profileVendor.id] ?? {}}
+          onClose={() => setProfileId(null)}
+          onSaveLimit={(minor) => { setCreditLimit(profileVendor.id, minor); flash(`${pick({ en: 'Credit limit saved for', ar: 'حُفظ الحد الائتماني لـ' })} ${pick(profileVendor.name)}`) }}
+          onAttachDoc={(kind, name) => { attachVendorDoc(profileVendor.id, kind, name); flash(`${pick({ en: 'Attached', ar: 'أُرفق' })} · ${pick(vendorDocMeta[kind].label)}`) }}
+          onPay={profileVendor.status === 'active' ? () => setPayId(profileVendor.id) : undefined}
+        />
+      )}
+
+      {/* record a settlement — the receipt attachment is MANDATORY */}
+      {payVendor && (
+        <RecordPaymentModal
+          vendor={payVendor}
+          onClose={() => setPayId(null)}
+          onRecord={(minor) => { recordVendorPayment(payVendor.id, minor); flash(`${pick({ en: 'Payment recorded', ar: 'سُجّل سداد' })} ${money(minor)} · ${pick(payVendor.name)}`) }}
+        />
+      )}
 
       {/* receivable inspection — opened from the eye button */}
       {viewRec && (
@@ -290,6 +289,189 @@ export function OwnerVendors() {
         </Modal>
       )}
     </div>
+  )
+}
+
+/** Comprehensive vendor profile: identity & contact, verification data (CR, VAT,
+ *  address), attached documents (contract + certificates), credit account and POs. */
+function VendorProfileModal({ vendor, limitMinor, docs, onClose, onSaveLimit, onAttachDoc, onPay }: {
+  vendor: OwnerVendor
+  limitMinor: number
+  docs: Partial<Record<VendorDocKind, string>>
+  onClose: () => void
+  onSaveLimit: (minor: number) => void
+  onAttachDoc: (kind: VendorDocKind, fileName: string) => void
+  onPay?: () => void
+}) {
+  const { pick, money } = useLocale()
+  const [draft, setDraft] = useState<number | null>(null)
+  const active = vendor.status === 'active'
+  const availableMinor = limitMinor - vendor.outstandingMinor
+  const utilPct = limitMinor > 0 ? Math.round((vendor.outstandingMinor / limitMinor) * 100) : 0
+  const col = utilColor(utilPct)
+  const initials = pick(vendor.name).split(' ').map((w) => w[0]).slice(0, 2).join('')
+  const missing = pick({ en: 'Not provided yet', ar: 'غير مستكمل بعد' })
+  const pos = poByVendor[vendor.id] ?? []
+
+  const infoRow = (k: string, v: ReactNode) => (
+    <div className="flex items-center justify-between gap-sm px-md py-2">
+      <span className="font-sans text-caption text-ink-subtle shrink-0">{k}</span>
+      <span className="font-sans text-data text-ink text-end truncate">{v}</span>
+    </div>
+  )
+
+  return (
+    <Modal open onClose={onClose} size="lg" eyebrow={vendor.id} title={pick(vendor.name)}
+      footer={<div className="flex items-center justify-between w-full">
+        {onPay ? <button onClick={onPay} className={buttonClass('primary', 'sm')}><HandCoins size={14} /> {pick({ en: 'Payment', ar: 'سداد' })}</button> : <span />}
+        <button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Close', ar: 'إغلاق' })}</button>
+      </div>}>
+      <div className="flex flex-col gap-lg">
+        {/* identity & contact */}
+        <div className="flex items-center gap-md">
+          <span className="grid place-items-center w-14 h-14 rounded-pill shrink-0 font-serif text-headline" style={{ backgroundColor: col + '22', color: col }}>{initials}</span>
+          <div className="flex-1 min-w-0">
+            <p className="font-sans text-data text-ink">{pick(vendor.type)}{vendor.since && <span className="text-ink-subtle"> · {pick({ en: 'Partner since', ar: 'شريك منذ' })} {pick(vendor.since)}</span>}</p>
+            <Pill color={active ? '#355c4b' : '#8a6b3f'} bg={active ? '#e8f0ec' : '#f6edde'}>{active ? pick({ en: 'Active account', ar: 'حساب نشط' }) : pick({ en: 'In registration', ar: 'تحت التسجيل' })}</Pill>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-lg items-start">
+          {/* contact details */}
+          <div className="flex flex-col gap-sm">
+            <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Contact', ar: 'بيانات التواصل' })}</h4>
+            <div className="rounded-lg border border-hairline divide-y divide-hairline">
+              {infoRow(pick({ en: 'Contact person', ar: 'جهة الاتصال' }), vendor.contact ? pick(vendor.contact) : missing)}
+              {infoRow(pick({ en: 'Phone', ar: 'الجوال' }), vendor.phone ? <span dir="ltr" className="tabular-nums">{vendor.phone}</span> : missing)}
+              {infoRow(pick({ en: 'Email', ar: 'البريد الإلكتروني' }), vendor.email ? <span dir="ltr">{vendor.email}</span> : missing)}
+            </div>
+          </div>
+
+          {/* verification data */}
+          <div className="flex flex-col gap-sm">
+            <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Verification data', ar: 'بيانات التوثيق' })}</h4>
+            <div className="rounded-lg border border-hairline divide-y divide-hairline">
+              {infoRow(pick({ en: 'Commercial registration', ar: 'السجل التجاري' }), vendor.crNumber ? <span dir="ltr" className="tabular-nums">{vendor.crNumber}</span> : missing)}
+              {infoRow(pick({ en: 'VAT number', ar: 'الرقم الضريبي' }), vendor.vatNumber ? <span dir="ltr" className="tabular-nums">{vendor.vatNumber}</span> : missing)}
+              {infoRow(pick({ en: 'National address', ar: 'العنوان الوطني' }), vendor.address ? pick(vendor.address) : missing)}
+            </div>
+          </div>
+        </div>
+
+        {/* documents: signed contract + verification papers */}
+        <div className="flex flex-col gap-sm">
+          <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Documents', ar: 'المستندات والعقد' })}</h4>
+          <div className="rounded-lg border border-hairline divide-y divide-hairline">
+            {(Object.keys(vendorDocMeta) as VendorDocKind[]).map((kind) => {
+              const meta = vendorDocMeta[kind]
+              const file = docs[kind]
+              return (
+                <div key={kind} className="flex flex-wrap items-center gap-sm px-md py-sm">
+                  <span className={cn('grid place-items-center w-9 h-9 rounded-md shrink-0', file ? 'bg-success/10 text-success' : 'bg-surface-2 text-ink-subtle')}><FileText size={16} /></span>
+                  <div className="flex-1 min-w-[160px]">
+                    <p className="font-sans text-data text-ink">{pick(meta.label)}</p>
+                    <p className="font-sans text-caption text-ink-subtle">{file ? <span dir="ltr">{file}</span> : pick(meta.desc)}</p>
+                  </div>
+                  {file
+                    ? <span className="inline-flex items-center gap-xxs rounded-pill border border-success/25 bg-success/8 px-2.5 py-1 font-sans text-caption text-ink"><CheckCircle2 size={12} className="text-success" /> {pick({ en: 'Attached', ar: 'مرفق' })}</span>
+                    : <Pill color="#b5403b" bg="#faeceb">{pick({ en: 'Missing', ar: 'غير مرفق' })}</Pill>}
+                  <label className={buttonClass('secondary', 'sm', 'cursor-pointer')}>
+                    <Upload size={13} /> {file ? pick({ en: 'Replace', ar: 'استبدال' }) : pick({ en: 'Attach', ar: 'إرفاق' })}
+                    <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (f) onAttachDoc(kind, f.name)
+                      e.target.value = ''
+                    }} />
+                  </label>
+                </div>
+              )
+            })}
+          </div>
+          <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'The signed contract and verification papers live on the vendor profile — attach or replace them here any time.', ar: 'العقد الموقّع وأوراق التوثيق محفوظة في ملف المورّد — يمكن إرفاقها أو استبدالها هنا في أي وقت.' })}</p>
+        </div>
+
+        {/* credit account */}
+        {active && (
+          <div className="flex flex-col gap-sm">
+            <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Credit account', ar: 'الحساب الائتماني' })}</h4>
+            <div className="rounded-lg border border-hairline p-md flex flex-col gap-md">
+              <div className="grid grid-cols-3 gap-md">
+                <div className="flex flex-col gap-xxs"><span className="label !mb-0">{pick({ en: 'Outstanding', ar: 'المستحق' })}</span><span className="font-serif text-card-title text-ink tabular-nums">{money(vendor.outstandingMinor)}</span></div>
+                <div className="flex flex-col gap-xxs"><span className="label !mb-0">{pick({ en: 'Available', ar: 'المتاح' })}</span><span className={cn('font-serif text-card-title tabular-nums', availableMinor < 0 ? 'text-danger' : 'text-success')}>{money(availableMinor)}</span></div>
+                <div className="flex flex-col gap-xxs"><span className="label !mb-0">{pick({ en: 'Utilization', ar: 'الاستغلال' })}</span><span className="font-serif text-card-title text-ink tabular-nums">{utilPct}%</span></div>
+              </div>
+              <UtilBar pct={utilPct} color={col} />
+              <div className="flex flex-wrap items-end gap-sm pt-sm border-t border-hairline">
+                <label className="flex flex-col gap-xs flex-1 min-w-[160px]"><span className="label">{pick({ en: 'Credit limit (﷼)', ar: 'الحد الائتماني (﷼)' })}</span>
+                  <input value={draft ?? Math.round(limitMinor / 100)} onChange={(e) => setDraft(parseInt(e.target.value.replace(/\D/g, ''), 10) || 0)} className="input tabular-nums" inputMode="numeric" /></label>
+                <button onClick={() => { if (draft != null) { onSaveLimit(draft * 100); setDraft(null) } }} disabled={draft == null || draft * 100 === limitMinor} className={buttonClass('primary', 'sm')}>{pick({ en: 'Save limit', ar: 'حفظ الحد' })}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* purchase orders */}
+        <div className="flex flex-col gap-sm">
+          <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Purchase orders', ar: 'أوامر الشراء' })}</h4>
+          <div className="rounded-lg border border-hairline divide-y divide-hairline">
+            {pos.length === 0 && <p className="px-md py-sm font-sans text-caption text-ink-subtle">{pick({ en: 'No purchase orders yet.', ar: 'لا أوامر شراء بعد.' })}</p>}
+            {pos.map((po) => {
+              const m = poMeta[po.status]
+              return (
+                <div key={po.id} className="flex items-center gap-md px-md py-sm">
+                  <span className="font-sans text-data text-ink tabular-nums flex-1">{po.id} <span className="text-ink-subtle text-caption">· {pick(po.date)}</span></span>
+                  <span className="font-sans text-data text-ink tabular-nums">{money(po.amountMinor)}</span>
+                  <Pill color={m.color} bg={m.bg}>{pick(m.label)}</Pill>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+/** Record a settlement against the vendor's outstanding balance — the receipt
+ *  attachment is MANDATORY: no receipt, no recorded payment. */
+function RecordPaymentModal({ vendor, onClose, onRecord }: { vendor: OwnerVendor; onClose: () => void; onRecord: (amountMinor: number) => void }) {
+  const { pick, money } = useLocale()
+  const [amount, setAmount] = useState('')
+  const [receipt, setReceipt] = useState<string | null>(null)
+  const minor = (parseInt(amount.replace(/\D/g, ''), 10) || 0) * 100
+  const over = minor > vendor.outstandingMinor
+  const valid = minor > 0 && !over && receipt != null
+  const submit = () => {
+    if (!valid) return
+    onRecord(minor)
+    onClose()
+  }
+  return (
+    <Modal open onClose={onClose} size="sm" eyebrow={vendor.id} title={`${pick({ en: 'Record payment', ar: 'تسجيل سداد' })} · ${pick(vendor.name)}`}
+      footer={<>
+        <button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button>
+        <button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}><HandCoins size={15} /> {pick({ en: 'Record payment', ar: 'تسجيل السداد' })}</button>
+      </>}>
+      <div className="flex flex-col gap-md">
+        <label className="flex flex-col gap-xs">
+          <span className="label">{pick({ en: 'Amount (﷼)', ar: 'المبلغ (﷼)' })}</span>
+          <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))} className={cn('input tabular-nums', over && 'border-danger')} dir="ltr" inputMode="numeric" placeholder="0" autoFocus />
+          <span className={cn('font-sans text-caption tabular-nums', over ? 'text-danger' : 'text-ink-subtle')}>{pick({ en: 'Outstanding', ar: 'المستحق حاليًا' })}: {money(vendor.outstandingMinor)}</span>
+        </label>
+        <div className="flex flex-wrap items-center gap-sm">
+          <label className={buttonClass('secondary', 'sm', 'cursor-pointer')}>
+            <Upload size={14} /> {receipt ? pick({ en: 'Replace receipt', ar: 'استبدال الإيصال' }) : pick({ en: 'Attach receipt', ar: 'إرفاق الإيصال' })}
+            <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) setReceipt(f.name)
+              e.target.value = ''
+            }} />
+          </label>
+          {receipt && <span className="inline-flex items-center gap-xxs rounded-pill border border-success/25 bg-success/8 px-3 py-1 font-sans text-caption text-ink"><CheckCircle2 size={12} className="text-success" /> <span dir="ltr">{receipt}</span></span>}
+        </div>
+        {!receipt && <p className="font-sans text-caption text-danger">{pick({ en: 'No payment can be recorded without attaching the settlement receipt.', ar: 'لا يُقبل تسجيل أي سداد بدون إرفاق ملف الإيصال.' })}</p>}
+      </div>
+    </Modal>
   )
 }
 
