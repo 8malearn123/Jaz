@@ -3,6 +3,7 @@ import { Eye, ArrowRight, Check, X, AlertTriangle, Plus, Upload, Download, Check
 import { useLocale } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
+import { ConfirmDialog } from '@/components/ui/Confirm'
 import { buttonClass } from '@/components/ui/Button'
 import {
   ownerOrderStatuses, ownerChannelMeta, ownerDepartments,
@@ -25,6 +26,7 @@ export function OwnerOrders() {
   const [chan, setChan] = useState<OwnerChannel | 'all'>('all')
   const [status, setStatus] = useState<string>('all')
   const [sel, setSel] = useState<string | null>(null)
+  const [confirmCancel, setConfirmCancel] = useState(false)
   const [newOpen, setNewOpen] = useState(false)
 
   const advance = (id: string) => {
@@ -121,9 +123,9 @@ export function OwnerOrders() {
       <BillingDesk />
 
       {/* detail modal */}
-      <Modal open={!!order} onClose={() => setSel(null)} size="lg" eyebrow={order ? pick(ownerChannelMeta[order.chan].label) : ''} title={order?.id ?? ''}
+      <Modal open={!!order} onClose={() => { setSel(null); setConfirmCancel(false) }} size="lg" eyebrow={order ? pick(ownerChannelMeta[order.chan].label) : ''} title={order?.id ?? ''}
         footer={order && !order.cancelled ? <>
-          <button onClick={() => cancel(order.id)} className="btn btn-sm bg-transparent text-danger border border-danger/40 hover:bg-danger/5"><X size={15} /> {pick({ en: 'Cancel order', ar: 'إلغاء الطلب' })}</button>
+          <button onClick={() => setConfirmCancel(true)} className="btn btn-sm bg-transparent text-danger border border-danger/40 hover:bg-danger/5"><X size={15} /> {pick({ en: 'Cancel order', ar: 'إلغاء الطلب' })}</button>
           {order.stage < LAST && <button onClick={() => advance(order.id)} className={buttonClass('primary', 'sm')}><ArrowRight size={15} className="rtl:rotate-180" /> {pick({ en: 'Advance to', ar: 'تقديم إلى' })}: {pick(ownerOrderStatuses[order.stage + 1].label)}</button>}
         </> : undefined}>
         {order && (
@@ -217,6 +219,18 @@ export function OwnerOrders() {
           </div>
         )}
       </Modal>
+
+      {/* cancelling is destructive — it never happens on one click */}
+      {order && (
+        <ConfirmDialog
+          open={confirmCancel}
+          onClose={() => setConfirmCancel(false)}
+          onConfirm={() => cancel(order.id)}
+          title={pick({ en: 'Cancel this order?', ar: 'إلغاء هذا الطلب؟' })}
+          message={pick({ en: `Order ${order.id} for ${pick(order.customer)} (${money(order.amountMinor)}) will be cancelled and will not be fulfilled. This cannot be undone.`, ar: `سيُلغى الطلب ${order.id} الخاص بـ${pick(order.customer)} (${money(order.amountMinor)}) ولن يُنفَّذ. لا يمكن التراجع عن الإلغاء.` })}
+          confirmLabel={pick({ en: 'Yes, cancel the order', ar: 'نعم، إلغاء الطلب' })}
+        />
+      )}
 
       <ManualOrderModal open={newOpen} onClose={() => setNewOpen(false)} onCreate={(o) => { const id = createOrder(o); flash(`${pick({ en: 'Order created', ar: 'أُنشئ الطلب' })} ${id}`) }} />
     </div>
