@@ -51,14 +51,21 @@ export function MegaStateProvider({ children }: { children: ReactNode }) {
     return Math.round(p.pricePerPalletMinor * pallets * (1 - disc / 100))
   }, [])
 
+  // The MOQ is a hard floor: a draft line either doesn't exist or holds at
+  // least the SKU's minimum — quantities between 1 and MOQ−1 are impossible.
+  const moqOf = (sku: string) => megaCatalog.find((x) => x.sku === sku)?.moq ?? 1
   const setDraftPallets = useCallback((sku: string, pallets: number) => setDraft((d) => {
     const next = { ...d }
-    if (pallets <= 0) delete next[sku]
+    if (pallets < moqOf(sku)) delete next[sku]
     else next[sku] = pallets
     return next
   }), [])
   const addPallets = useCallback((sku: string, delta: number) => setDraft((d) => {
-    const next = Math.max(0, (d[sku] ?? 0) + delta)
+    const moq = moqOf(sku)
+    const cur = d[sku] ?? 0
+    // stepping up from empty jumps straight to the MOQ; dropping below it clears the line
+    let next = cur === 0 && delta > 0 ? Math.max(moq, delta) : cur + delta
+    if (next < moq) next = 0
     const out = { ...d }
     if (next <= 0) delete out[sku]
     else out[sku] = next
