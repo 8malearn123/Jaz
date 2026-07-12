@@ -5,7 +5,7 @@ import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import type { Bilingual } from '@/data/types'
-import { poByVendor, creditRules, type PoPayStatus } from '@/data/ownerVendors'
+import { poByVendor, onboardingStages, type PoPayStatus } from '@/data/ownerVendors'
 import { collectionRows, receivables, type ReceivableRow } from '@/data/ownerFinance'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { cn } from '@/lib/cn'
@@ -21,7 +21,7 @@ const poMeta: Record<PoPayStatus, { label: { en: string; ar: string }; color: st
 export function OwnerVendors() {
   const { pick, money } = useLocale()
   const { flash } = useToast()
-  const { creditLimits: limits, setCreditLimit, approvals, advanceApproval, vendors, approveVendor, rejectVendor, inviteVendor, recordVendorPayment } = useOwnerState() // limits are overlay only — never written to shared org credit
+  const { creditLimits: limits, setCreditLimit, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment } = useOwnerState() // limits are overlay only — never written to shared org credit
   const [subTab, setSubTab] = useState<'accounts' | 'collection' | 'credit'>('accounts')
   const [sel, setSel] = useState('V-01')
   const [draft, setDraft] = useState<{ id: string; val: number } | null>(null)
@@ -34,10 +34,11 @@ export function OwnerVendors() {
   const tabs = [
     { id: 'accounts' as const, label: pick({ en: 'Accounts', ar: 'الحسابات' }) },
     { id: 'collection' as const, label: pick({ en: 'Collection', ar: 'التحصيل' }) },
-    { id: 'credit' as const, label: pick({ en: 'Credit policy', ar: 'سياسة الائتمان' }) },
+    { id: 'credit' as const, label: pick({ en: 'Join requests', ar: 'طلبات الانضمام' }) },
   ]
   const activeVendors = vendors.filter((v) => v.status === 'active')
-  const requests = vendors.filter((v) => v.status !== 'active')
+  const requests = vendors.filter((v) => v.status === 'pending')
+  const invitations = vendors.filter((v) => v.status === 'invited')
   const vendor = activeVendors.find((v) => v.id === sel) ?? activeVendors[0]
   const limitMinor = vendor ? (limits[vendor.id] ?? vendor.limitMinor) : 0
   const availableMinor = vendor ? limitMinor - vendor.outstandingMinor : 0
@@ -54,36 +55,6 @@ export function OwnerVendors() {
 
       {subTab === 'accounts' ? (
         <div className="flex flex-col gap-lg">
-          {/* join requests & pending invitations — accept, reject or resend */}
-          {requests.length > 0 && (
-            <div className="card overflow-hidden">
-              <div className="px-lg py-md bg-surface-2 border-b border-hairline"><h3 className="font-serif text-card-title text-ink">{pick({ en: 'Join requests & invitations', ar: 'طلبات الانضمام والدعوات' })}</h3></div>
-              <ul className="divide-y divide-hairline">
-                {requests.map((v) => (
-                  <li key={v.id} className="flex flex-wrap items-center gap-md px-lg py-md">
-                    <div className="flex-1 min-w-[180px]">
-                      <p className="font-sans text-data text-ink truncate">{pick(v.name)}</p>
-                      <p className="font-sans text-caption text-ink-subtle truncate">{pick(v.type)} · {v.id}{v.email && <span dir="ltr"> · {v.email}</span>}</p>
-                    </div>
-                    {v.status === 'pending' ? (
-                      <div className="flex items-center gap-xs">
-                        <Pill color="#8a6b3f" bg="#f6edde">{pick({ en: 'Awaiting approval', ar: 'بانتظار الاعتماد' })}</Pill>
-                        <button onClick={() => { approveVendor(v.id); setSel(v.id); flash(`${pick({ en: 'Approved', ar: 'اعتُمد' })} · ${pick(v.name)}`) }} className={buttonClass('primary', 'sm')}><Check size={14} /> {pick({ en: 'Approve', ar: 'اعتماد' })}</button>
-                        <button onClick={() => { rejectVendor(v.id); flash(`${pick({ en: 'Rejected', ar: 'رُفض' })} · ${pick(v.name)}`) }} className="btn btn-sm bg-transparent text-danger border border-danger/40 hover:bg-danger/5"><X size={14} /> {pick({ en: 'Reject', ar: 'رفض' })}</button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-xs">
-                        <Pill color="#365766" bg="#e7eef1">{pick({ en: 'Invitation sent', ar: 'دعوة مُرسلة' })}</Pill>
-                        <button onClick={() => flash(`${pick({ en: 'Invitation resent to', ar: 'أُعيد إرسال الدعوة إلى' })} ${pick(v.name)}`)} className={buttonClass('secondary', 'sm')}><Send size={14} /> {pick({ en: 'Resend', ar: 'إعادة إرسال' })}</button>
-                        <button onClick={() => { rejectVendor(v.id); flash(`${pick({ en: 'Invitation cancelled', ar: 'أُلغيت الدعوة' })} · ${pick(v.name)}`) }} className="btn btn-sm bg-transparent text-danger border border-danger/40 hover:bg-danger/5"><X size={14} /> {pick({ en: 'Cancel', ar: 'إلغاء' })}</button>
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
           <div className="grid lg:grid-cols-[300px_1fr] gap-lg items-start">
           {/* vendor list */}
           <div className="card overflow-hidden">
@@ -227,36 +198,86 @@ export function OwnerVendors() {
           </div>
         </div>
       ) : (
-        <div className="grid lg:grid-cols-2 gap-lg items-start">
-          <div className="card overflow-hidden">
-            <div className="px-lg py-md bg-surface-2 border-b border-hairline"><h3 className="font-serif text-card-title text-ink">{pick({ en: 'Credit rules', ar: 'قواعد الائتمان' })}</h3></div>
-            <ul className="divide-y divide-hairline">
-              {creditRules.map((r, i) => (
-                <li key={i} className="px-lg py-md"><p className="font-sans text-data text-ink">{pick(r.title)}</p><p className="font-sans text-caption text-ink-subtle mt-xxs">{pick(r.detail)}</p></li>
-              ))}
-            </ul>
+        <div className="flex flex-col gap-lg">
+          {/* B2B partner registration (SOP 3.2.1): every join request walks the
+              same approval chain, and permissions unlock only at the last stage. */}
+          <div className="rounded-lg bg-primary/[0.05] border border-primary/20 p-md flex items-start gap-sm">
+            <ShieldCheck size={18} className="text-primary-hover shrink-0 mt-0.5" />
+            <p className="font-sans text-data text-ink-muted">
+              {pick({ en: 'Partner registration (B2B): ', ar: 'تسجيل الشركاء (B2B): ' })}
+              {onboardingStages.map((s) => pick(s.label)).join(pick({ en: ' → ', ar: ' ← ' }))}
+            </p>
           </div>
-          <div className="card p-lg flex flex-col gap-md">
-            <h3 className="font-serif text-card-title text-ink inline-flex items-center gap-xs"><ShieldCheck size={17} className="text-primary-hover" /> {pick({ en: 'Merchant onboarding', ar: 'اعتماد التجار' })}</h3>
-            <ol className="flex flex-col gap-0">
-              {approvals.map((s, i) => (
-                <li key={i} className="flex items-center gap-md pb-md last:pb-0">
-                  <span className={cn('grid place-items-center w-8 h-8 rounded-pill border-2 shrink-0', s.done ? 'bg-success/15 border-success text-success' : s.current ? 'bg-primary/10 border-primary text-primary-hover animate-pulse' : 'bg-surface-2 border-hairline-strong text-ink-subtle')}>{s.done ? <Check size={14} /> : i + 1}</span>
-                  <span className={cn('font-sans text-data', s.done || s.current ? 'text-ink' : 'text-ink-subtle')}>{pick(s.label)}</span>
-                </li>
-              ))}
-            </ol>
-            {(() => {
-              const cur = approvals.find((s) => s.current)
-              const atEnd = !cur || cur === approvals[approvals.length - 1]
-              const next = cur ? approvals[approvals.indexOf(cur) + 1] : undefined
+
+          {requests.length === 0 && invitations.length === 0 && (
+            <div className="card p-lg font-sans text-data text-ink-subtle">{pick({ en: 'No join requests right now — new requests and invitations appear here with their approval chain.', ar: 'لا توجد طلبات انضمام حاليًا — الطلبات والدعوات الجديدة تظهر هنا مع سلسلة اعتمادها.' })}</div>
+          )}
+
+          {/* one card per join request, with its position in the chain */}
+          <div className="grid lg:grid-cols-2 gap-lg items-start">
+            {requests.map((v) => {
+              const stage = Math.min(v.stage ?? 0, onboardingStages.length - 1)
+              const last = stage === onboardingStages.length - 1
               return (
-                <button onClick={() => { if (advanceApproval() && next) flash(`${pick({ en: 'Approved →', ar: 'اعتُمد ←' })} ${pick(next.label)}`) }} disabled={atEnd} className={buttonClass('secondary', 'sm', 'self-start')}>
-                  {atEnd ? pick({ en: 'Onboarding complete', ar: 'اكتمل الاعتماد' }) : `${pick({ en: 'Approve', ar: 'اعتماد' })}: ${pick(cur!.label)}`}
-                </button>
+                <div key={v.id} className="card p-lg flex flex-col gap-md">
+                  <div className="flex flex-wrap items-start justify-between gap-sm">
+                    <div>
+                      <h3 className="font-serif text-card-title text-ink">{pick(v.name)}</h3>
+                      <p className="font-sans text-caption text-ink-subtle">{pick(v.type)} · {v.id}{v.email && <span dir="ltr"> · {v.email}</span>}</p>
+                    </div>
+                    <Pill color="#8a6b3f" bg="#f6edde">{pick({ en: 'Stage', ar: 'المرحلة' })} {stage + 1}/{onboardingStages.length}</Pill>
+                  </div>
+                  <ol className="flex flex-col gap-0">
+                    {onboardingStages.map((s, i) => (
+                      <li key={i} className="flex items-start gap-md pb-md last:pb-0">
+                        <span className={cn('grid place-items-center w-8 h-8 rounded-pill border-2 shrink-0', i < stage ? 'bg-success/15 border-success text-success' : i === stage ? 'bg-primary/10 border-primary text-primary-hover animate-pulse' : 'bg-surface-2 border-hairline-strong text-ink-subtle')}>{i < stage ? <Check size={14} /> : i + 1}</span>
+                        <span className="flex flex-col gap-xxs min-w-0">
+                          <span className={cn('font-sans text-data', i <= stage ? 'text-ink' : 'text-ink-subtle')}>{pick(s.label)}</span>
+                          <span className="font-sans text-caption text-ink-subtle">{pick(s.desc)}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                  <div className="flex flex-wrap items-center gap-xs pt-sm border-t border-hairline">
+                    <button
+                      onClick={() => {
+                        advanceVendorStage(v.id)
+                        if (last) { setSel(v.id); setSubTab('accounts'); flash(`${pick({ en: 'Account activated', ar: 'فُعّل الحساب وأُتيحت صلاحياته' })} · ${pick(v.name)}`) }
+                        else flash(`${pick({ en: 'Stage approved →', ar: 'اعتُمدت المرحلة ←' })} ${pick(onboardingStages[stage + 1].label)}`)
+                      }}
+                      className={buttonClass('primary', 'sm')}
+                    >
+                      <Check size={14} /> {last ? pick({ en: 'Activate & grant permissions', ar: 'تفعيل الحساب وإتاحة الصلاحيات' }) : `${pick({ en: 'Approve', ar: 'اعتماد' })}: ${pick(onboardingStages[stage].label)}`}
+                    </button>
+                    <button onClick={() => { rejectVendor(v.id); flash(`${pick({ en: 'Request rejected', ar: 'رُفض الطلب' })} · ${pick(v.name)}`) }} className="btn btn-sm bg-transparent text-danger border border-danger/40 hover:bg-danger/5"><X size={14} /> {pick({ en: 'Reject request', ar: 'رفض الطلب' })}</button>
+                  </div>
+                </div>
               )
-            })()}
+            })}
           </div>
+
+          {/* invitations sent but not yet registered — the chain starts once the account is created */}
+          {invitations.length > 0 && (
+            <div className="card overflow-hidden">
+              <div className="px-lg py-md bg-surface-2 border-b border-hairline"><h3 className="font-serif text-card-title text-ink">{pick({ en: 'Invitations awaiting registration', ar: 'دعوات بانتظار التسجيل' })}</h3></div>
+              <ul className="divide-y divide-hairline">
+                {invitations.map((v) => (
+                  <li key={v.id} className="flex flex-wrap items-center gap-md px-lg py-md">
+                    <div className="flex-1 min-w-[180px]">
+                      <p className="font-sans text-data text-ink truncate">{pick(v.name)}</p>
+                      <p className="font-sans text-caption text-ink-subtle truncate">{pick(v.type)} · {v.id}{v.email && <span dir="ltr"> · {v.email}</span>}</p>
+                    </div>
+                    <div className="flex items-center gap-xs">
+                      <Pill color="#365766" bg="#e7eef1">{pick({ en: 'Awaiting initial account', ar: 'بانتظار إنشاء الحساب الأولي' })}</Pill>
+                      <button onClick={() => { advanceVendorStage(v.id); flash(`${pick({ en: 'Account created — chain started', ar: 'أُنشئ الحساب — بدأت سلسلة الاعتماد' })} · ${pick(v.name)}`) }} className={buttonClass('secondary', 'sm')}><Check size={14} /> {pick({ en: 'Registered', ar: 'تم التسجيل' })}</button>
+                      <button onClick={() => flash(`${pick({ en: 'Invitation resent to', ar: 'أُعيد إرسال الدعوة إلى' })} ${pick(v.name)}`)} className={buttonClass('secondary', 'sm')}><Send size={14} /> {pick({ en: 'Resend', ar: 'إعادة إرسال' })}</button>
+                      <button onClick={() => { rejectVendor(v.id); flash(`${pick({ en: 'Invitation cancelled', ar: 'أُلغيت الدعوة' })} · ${pick(v.name)}`) }} className="btn btn-sm bg-transparent text-danger border border-danger/40 hover:bg-danger/5"><X size={14} /> {pick({ en: 'Cancel', ar: 'إلغاء' })}</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 

@@ -11,6 +11,7 @@ export interface OwnerVendor {
   limitMinor: number
   status: 'active' | 'pending' | 'invited'
   email?: string
+  stage?: number // index into onboardingStages — the step currently in progress (pending accounts only)
 }
 
 export const ownerVendors: OwnerVendor[] = [
@@ -18,8 +19,9 @@ export const ownerVendors: OwnerVendor[] = [
   { id: 'V-02', name: { en: 'Jeddah Grand Hotel', ar: 'فندق جدة الكبير' }, type: { en: 'Hospitality', ar: 'ضيافة' }, outstandingMinor: 11600000, limitMinor: 30000000, status: 'active' },
   { id: 'V-03', name: { en: 'Al-Dana Markets', ar: 'أسواق الدانة' }, type: { en: 'Retail chain', ar: 'سلسلة تجزئة' }, outstandingMinor: 26400000, limitMinor: 25000000, status: 'active' },
   { id: 'V-04', name: { en: 'Al-Tazaj Restaurants', ar: 'مطاعم الطازج' }, type: { en: 'Restaurants', ar: 'مطاعم' }, outstandingMinor: 4200000, limitMinor: 6000000, status: 'active' },
-  { id: 'V-05', name: { en: 'Rawabi Catering Co.', ar: 'شركة روابي للتموين' }, type: { en: 'Reseller', ar: 'موزّع' }, outstandingMinor: 900000, limitMinor: 5000000, status: 'pending', email: 'accounts@rawabi.sa' },
+  { id: 'V-05', name: { en: 'Rawabi Catering Co.', ar: 'شركة روابي للتموين' }, type: { en: 'Reseller', ar: 'موزّع' }, outstandingMinor: 900000, limitMinor: 5000000, status: 'pending', email: 'accounts@rawabi.sa', stage: 1 },
   { id: 'V-06', name: { en: 'Al-Murjan Sweets', ar: 'حلويات المرجان' }, type: { en: 'Retail chain', ar: 'سلسلة تجزئة' }, outstandingMinor: 0, limitMinor: 0, status: 'invited', email: 'buy@murjan.sa' },
+  { id: 'V-07', name: { en: 'Basmah Gifting Co.', ar: 'شركة بسمة للهدايا' }, type: { en: 'Corporate gifting', ar: 'هدايا شركات' }, outstandingMinor: 0, limitMinor: 0, status: 'pending', email: 'hello@basmah.sa', stage: 3 },
 ]
 
 export type PoPayStatus = 'paid' | 'net' | 'overdue' | 'preparing'
@@ -42,20 +44,13 @@ export const poByVendor: Record<string, VendorPo[]> = {
   'V-05': [{ id: 'PO-8850', date: { en: '06 Jul', ar: '٠٦ يوليو' }, amountMinor: 900000, status: 'preparing' }],
 }
 
-export interface CreditRule { title: Bilingual; detail: Bilingual }
-export const creditRules: CreditRule[] = [
-  { title: { en: 'Limit calculation', ar: 'احتساب الحد' }, detail: { en: '3× average monthly volume, capped by risk rating', ar: '٣× متوسط الحجم الشهري، مقيّدًا بتصنيف المخاطر' } },
-  { title: { en: 'Usage thresholds', ar: 'عتبات الاستخدام' }, detail: { en: 'Alert at 85%, block new orders at 100%', ar: 'تنبيه عند ٨٥٪، إيقاف الطلبات عند ١٠٠٪' } },
-  { title: { en: 'Quarterly review', ar: 'مراجعة ربع سنوية' }, detail: { en: 'Limits re-evaluated against payment history', ar: 'تُراجَع الحدود مقابل سجل السداد' } },
-  { title: { en: 'Escalation to owner', ar: 'التصعيد للمالك' }, detail: { en: 'Increases above ﷼ 200,000 need owner approval', ar: 'الزيادات فوق ٢٠٠٬٠٠٠ ﷼ تتطلب اعتماد المالك' } },
-]
-
-export interface ApprovalStage { label: Bilingual; done: boolean; current?: boolean }
-export const approvalStages: ApprovalStage[] = [
-  { label: { en: 'Account request', ar: 'طلب فتح حساب' }, done: true },
-  { label: { en: 'Document audit', ar: 'تدقيق المستندات' }, done: true },
-  { label: { en: 'Credit evaluation', ar: 'تقييم الائتمان' }, done: true },
-  { label: { en: 'Sales approval', ar: 'اعتماد المبيعات' }, done: false, current: true },
-  { label: { en: 'Owner approval', ar: 'اعتماد المالك' }, done: false },
-  { label: { en: 'Active', ar: 'مفعّل' }, done: false },
+// ── B2B partner registration (SOP 3.2.1): the approval chain every join
+// request walks. Permissions are only granted at the final stage.
+export interface OnboardingStage { label: Bilingual; desc: Bilingual }
+export const onboardingStages: OnboardingStage[] = [
+  { label: { en: 'Initial account — no permissions', ar: 'إنشاء الحساب الأولي بدون صلاحيات' }, desc: { en: 'The partner registers; the account starts with no permissions', ar: 'يسجّل الشريك ويُنشأ حسابه الأولي بدون أي صلاحيات' } },
+  { label: { en: 'Application form', ar: 'تعبئة النموذج' }, desc: { en: 'Business details and documents are submitted', ar: 'تعبئة بيانات المنشأة وإرفاق المستندات' } },
+  { label: { en: 'Meeting', ar: 'الاجتماع' }, desc: { en: 'Introductory meeting and needs assessment', ar: 'اجتماع تعريفي وتقييم الاحتياج' } },
+  { label: { en: 'Contract signing', ar: 'توقيع العقود' }, desc: { en: 'Commercial terms and contracts are signed', ar: 'توقيع الشروط التجارية والعقود' } },
+  { label: { en: 'Permissions enabled', ar: 'إتاحة الصلاحيات للحساب' }, desc: { en: 'The account is activated and granted its permissions', ar: 'تفعيل الحساب وإتاحة صلاحياته وتحديد حده الائتماني' } },
 ]
