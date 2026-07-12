@@ -5,15 +5,18 @@ import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import { accountOrders } from '@/data/business'
+import { megaOrdersSeed, megaAccount } from '@/data/mega'
+import type { Bilingual } from '@/data/types'
 import { useBilling, type BillingFile } from '@/state/BillingContext'
 import { PanelHead, StatCard, Pill } from './_shared'
 
 /* ─────────── Billing desk (Jaz side of the billing process) ───────────
-   The buyer attaches transfer receipts from the business portal; here the Jaz
-   team reviews those receipts and attaches the final tax invoice, which then
-   appears instantly on the buyer's order (shared BillingContext). */
+   Buyers attach transfer receipts from the business and export portals; here
+   the Jaz team reviews those receipts and attaches the final tax invoice,
+   which then appears instantly on the buyer's order (shared BillingContext). */
 
 type BillState = 'awaiting_receipt' | 'awaiting_invoice' | 'complete'
+type BillRow = { no: string; buyer: Bilingual; sub: string; totalMinor: number }
 
 const STATE_META: Record<BillState, { label: { en: string; ar: string }; color: string; bg: string }> = {
   awaiting_receipt: { label: { en: 'Awaiting receipt', ar: 'بانتظار الإيصال' }, color: '#8a6b3f', bg: '#f6edde' },
@@ -25,24 +28,28 @@ export function BillingDesk() {
   const { pick, money, locale } = useLocale()
   const { flash } = useToast()
   const { billingFor, attachTaxInvoice } = useBilling()
-  const [viewReceipt, setViewReceipt] = useState<{ file: BillingFile; orderNo: string } | null>(null)
+  const [viewReceipt, setViewReceipt] = useState<{ file: BillingFile; row: BillRow } | null>(null)
 
-  // Only orders in the billing flow — cancelled/rejected orders have nothing to bill.
-  const rows = accountOrders
-    .filter((o) => o.status !== 'rejected')
-    .map((o) => {
-      const b = billingFor(o.orderNo)
-      const state: BillState = b.taxInvoice ? 'complete' : b.receipts.length > 0 ? 'awaiting_invoice' : 'awaiting_receipt'
-      return { o, b, state }
-    })
+  const fmtDate = (iso: string) => new Date(iso).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-GB', { day: 'numeric', month: 'short' })
+  // Every billable order across portals — B2B business orders and MEGA export
+  // orders. Cancelled/rejected orders have nothing to bill.
+  const billables: BillRow[] = [
+    ...accountOrders.filter((o) => o.status !== 'rejected').map((o) => ({ no: o.orderNo, buyer: o.buyer, sub: `${o.poNumber} · ${fmtDate(o.placedAt)}`, totalMinor: o.totalMinor })),
+    ...megaOrdersSeed.filter((o) => !o.cancelled).map((o) => ({ no: o.id, buyer: megaAccount.legalName, sub: `${pick({ en: 'Export', ar: 'تصدير' })} · ${o.incoterm} · ${pick(o.placedAt)}`, totalMinor: o.valueMinor })),
+  ]
+  const rows = billables.map((o) => {
+    const b = billingFor(o.no)
+    const state: BillState = b.taxInvoice ? 'complete' : b.receipts.length > 0 ? 'awaiting_invoice' : 'awaiting_receipt'
+    return { o, b, state }
+  })
 
   const count = (s: BillState) => rows.filter((r) => r.state === s).length
 
-  const openReceipt = (file: BillingFile, orderNo: string) => {
+  const openReceipt = (file: BillingFile, row: BillRow) => {
     // Receipts uploaded in-session carry a real object URL — open the actual file.
     // Seeded receipts are name-only, so show the structured preview instead.
     if (file.url) window.open(file.url, '_blank', 'noopener')
-    else setViewReceipt({ file, orderNo })
+    else setViewReceipt({ file, row })
   }
 
   const onAttachInvoice = (orderNo: string, f: File) => {
@@ -54,7 +61,7 @@ export function BillingDesk() {
     <div className="flex flex-col gap-lg">
       <PanelHead
         title={pick({ en: 'Payments & invoices', ar: 'السداد والفواتير' })}
-        subtitle={pick({ en: 'Business-portal orders · review buyer receipts, then attach the tax invoice', ar: 'طلبات بوابة الأعمال · راجع إيصالات العملاء ثم أرفق الفاتورة الضريبية' })}
+        subtitle={pick({ en: 'Business & export orders · review buyer receipts, then attach the tax invoice', ar: 'طلبات الأعمال والتصدير · راجع إيصالات العملاء ثم أرفق الفاتورة الضريبية' })}
       />
 
       <div className="grid grid-cols-3 gap-sm">
@@ -79,12 +86,10 @@ export function BillingDesk() {
               {rows.map(({ o, b, state }) => {
                 const sm = STATE_META[state]
                 return (
-                  <tr key={o.orderNo} className="border-b border-hairline last:border-0 align-top">
+                  <tr key={o.no} className="border-b border-hairline last:border-0 align-top">
                     <td className="px-lg py-md">
-                      <span className="font-sans text-data text-ink tabular-nums">{o.orderNo}</span>
-                      <p className="font-sans text-caption text-ink-subtle truncate max-w-[200px]">
-                        {pick(o.buyer)} · {o.poNumber} · {new Date(o.placedAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-GB', { day: 'numeric', month: 'short' })}
-                      </p>
+                      <span className="font-sans text-data text-ink tabular-nums">{o.no}</span>
+                      <p className="font-sans text-caption text-ink-subtle truncate max-w-[200px]">{pick(o.buyer)} · {o.sub}</p>
                     </td>
                     <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums">{money(o.totalMinor)}</td>
                     <td className="px-lg py-md">
@@ -93,7 +98,7 @@ export function BillingDesk() {
                       ) : (
                         <div className="flex flex-col gap-xs">
                           {b.receipts.map((r, i) => (
-                            <button key={i} onClick={() => openReceipt(r, o.orderNo)}
+                            <button key={i} onClick={() => openReceipt(r, o)}
                               className="inline-flex items-center gap-xs self-start rounded-pill border border-hairline-strong bg-surface-1 px-3 py-1 font-sans text-caption text-ink hover:border-ink/40 transition-colors">
                               <Eye size={12} className="text-ink-subtle" /> <span dir="ltr">{r.name}</span>
                             </button>
@@ -116,13 +121,13 @@ export function BillingDesk() {
                           <label title={pick({ en: 'Replace', ar: 'استبدال' })}
                             className="grid place-items-center w-7 h-7 rounded-md border border-hairline-strong text-ink-muted hover:text-ink hover:border-ink/40 transition-colors cursor-pointer">
                             <RefreshCw size={13} />
-                            <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onAttachInvoice(o.orderNo, f); e.target.value = '' }} />
+                            <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onAttachInvoice(o.no, f); e.target.value = '' }} />
                           </label>
                         </div>
                       ) : (
                         <label className={buttonClass('secondary', 'sm', 'cursor-pointer')}>
                           <Upload size={14} /> {pick({ en: 'Attach tax invoice', ar: 'إرفاق الفاتورة الضريبية' })}
-                          <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onAttachInvoice(o.orderNo, f); e.target.value = '' }} />
+                          <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onAttachInvoice(o.no, f); e.target.value = '' }} />
                         </label>
                       )}
                     </td>
@@ -144,13 +149,12 @@ export function BillingDesk() {
 }
 
 /** Structured preview for seeded receipts that have no underlying file. */
-function ReceiptPreviewModal({ item, onClose }: { item: { file: BillingFile; orderNo: string } | null; onClose: () => void }) {
-  const { pick, money, locale } = useLocale()
-  const order = item ? accountOrders.find((o) => o.orderNo === item.orderNo) : null
+function ReceiptPreviewModal({ item, onClose }: { item: { file: BillingFile; row: BillRow } | null; onClose: () => void }) {
+  const { pick, money } = useLocale()
   return (
     <Modal open={!!item} onClose={onClose} size="sm" eyebrow={pick({ en: 'Payment receipt', ar: 'إيصال سداد' })} title={item?.file.name ?? ''}
       footer={<button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Close', ar: 'إغلاق' })}</button>}>
-      {item && order && (
+      {item && (
         <div className="flex flex-col gap-md">
           <div className="rounded-lg border border-hairline bg-surface-2 p-lg flex flex-col items-center gap-sm text-center">
             <span className="grid place-items-center w-12 h-12 rounded-md bg-primary/10 text-primary-hover"><FileText size={22} /></span>
@@ -159,11 +163,10 @@ function ReceiptPreviewModal({ item, onClose }: { item: { file: BillingFile; ord
           </div>
           <div className="rounded-lg border border-hairline divide-y divide-hairline">
             {[
-              { k: pick({ en: 'Order', ar: 'الطلب' }), v: order.orderNo },
-              { k: pick({ en: 'Buyer', ar: 'العميل' }), v: pick(order.buyer) },
-              { k: pick({ en: 'PO number', ar: 'أمر الشراء' }), v: order.poNumber },
-              { k: pick({ en: 'Order total', ar: 'إجمالي الطلب' }), v: money(order.totalMinor) },
-              { k: pick({ en: 'Order date', ar: 'تاريخ الطلب' }), v: new Date(order.placedAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) },
+              { k: pick({ en: 'Order', ar: 'الطلب' }), v: item.row.no },
+              { k: pick({ en: 'Buyer', ar: 'العميل' }), v: pick(item.row.buyer) },
+              { k: pick({ en: 'Reference', ar: 'المرجع' }), v: item.row.sub },
+              { k: pick({ en: 'Order total', ar: 'إجمالي الطلب' }), v: money(item.row.totalMinor) },
             ].map((r, i) => (
               <div key={i} className="flex items-center justify-between px-md py-2">
                 <span className="font-sans text-caption text-ink-subtle">{r.k}</span>
