@@ -16,7 +16,7 @@ export interface LoyaltyConfig {
 }
 import { wasteLog as wasteSeed, finGrossMinor, type WasteEntry, type ExpenseEntry } from '@/data/ownerFinance'
 import { contracts as contractsSeed, b2cCatalog, stdCatalog, catTree, storeProductsSeed, type Contract, type CatNode, type StoreProduct } from '@/data/ownerCatalog'
-import { ownerVendors as ownerVendorsSeed, onboardingStages, type OwnerVendor } from '@/data/ownerVendors'
+import { ownerVendors as ownerVendorsSeed, onboardingStages, vendorDocsSeed, type OwnerVendor, type VendorDocKind } from '@/data/ownerVendors'
 import type { Employee, TeamPermission } from '@/data/ownerTeam'
 import { useTeam } from '@/state/TeamContext'
 
@@ -128,6 +128,9 @@ interface OwnerStateValue {
   rejectVendor: (id: string) => void
   inviteVendor: (v: { name: Bilingual; type: Bilingual; email: string }) => string
   recordVendorPayment: (id: string, amountMinor: number) => void
+  // vendor profile documents: signed contract + verification papers
+  vendorDocs: Record<string, Partial<Record<VendorDocKind, string>>>
+  attachVendorDoc: (id: string, kind: VendorDocKind, fileName: string) => void
   // catalog overlay (persisted across navigation)
   catalog: Catalog
   setCatalogPrice: (id: string, minor: number) => void
@@ -470,6 +473,8 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     return id
   }, [])
   const recordVendorPayment = useCallback((id: string, amountMinor: number) => setVendors((prev) => prev.map((v) => (v.id === id ? { ...v, outstandingMinor: Math.max(0, v.outstandingMinor - amountMinor) } : v))), [])
+  const [vendorDocs, setVendorDocs] = useState<Record<string, Partial<Record<VendorDocKind, string>>>>(() => clone(vendorDocsSeed))
+  const attachVendorDoc = useCallback((id: string, kind: VendorDocKind, fileName: string) => setVendorDocs((prev) => ({ ...prev, [id]: { ...prev[id], [kind]: fileName } })), [])
 
   /* ── catalog overlay ── */
   const setCatalogPrice = useCallback((id: string, minor: number) => setCatalog((p) => ({ ...p, price: { ...p.price, [id]: minor } })), [])
@@ -527,11 +532,12 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     creditLimits, setCreditLimit,
     contracts, renewContract,
     vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment,
+    vendorDocs, attachVendorDoc,
     catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes,
     storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible,
     dismissedExpiry, dismissExpiry,
     cocoaDelta, setCocoa,
-  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, stockTakeReports, addStockTakeReport, movements, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor, expenses, recordExpense, opexTotalMinor, customers, rewardCustomer, loyalty, setLoyalty, employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive, creditLimits, setCreditLimit, contracts, renewContract, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, dismissedExpiry, dismissExpiry, cocoaDelta])
+  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, stockTakeReports, addStockTakeReport, movements, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor, expenses, recordExpense, opexTotalMinor, customers, rewardCustomer, loyalty, setLoyalty, employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive, creditLimits, setCreditLimit, contracts, renewContract, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment, vendorDocs, attachVendorDoc, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, dismissedExpiry, dismissExpiry, cocoaDelta])
 
   return <OwnerStateContext.Provider value={value}>{children}</OwnerStateContext.Provider>
 }

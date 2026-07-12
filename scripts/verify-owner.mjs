@@ -27,7 +27,7 @@ const OWNER_EN = [
   ['owner_products', ['Production', 'buildable', 'Dark 70% bar']],
   ['owner_customers', ['Customers &amp; loyalty', 'Loyalty members', 'Najd Hospitality Group']],
   ['owner_catalog', ['Products', 'Dark 70% bar', 'New product']],
-  ['owner_vendors', ['Vendors &amp; credit', 'Outstanding', 'Credit limit']],
+  ['owner_vendors', ['Vendors &amp; credit', 'Outstanding', 'Payment']],
   ['owner_export', ['Export clients', 'EX-3081', 'Dubai']],
 ]
 const OWNER_AR = [
