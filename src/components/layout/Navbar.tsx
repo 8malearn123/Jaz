@@ -26,6 +26,8 @@ export function Navbar() {
   const [open, setOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const location = useLocation()
+  // Homepage hero is full-bleed artwork; float the header over it (light text) until scrolled.
+  const overHero = location.pathname === '/' && !scrolled
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12)
@@ -48,7 +50,7 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-50">
       {/* slim announcement strip + role switch */}
-      <div className="bg-chocolate text-ink-on-dark-muted">
+      <div className={cn('transition-colors duration-300', overHero ? 'bg-transparent' : 'bg-chocolate', 'text-ink-on-dark-muted')}>
         <div className="container-jaz flex items-center justify-between gap-md h-10 overflow-hidden">
           <p className="hidden sm:block font-sans text-caption tracking-[0.1em] uppercase truncate">
             {locale === 'ar'
@@ -69,21 +71,25 @@ export function Navbar() {
       <div
         className={cn(
           'transition-colors duration-300 border-b',
-          scrolled ? 'bg-canvas/85 backdrop-blur-md border-hairline' : 'bg-canvas border-transparent',
+          overHero
+            ? 'bg-transparent border-transparent'
+            : scrolled
+              ? 'bg-canvas/85 backdrop-blur-md border-hairline'
+              : 'bg-canvas border-transparent',
         )}
       >
         <nav className="container-jaz flex items-center justify-between gap-md h-[72px]">
           {/* inline-start: menu (mobile) + wordmark */}
           <div className="flex items-center gap-sm">
             <button
-              className="lg:hidden grid place-items-center w-10 h-10 -ms-2 text-ink"
+              className={cn('lg:hidden grid place-items-center w-10 h-10 -ms-2', overHero ? 'text-ink-on-dark' : 'text-ink')}
               onClick={() => setOpen(true)}
               aria-label={t('nav.menu')}
             >
               <Menu size={22} />
             </button>
             <Link to="/" className="flex items-center" aria-label="JAZ home">
-              <Wordmark tone="ink" size="md" />
+              <Wordmark tone={overHero ? 'on-dark' : 'ink'} size="md" />
             </Link>
           </div>
 
@@ -96,7 +102,13 @@ export function Navbar() {
                   className={({ isActive }) =>
                     cn(
                       'eyebrow transition-colors duration-200 pb-1 border-b-2',
-                      isActive ? 'text-ink border-primary' : 'text-ink-muted border-transparent hover:text-ink',
+                      isActive
+                        ? overHero
+                          ? 'text-ink-on-dark border-primary-bright'
+                          : 'text-ink border-primary'
+                        : overHero
+                          ? 'text-ink-on-dark-muted border-transparent hover:text-ink-on-dark'
+                          : 'text-ink-muted border-transparent hover:text-ink',
                     )
                   }
                 >
@@ -110,17 +122,17 @@ export function Navbar() {
           <div className="flex items-center gap-xxs sm:gap-xs">
             <button
               onClick={toggleLocale}
-              className="hidden sm:inline-flex items-center gap-xxs h-10 px-3 font-sans text-caption uppercase tracking-[0.1em] text-ink-muted hover:text-ink transition-colors rounded-md"
+              className={cn('hidden sm:inline-flex items-center gap-xxs h-10 px-3 font-sans text-caption uppercase tracking-[0.1em] transition-colors rounded-md', overHero ? 'text-ink-on-dark-muted hover:text-ink-on-dark' : 'text-ink-muted hover:text-ink')}
               aria-label="Toggle language"
             >
               <Globe size={15} />
               {t('lang.toggle')}
             </button>
-            <button onClick={() => setSearchOpen(true)} className="grid place-items-center w-10 h-10 text-ink-muted hover:text-ink transition-colors" aria-label={t('nav.search')}>
+            <button onClick={() => setSearchOpen(true)} className={cn('grid place-items-center w-10 h-10 transition-colors', overHero ? 'text-ink-on-dark-muted hover:text-ink-on-dark' : 'text-ink-muted hover:text-ink')} aria-label={t('nav.search')}>
               <Search size={19} />
             </button>
-            <AccountMenu />
-            <Link to="/cart" className="relative grid place-items-center w-10 h-10 text-ink hover:text-primary-hover transition-colors" aria-label={t('nav.cart')}>
+            <AccountMenu overHero={overHero} />
+            <Link to="/cart" className={cn('relative grid place-items-center w-10 h-10 transition-colors', overHero ? 'text-ink-on-dark hover:text-primary-bright' : 'text-ink hover:text-primary-hover')} aria-label={t('nav.cart')}>
               <ShoppingBag size={20} />
               {count > 0 && (
                 <span

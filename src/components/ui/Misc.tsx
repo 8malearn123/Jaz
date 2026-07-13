@@ -32,10 +32,13 @@ export function Stars({ value, size = 14, className }: { value: number; size?: n
 export function StatusBadge({
   children,
   variant = 'neutral',
+  solid = false,
   className,
 }: {
   children: ReactNode
   variant?: 'neutral' | 'gold' | 'success' | 'limited' | 'danger'
+  /** Opaque frosted treatment — use when the badge sits on top of photography. */
+  solid?: boolean
   className?: string
 }) {
   const styles: Record<string, string> = {
@@ -45,7 +48,25 @@ export function StatusBadge({
     limited: 'bg-flavor-rose/12 text-flavor-rose border border-flavor-rose/30',
     danger: 'bg-danger/10 text-danger border border-danger/30',
   }
-  return <span className={cn('badge font-sans uppercase tracking-[0.08em]', styles[variant], className)}>{children}</span>
+  const solidStyles: Record<string, string> = {
+    neutral: 'bg-surface-1/95 text-ink shadow-soft ring-1 ring-hairline',
+    gold: 'bg-surface-1/95 text-primary-hover shadow-soft ring-1 ring-primary/25',
+    success: 'bg-surface-1/95 text-success shadow-soft ring-1 ring-success/25',
+    limited: 'bg-surface-1/95 text-flavor-rose shadow-soft ring-1 ring-flavor-rose/25',
+    danger: 'bg-surface-1/95 text-danger shadow-soft ring-1 ring-danger/25',
+  }
+  return (
+    <span
+      className={cn(
+        'badge font-sans uppercase tracking-[0.08em]',
+        solid ? 'backdrop-blur-sm font-medium' : '',
+        (solid ? solidStyles : styles)[variant],
+        className,
+      )}
+    >
+      {children}
+    </span>
+  )
 }
 
 /** Oversized gold quotation glyph used to open pull quotes. */

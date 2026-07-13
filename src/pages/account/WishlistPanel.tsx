@@ -52,7 +52,7 @@ function FavouritesSection() {
             <div key={w.variantId} className="card overflow-hidden flex flex-col">
               <div className="relative aspect-square" style={{ backgroundColor: tint(f.accent, 14) }}>
                 <ProductArt flavorId={product.flavorId} kind={product.type === 'gift_box' ? 'box' : 'bar'} branded={false} />
-                {soldOut && <span className="absolute top-sm" style={{ insetInlineStart: 10 }}><StatusBadge variant="danger">{t('wishlist.soldOut')}</StatusBadge></span>}
+                {soldOut && <span className="absolute top-sm" style={{ insetInlineStart: 10 }}><StatusBadge variant="danger" solid>{t('wishlist.soldOut')}</StatusBadge></span>}
               </div>
               <div className="p-md flex flex-col gap-xs flex-1">
                 <p className="font-sans text-data text-ink leading-tight">{pick(product.title)}</p>
