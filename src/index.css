@@ -42,6 +42,7 @@
 
   html {
     scroll-behavior: smooth;
+    scrollbar-width: none; /* Firefox — hide the main page scrollbar */
   }
 
   body {
@@ -86,6 +87,12 @@
   }
   ::-webkit-scrollbar-thumb:hover {
     background: #b08a57;
+  }
+
+  /* Hide the main page scrollbar (Chrome/Safari/Edge) — the page still scrolls.
+     Inner scroll containers keep their styled scrollbar. */
+  html::-webkit-scrollbar {
+    display: none;
   }
 }
 
