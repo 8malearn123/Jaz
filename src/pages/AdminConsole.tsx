@@ -34,7 +34,7 @@ import { OwnerSupply } from './admin/owner/OwnerSupply'
 import { OwnerCustomers } from './admin/owner/OwnerCustomers'
 import { OwnerTeam } from './admin/owner/OwnerTeam'
 import { OwnerCatalog } from './admin/owner/OwnerCatalog'
-import { OwnerVendors } from './admin/owner/OwnerVendors'
+import { OwnerVendors, type VendorView } from './admin/owner/OwnerVendors'
 import { OwnerBrand } from './admin/owner/OwnerBrand'
 
 type Section =
@@ -78,9 +78,16 @@ const SUPPLY_VIEWS: SubView[] = [
 ]
 // Products & Catalog both pivot on the three sales channels — reuse the shared channel labels.
 const CHANNEL_VIEWS: SubView[] = (['b2c', 'b2b', 'mega'] as ProdChannel[]).map((c) => ({ id: c, label: prodChannelMeta[c].label }))
+// Vendors nests its areas in the sidebar, same pattern as Products.
+const VENDOR_VIEWS: SubView[] = [
+  { id: 'accounts', label: { en: 'Accounts', ar: 'الحسابات' } },
+  { id: 'collection', label: { en: 'Collection', ar: 'التحصيل' } },
+  { id: 'credit', label: { en: 'Join requests', ar: 'طلبات الانضمام' } },
+]
 const SUB_NAVS: Partial<Record<Section, SubView[]>> = {
   owner_supply: SUPPLY_VIEWS,
   owner_catalog: CHANNEL_VIEWS,
+  owner_vendors: VENDOR_VIEWS,
 }
 
 // Which owner-console section each grantable team permission opens up.
@@ -189,7 +196,7 @@ export function AdminConsole() {
         {active === 'owner_customers' && <OwnerCustomers />}
         {active === 'owner_team' && <OwnerTeam />}
         {active === 'owner_catalog' && <OwnerCatalog view={(sub ?? 'b2c') as ProdChannel} />}
-        {active === 'owner_vendors' && <OwnerVendors />}
+        {active === 'owner_vendors' && <OwnerVendors view={(sub ?? 'accounts') as VendorView} />}
         {active === 'owner_brand' && <OwnerBrand />}
       </AccountShell>
       </OwnerStateProvider>
