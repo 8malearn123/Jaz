@@ -91,8 +91,8 @@ export const dict: Dict = {
     ar: 'افتح حساب شركة لتحصل على تسعيرٍ متدرّج، وحدود ائتمان منضبطة، وفوترة معيارية معتمدة، وإهداءٍ بالجملة يتفرّع لمئات المستفيدين — لكلٍّ بطاقةٌ شخصية بلغتين.',
   },
   'home.corporate.cta': { en: 'Open a business account', ar: 'افتح حساب أعمال' },
-  'home.newsletter.eyebrow': { en: 'The maison letter', ar: 'رسالة المنزل' },
-  'home.newsletter.title': { en: 'Letters from the maison', ar: 'رسائل من المنزل' },
+  'home.newsletter.eyebrow': { en: 'Newsletter', ar: 'النشرة البريدية' },
+  'home.newsletter.title': { en: 'Be the first to know', ar: 'كن أول من يعرف' },
   'home.newsletter.body': {
     en: 'New harvests, limited art-cards, and seasonal boxes — first to your inbox.',
     ar: 'حصادٌ جديد، وبطاقاتٌ فنية محدودة، وعلبٌ موسمية — تصلك أولًا.',
