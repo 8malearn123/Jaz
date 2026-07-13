@@ -14,7 +14,6 @@ import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/Confirm'
 import { cn } from '@/lib/cn'
 import { orderStatusVariant, OrderJourney, Row } from './shared'
-import { DeliverySchedule } from './DeliveryPanel'
 import { openPrintWindow } from '@/lib/printWindow'
 import { useBilling } from '@/state/BillingContext'
 
@@ -31,8 +30,7 @@ export function OrgOrdersPanel() {
   const cancelOrder = (orderNo: string) => setOrders((prev) => prev.map((o) => (o.orderNo === orderNo ? { ...o, cancelled: true } : o)))
   return (
     <div className="flex flex-col gap-lg">
-      {/* delivery tracking lives at the top of Orders (the Delivery tab was folded in here) */}
-      <DeliverySchedule />
+      {/* the scheduled-deliveries board lives in Overview now */}
       <MyOrders orders={orders} onView={(o) => setViewNo(o.orderNo)} />
       <OrderDetailModal order={viewOrder} open={!!viewOrder} onClose={() => setViewNo(null)} onCancel={cancelOrder} />
     </div>
