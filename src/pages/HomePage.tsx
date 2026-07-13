@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, ArrowUpRight, Check, Leaf, Palette } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ArrowUpRight, Check, Gift, Leaf, Palette } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { products } from '@/data/products'
 import { collections } from '@/data/collections'
@@ -598,39 +598,68 @@ function ReviewCard({ review, product }: { review: ReviewProduct['reviews'][numb
 function NewsletterSection() {
   const { t, pick } = useLocale()
   const [sent, setSent] = useState(false)
+  const benefits = [
+    { icon: Leaf, label: { en: 'New harvests first', ar: 'حصادٌ جديد أولًا' } },
+    { icon: Palette, label: { en: 'Limited art-cards', ar: 'بطاقاتٌ فنية محدودة' } },
+    { icon: Gift, label: { en: 'Seasonal gift boxes', ar: 'علبُ هدايا موسمية' } },
+  ]
   return (
     <section className="container-jaz pt-section">
       <Reveal>
-        <div className="relative rounded-xxl overflow-hidden bg-surface-1 border border-hairline px-lg py-xxl sm:px-xxl text-center">
-          <div className="absolute inset-x-0 top-0">
-            <PatternBand motif="jasmine" height={72} opacity={0.1} />
+        <div className="relative overflow-hidden rounded-xxl bg-canvas-dark text-ink-on-dark shadow-soft-lg">
+          {/* decoration */}
+          <div className="absolute inset-x-0 top-0 opacity-70">
+            <PatternBand motif="jasmine" height={88} opacity={0.12} tone="on-dark" />
           </div>
-          <div className="relative max-w-xl mx-auto flex flex-col items-center gap-md">
-            <MotifGlyph motif="jasmine" size={32} />
-            <h2 className="font-serif text-display-md text-ink text-balance">{t('home.newsletter.title')}</h2>
-            <p className="text-body text-ink-muted">{t('home.newsletter.body')}</p>
-            {sent ? (
-              <div className="mt-sm inline-flex items-center gap-sm rounded-pill bg-success/10 border border-success/30 px-5 py-3 animate-scale-in">
-                <Check size={18} className="text-success" />
-                <span className="font-serif text-body text-ink">{pick({ en: 'You are on the list — welcome to the maison.', ar: 'أنت على القائمة — أهلًا بك في المنزل.' })}</span>
-              </div>
-            ) : (
-              <form
-                onSubmit={(e) => { e.preventDefault(); setSent(true) }}
-                className="mt-sm w-full flex flex-col sm:flex-row gap-sm max-w-md mx-auto"
-              >
-                <input
-                  type="email"
-                  required
-                  placeholder={t('home.newsletter.placeholder')}
-                  className="input flex-1 text-center sm:text-start"
-                  aria-label={t('home.newsletter.placeholder')}
-                />
-                <button type="submit" className={buttonClass('primary')}>
-                  {t('home.newsletter.cta')}
-                </button>
-              </form>
-            )}
+          <div className="absolute inset-0" style={{ background: 'radial-gradient(90% 85% at 88% 8%, rgba(176,138,87,0.20), transparent 55%)' }} />
+
+          <div className="relative grid lg:grid-cols-[1.1fr_0.9fr] gap-xl items-center p-xl sm:p-xxl">
+            {/* editorial */}
+            <div className="flex flex-col gap-md">
+              <MotifGlyph motif="jasmine" size={30} className="text-primary-bright" />
+              <Eyebrow tone="on-dark">{t('home.newsletter.eyebrow')}</Eyebrow>
+              <h2 className="font-serif text-display-md text-ink-on-dark text-balance leading-tight">{t('home.newsletter.title')}</h2>
+              <p className="text-body text-ink-on-dark-muted max-w-prose">{t('home.newsletter.body')}</p>
+              <ul className="flex flex-wrap gap-md mt-xs">
+                {benefits.map((b) => (
+                  <li key={b.label.en} className="inline-flex items-center gap-xs">
+                    <span className="grid place-items-center w-8 h-8 rounded-pill bg-primary/15 text-primary-bright shrink-0">
+                      <b.icon size={15} />
+                    </span>
+                    <span className="font-sans text-caption text-ink-on-dark-muted">{pick(b.label)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* form panel */}
+            <div className="rounded-xl border border-hairline-dark bg-surface-dark-1/70 p-lg sm:p-xl">
+              {sent ? (
+                <div className="flex items-center gap-sm rounded-lg bg-primary/12 border border-primary/25 px-4 py-4 animate-scale-in">
+                  <span className="grid place-items-center w-9 h-9 rounded-pill bg-primary text-on-primary shrink-0">
+                    <Check size={18} />
+                  </span>
+                  <span className="font-serif text-body text-ink-on-dark">{pick({ en: 'You are on the list — welcome to the maison.', ar: 'أنت على القائمة — أهلًا بك في المنزل.' })}</span>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-sm">
+                  <p className="font-serif text-card-title text-ink-on-dark">{pick({ en: 'Get the letter', ar: 'استلم الرسالة' })}</p>
+                  <form onSubmit={(e) => { e.preventDefault(); setSent(true) }} className="flex flex-col sm:flex-row gap-sm">
+                    <input
+                      type="email"
+                      required
+                      placeholder={t('home.newsletter.placeholder')}
+                      className="input flex-1 bg-surface-dark-1 border-hairline-dark text-ink-on-dark placeholder:text-ink-on-dark-muted/50 focus:border-primary"
+                      aria-label={t('home.newsletter.placeholder')}
+                    />
+                    <button type="submit" className={buttonClass('primary')}>
+                      {t('home.newsletter.cta')}
+                    </button>
+                  </form>
+                  <span className="font-sans text-caption text-ink-on-dark-muted/80">{pick({ en: 'No spam — just the maison letter. Unsubscribe anytime.', ar: 'بلا إزعاج — رسالة المنزل فقط. يمكنك إلغاء الاشتراك متى شئت.' })}</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </Reveal>
