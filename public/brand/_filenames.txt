@@ -1,0 +1,20 @@
+JAZ — brand logo (wired)
+========================
+
+The real JAZ logo now renders EVERYWHERE the wordmark appears (header, mobile
+menu, footer, auth, invoices) via src/components/brand/Wordmark.tsx. The owner
+"Identity & appearance" upload (BrandContext.logoUrl) still overrides it live.
+
+Files here (transparent PNG, trimmed tight, ~420px tall):
+  logo-brown.png   ← used on LIGHT backgrounds  (tone "ink")   — headers, mobile menu
+  logo-white.png   ← used on DARK backgrounds   (tone "on-dark") — over the hero, footer
+  logo-gold.png    ← used for the gold tone     (tone "gold")   — invoices / letterhead
+  logo-black.png   ┐
+  logo-blue.png    ├ extra colourways, available if you want to switch
+  logo-green.png   ┘
+
+To change which colourway maps to a tone: edit `defaultLogo` in Wordmark.tsx.
+Originals (full-res, untrimmed) are backed up outside the repo.
+
+Note: the logo is a Latin lockup ("JAZ / Chocolate"); it's used for both languages.
+If you have an Arabic lockup, drop logo-ar-*.png and ask Claude to swap it by language.

@@ -1,0 +1,39 @@
+JAZ — hero artwork drop folder
+==============================
+
+Full-bleed artist paintings for the homepage hero (they sit behind the header +
+the hero text/CTA). Each artwork needs TWO versions so the text always lands in
+open space — because Arabic flips the copy to the opposite side:
+
+  <name>-ltr.jpg   → English: SUBJECT on the RIGHT, calm/open space on the LEFT
+                     (text + CTA overlay on the LEFT)   ← the example you sent
+  <name>-rtl.jpg   → Arabic:  SUBJECT on the LEFT,  calm/open space on the RIGHT
+                     (text + CTA overlay on the RIGHT)  ← mirror of the LTR one
+
+── Start with ONE pair, named exactly ──────────────────────────────────
+  hero-ltr.jpg
+  hero-rtl.jpg
+
+── Want a rotating set? add more numbered pairs ─────────────────────────
+  hero-2-ltr.jpg / hero-2-rtl.jpg
+  hero-3-ltr.jpg / hero-3-rtl.jpg
+  ...
+
+Specs
+-----
+- Format : .jpg  (or .png / .webp — just tell Claude if not .jpg)
+- Size   : ~2400px wide, landscape (roughly 2:1). Claude will optimize (they'll be big).
+- Safe zone: keep the subject within ~45% of one side; leave the other ~55%
+  calmer / lighter so the overlaid headline + button stay readable.
+- Claude adds a soft gradient scrim on the text side for guaranteed legibility.
+
+The hero AUTO-LOOPS every pair it finds, in number order — just drop a new pair
+(e.g. hero-4-ltr.jpg / hero-4-rtl.jpg) and it joins the crossfade loop on reload.
+No code change needed. Keep the numbering sequential (no gaps).
+
+Each pair:
+  • swaps LTR ⇄ RTL automatically by language
+  • crossfades every ~6s with a slow ken-burns zoom (static for reduced-motion)
+  • sits behind the transparent floating header, copy in the open side
+
+Tip: convert big PNGs to JPEG (Claude does this) to keep the hero light.

@@ -51,21 +51,31 @@ export const dict: Dict = {
 
   // ── Home ───────────────────────────────────────────────
   'home.hero.eyebrow': { en: 'Jazan-rooted · Saudi luxury chocolate', ar: 'من جذور جازان · شوكولاتة سعودية فاخرة' },
-  'home.hero.title': { en: 'A taste of the south,\nrefined into art.', ar: 'نكهةٌ من الجنوب،\nمصاغةٌ كالفن.' },
+  'home.hero.title': { en: 'A taste of the south,\nrefined into art.', ar: 'نكهة من الجنوب،\nمصاغة كالفن.' },
   'home.hero.body': {
     en: 'Single-origin intentions, painterly packaging, and flavors drawn from the Jazan harvest — jasmine, rose, lavender, papaya. Crafted in Abu Arish, gifted across the Kingdom.',
     ar: 'نيّةٌ صافية من منشأٍ واحد، وتغليفٌ كاللوحة، ونكهاتٌ من حصاد جازان — الفُل، الورد، الخزامى، الببايا. تُصنع في أبو عريش، وتُهدى في أنحاء المملكة.',
   },
+  'home.hero.reviews': { en: 'guest reviews across the Kingdom', ar: 'تقييمًا من عملائنا في المملكة' },
   'home.marquee': {
     en: 'Cold-chain delivery Kingdom-wide · ZATCA e-invoicing · Corporate gifting at scale · Bilingual concierge',
     ar: 'توصيل بسلسلة تبريد في كل المملكة · فوترة إلكترونية معتمدة من هيئة الزكاة · إهداء مؤسسي بالجملة · كونسيرج بلغتين',
   },
   'home.flavors.eyebrow': { en: 'The Flavor Library', ar: 'مكتبة النكهات' },
-  'home.flavors.title': { en: 'Five notes of Jazan', ar: 'خمس نفحات من جازان' },
+  'home.flavors.title': { en: 'Twelve notes of Jazan', ar: 'اثنتا عشرة نفحة من جازان' },
   'home.flavors.body': {
-    en: 'Each bar is a single, confident idea — milk chocolate married to one botanical from the southern farms.',
-    ar: 'كل لوح فكرةٌ واحدة واثقة — شوكولاتة بالحليب تتزاوج مع نبتةٍ واحدة من مزارع الجنوب.',
+    en: 'From single-origin dark to milk lifted with jasmine, rose, coffee, and sun-dried fruit — each bar is one confident idea drawn from the southern harvest.',
+    ar: 'من الداكنة أحادية المصدر إلى الحليب المطعّم بالفُل والورد والبن والفاكهة المجفّفة بالشمس — كل لوحٍ فكرةٌ واحدة واثقة من حصاد الجنوب.',
   },
+  'home.flavors.railTitle': { en: 'The full library', ar: 'المكتبة كاملة' },
+  'home.art.eyebrow': { en: 'Art on every wrapper', ar: 'فنٌّ على كل غلاف' },
+  'home.art.title': { en: 'Every bar is a small\ngallery from Jazan', ar: 'كل لوحٍ معرضٌ صغير\nمن جازان' },
+  'home.art.body': {
+    en: 'We commission Jazan artists to paint the region — its harvests, crafts, and coastline — then print each original on the wrapper it inspired. A bar to taste; an artwork to keep.',
+    ar: 'نكلّف فنّاني جازان برسم المنطقة — حصادها وحِرَفها وساحلها — ثم نطبع كل عملٍ أصلي على الغلاف الذي ألهمه. لوحٌ يُتذوَّق، وعملٌ فنيٌّ يُقتنى.',
+  },
+  'home.art.by': { en: 'Artwork by', ar: 'بريشة' },
+  'home.art.cta': { en: 'Shop the artist series', ar: 'تسوّق سلسلة الفنانين' },
   'home.collections.eyebrow': { en: 'Curated Collections', ar: 'مجموعات منتقاة' },
   'home.collections.title': { en: 'Boxed, ribboned, ready to give', ar: 'معبّأة، مزيّنة، جاهزة للإهداء' },
   'home.story.eyebrow': { en: 'Our Heritage', ar: 'إرثنا' },
@@ -88,6 +98,8 @@ export const dict: Dict = {
   },
   'home.newsletter.placeholder': { en: 'Your email address', ar: 'بريدك الإلكتروني' },
   'home.newsletter.cta': { en: 'Subscribe', ar: 'اشترك' },
+  'home.reviews.eyebrow': { en: 'Loved by guests', ar: 'محبوبةٌ لدى العملاء' },
+  'home.reviews.title': { en: 'Words from our table', ar: 'كلماتٌ من مائدتنا' },
 
   // ── Shop ───────────────────────────────────────────────
   'shop.title': { en: 'The Chocolate Library', ar: 'مكتبة الشوكولاتة' },

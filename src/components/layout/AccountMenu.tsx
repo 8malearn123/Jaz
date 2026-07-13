@@ -7,7 +7,7 @@ import { buttonClass } from '@/components/ui/Button'
 import { roleIcons } from '@/components/roles/roleIcons'
 import { cn } from '@/lib/cn'
 
-export function AccountMenu() {
+export function AccountMenu({ overHero = false }: { overHero?: boolean }) {
   const { persona, signedIn, signOut, isBusiness, isStaff, isPrivileged } = useChannel()
   const { t, pick } = useLocale()
   const navigate = useNavigate()
@@ -35,7 +35,10 @@ export function AccountMenu() {
     navigate('/')
   }
 
-  const accent = signedIn && (isStaff || isBusiness) ? 'text-primary-hover' : 'text-ink-muted hover:text-ink'
+  const accent =
+    signedIn && (isStaff || isBusiness)
+      ? overHero ? 'text-primary-bright' : 'text-primary-hover'
+      : overHero ? 'text-ink-on-dark-muted hover:text-ink-on-dark' : 'text-ink-muted hover:text-ink'
 
   return (
     <div className="relative" ref={ref}>

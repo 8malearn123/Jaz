@@ -1,5 +1,4 @@
 import { cn } from '@/lib/cn'
-import { useLocale } from '@/i18n/LocaleContext'
 import { useBrand } from '@/state/BrandContext'
 
 interface WordmarkProps {
@@ -9,41 +8,28 @@ interface WordmarkProps {
   className?: string
 }
 
-const toneColor: Record<NonNullable<WordmarkProps['tone']>, string> = {
-  gold: 'text-primary',
-  ink: 'text-ink',
-  'on-dark': 'text-ink-on-dark',
-}
-
-const sizeClass: Record<NonNullable<WordmarkProps['size']>, string> = {
-  sm: 'text-[20px]',
-  md: 'text-[26px]',
-  lg: 'text-[34px]',
-}
-
 const logoHeight: Record<NonNullable<WordmarkProps['size']>, string> = {
-  sm: 'h-6',
-  md: 'h-8',
-  lg: 'h-11',
+  sm: 'h-8',
+  md: 'h-10',
+  lg: 'h-14',
 }
 
-/** The JAZ wordmark — serif voice, gold-foil tone. Treated as precious.
- *  When the owner uploads a logo (Identity & appearance), it replaces the text. */
+// The real JAZ logo, one colourway per tone so it reads on light and dark surfaces.
+// The owner's "Identity & appearance" upload (BrandContext.logoUrl) overrides all of these.
+const defaultLogo: Record<NonNullable<WordmarkProps['tone']>, string> = {
+  ink: '/brand/logo-brown.png',
+  'on-dark': '/brand/logo-white.png',
+  gold: '/brand/logo-gold.png',
+}
+
+/** The JAZ logo. Renders the owner-uploaded logo when present, otherwise the brand
+ *  default colourway for the given tone. Treated as precious. */
 export function Wordmark({ tone = 'ink', size = 'md', withWave = false, className }: WordmarkProps) {
-  const { locale } = useLocale()
   const { logoUrl } = useBrand()
+  const src = logoUrl ?? defaultLogo[tone]
   return (
     <span className={cn('inline-flex flex-col items-center leading-none', className)}>
-      {logoUrl ? (
-        <img src={logoUrl} alt="JAZ" className={cn('w-auto object-contain', logoHeight[size])} />
-      ) : (
-      <span
-        className={cn('font-serif font-medium tracking-[0.14em]', toneColor[tone], sizeClass[size])}
-        aria-label="JAZ"
-      >
-        {locale === 'ar' ? 'جاز' : 'JAZ'}
-      </span>
-      )}
+      <img src={src} alt="JAZ Chocolate" className={cn('w-auto object-contain', logoHeight[size])} />
       {withWave && (
         <svg
           className={cn('mt-1', tone === 'gold' ? 'text-primary' : tone === 'on-dark' ? 'text-primary-bright' : 'text-primary')}

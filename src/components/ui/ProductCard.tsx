@@ -48,10 +48,10 @@ export function ProductCard({ product, className }: { product: Product; classNam
         {/* badges */}
         <div className="absolute flex flex-col gap-xs items-start" style={{ insetInlineStart: 16, top: 16 }}>
           {soldOut ? (
-            <StatusBadge variant="neutral">{t('badge.outOfStock')}</StatusBadge>
+            <StatusBadge variant="neutral" solid>{t('badge.outOfStock')}</StatusBadge>
           ) : (
             product.badges.slice(0, 1).map((b) => (
-              <StatusBadge key={b} variant={badgeVariant[b]}>
+              <StatusBadge key={b} variant={badgeVariant[b]} solid>
                 {t(`badge.${b}`)}
               </StatusBadge>
             ))

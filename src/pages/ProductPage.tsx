@@ -66,7 +66,7 @@ export function ProductPage() {
             </div>
             <div className="absolute top-md flex flex-col gap-xs" style={{ insetInlineStart: 16 }}>
               {product.badges.map((b) => (
-                <StatusBadge key={b} variant={b === 'limited' ? 'limited' : b === 'seasonal' ? 'success' : 'gold'}>
+                <StatusBadge key={b} variant={b === 'limited' ? 'limited' : b === 'seasonal' ? 'success' : 'gold'} solid>
                   {t(`badge.${b}`)}
                 </StatusBadge>
               ))}
