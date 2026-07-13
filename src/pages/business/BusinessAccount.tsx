@@ -8,6 +8,7 @@ import { useLocale } from '@/i18n/LocaleContext'
 import { WholesaleOrderProvider } from '@/state/WholesaleOrderContext'
 import { OrgOrdersPanel } from './OrderQuotePanels'
 import { CatalogPanel } from './CatalogPanel'
+import { DeliverySchedule } from './DeliveryPanel'
 import { AccountManagerCard, LastOrderCard, NextDeliveryCard } from './shared'
 import { organization, availableCreditMinor } from '@/data/organization'
 import type { CreditLedgerEntry, Bilingual } from '@/data/types'
@@ -95,6 +96,9 @@ function Overview({ onTab }: { onTab: (id: string) => void }) {
         <LastOrderCard onTab={onTab} />
         <NextDeliveryCard onTab={onTab} />
       </div>
+
+      {/* scheduled deliveries + cold-chain strip — moved here from the Orders tab */}
+      <DeliverySchedule />
     </div>
   )
 }
