@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { ShieldCheck, Check, X, Send, UserPlus, HandCoins, Upload, CheckCircle2, Eye, Search, FileText } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
@@ -9,7 +9,7 @@ import { poByVendor, onboardingStages, vendorDocMeta, type PoPayStatus, type Own
 import { collectionRows, receivables, type ReceivableRow } from '@/data/ownerFinance'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { cn } from '@/lib/cn'
-import { PanelHead, SegTabs, Pill, UtilBar } from './_shared'
+import { PanelHead, Pill, UtilBar } from './_shared'
 
 const poMeta: Record<PoPayStatus, { label: { en: string; ar: string }; color: string; bg: string }> = {
   paid: { label: { en: 'Paid', ar: 'مسدّدة' }, color: '#355c4b', bg: '#e8f0ec' },
@@ -20,22 +20,22 @@ const poMeta: Record<PoPayStatus, { label: { en: string; ar: string }; color: st
 
 const utilColor = (pct: number) => (pct >= 100 ? '#b5403b' : pct >= 85 ? '#b08a57' : '#355c4b')
 
-export function OwnerVendors() {
+export type VendorView = 'accounts' | 'collection' | 'credit'
+
+export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
   const { pick, money } = useLocale()
   const { flash } = useToast()
   const { creditLimits: limits, setCreditLimit, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment, vendorDocs, attachVendorDoc } = useOwnerState() // limits are overlay only — never written to shared org credit
-  const [subTab, setSubTab] = useState<'accounts' | 'collection' | 'credit'>('accounts')
+  // The active sub-view is driven by the sidebar sub-nav (see AdminConsole);
+  // local overrides (e.g. jumping to Accounts after activating a vendor) still work.
+  const [subTab, setSubTab] = useState<VendorView>(view)
+  useEffect(() => setSubTab(view), [view])
   const [query, setQuery] = useState('')
   const [profileId, setProfileId] = useState<string | null>(null)
   const [payId, setPayId] = useState<string | null>(null)
   const [viewRec, setViewRec] = useState<ReceivableRow | null>(null)
   const [inviteOpen, setInviteOpen] = useState(false)
 
-  const tabs = [
-    { id: 'accounts' as const, label: pick({ en: 'Accounts', ar: 'الحسابات' }) },
-    { id: 'collection' as const, label: pick({ en: 'Collection', ar: 'التحصيل' }) },
-    { id: 'credit' as const, label: pick({ en: 'Join requests', ar: 'طلبات الانضمام' }) },
-  ]
   const activeVendors = vendors.filter((v) => v.status === 'active')
   const requests = vendors.filter((v) => v.status === 'pending')
   const invitations = vendors.filter((v) => v.status === 'invited')
@@ -53,7 +53,6 @@ export function OwnerVendors() {
     <div className="flex flex-col gap-lg">
       <PanelHead title={pick({ en: 'Vendors & credit', ar: 'الموردين والائتمان' })} subtitle={pick({ en: 'B2B credit accounts, limits and policy', ar: 'حسابات الائتمان التجارية والحدود والسياسة' })}
         action={<button onClick={() => setInviteOpen(true)} className={buttonClass('primary', 'sm')}><UserPlus size={15} /> {pick({ en: 'Invite vendor', ar: 'دعوة مورّد' })}</button>} />
-      <SegTabs tabs={tabs} active={subTab} onChange={setSubTab} />
 
       {subTab === 'accounts' ? (
         <div className="flex flex-col gap-lg">
