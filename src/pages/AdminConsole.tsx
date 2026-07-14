@@ -82,6 +82,7 @@ const CHANNEL_VIEWS: SubView[] = (['b2c', 'b2b', 'mega'] as ProdChannel[]).map((
 const VENDOR_VIEWS: SubView[] = [
   { id: 'accounts', label: { en: 'Accounts', ar: 'الحسابات' } },
   { id: 'collection', label: { en: 'Collection', ar: 'التحصيل' } },
+  { id: 'statements', label: { en: 'Statements', ar: 'كشوف الحساب' } },
   { id: 'credit', label: { en: 'Join requests', ar: 'طلبات الانضمام' } },
 ]
 const SUB_NAVS: Partial<Record<Section, SubView[]>> = {
