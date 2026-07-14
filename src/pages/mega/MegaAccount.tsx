@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react'
 import {
   LayoutGrid, Boxes, Package, Ship, Landmark, Plus, Minus, ArrowRight, Check, X,
   MapPin, Download, ShieldCheck, Snowflake, PackageCheck, Truck, Globe, FileText, Container, Clock,
-  Upload, CheckCircle2,
+  Upload, CheckCircle2, CalendarRange, Lock,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { AccountShell, type TabDef } from '@/components/account/AccountShell'
 import { ToastProvider, useToast } from '@/components/account/Toast'
 import { MegaStateProvider, useMegaState } from '@/state/MegaStateContext'
 import { useBilling } from '@/state/BillingContext'
+import { useForecast } from '@/state/ForecastContext'
+import { forecastMonths, FORECAST_NEAR_MONTHS } from '@/data/forecasts'
 import { countryOf } from '@/data/countries'
 import { openPrintWindow } from '@/lib/printWindow'
 import { AreaTrend, UtilizationGauge } from '@/components/charts/Charts'
@@ -25,8 +27,11 @@ import {
   megaMarkets, megaExportTrend, type MegaOrder, type ShipStage,
 } from '@/data/mega'
 
-const TABS = ['overview', 'catalog', 'orders', 'finance'] as const
+const TABS = ['overview', 'catalog', 'orders', 'forecast', 'finance'] as const
 type Tab = (typeof TABS)[number]
+
+// this portal's client id in the shared forecast store
+const FORECAST_CLIENT_ID = 'MEGA-01'
 
 /** Fixed fulfilment notice: all MEGA orders are picked up at the site — no branch delivery. */
 function PickupNotice() {
@@ -60,6 +65,7 @@ function MegaContent() {
     { id: 'overview', label: pick({ en: 'Overview', ar: 'نظرة عامة' }), icon: LayoutGrid },
     { id: 'catalog', label: pick({ en: 'Pallet catalog', ar: 'كتالوج الطبليات' }), icon: Boxes },
     { id: 'orders', label: pick({ en: 'Orders & shipments', ar: 'الطلبات والشحنات' }), icon: Package },
+    { id: 'forecast', label: pick({ en: 'Order forecasts', ar: 'تنبؤات الطلبات' }), icon: CalendarRange },
     { id: 'finance', label: pick({ en: 'Finance', ar: 'المالية' }), icon: Landmark },
   ]
 
@@ -81,6 +87,7 @@ function MegaContent() {
       {active === 'overview' && <Overview onTab={setActive} />}
       {active === 'catalog' && <Catalog onTab={setActive} />}
       {active === 'orders' && <Orders />}
+      {active === 'forecast' && <Forecast />}
       {active === 'finance' && <Finance />}
     </AccountShell>
   )
@@ -409,6 +416,117 @@ function Orders() {
         </div>
       ))}
       {tracked && <TrackModal order={tracked} onClose={() => setTrack(null)} />}
+    </div>
+  )
+}
+
+/* ═══════════ Forecast — rolling 12-month order plan ═══════════ */
+function Forecast() {
+  const { pick, money } = useLocale()
+  const { flash } = useToast()
+  const { forecasts, setQty, allowedRange, committedOf } = useForecast()
+  const f = forecasts.find((x) => x.clientId === FORECAST_CLIENT_ID)
+  // the same country-scoped range as the catalog
+  const skus = megaCatalog.filter((p) => (p.country ?? 'all') === 'all' || p.country === megaAccount.country)
+  if (!f) return null
+
+  const cellOf = (mk: string, sku: string) => f.qty[mk]?.[sku] ?? 0
+  const monthPallets = (mk: string) => skus.reduce((a, p) => a + cellOf(mk, p.sku), 0)
+  const monthValue = (mk: string) => skus.reduce((a, p) => a + cellOf(mk, p.sku) * p.pricePerPalletMinor, 0)
+  const yearPallets = forecastMonths.reduce((a, m) => a + monthPallets(m.key), 0)
+  const yearValue = forecastMonths.reduce((a, m) => a + monthValue(m.key), 0)
+  // rolling horizon: the freshly-opened last month needs the partner's numbers
+  const lastKey = forecastMonths[forecastMonths.length - 1].key
+  const needsFill = monthPallets(lastKey) === 0
+
+  return (
+    <div className="flex flex-col gap-lg">
+      {/* how the plan works for the partner */}
+      <div className="rounded-lg bg-primary/[0.05] border border-primary/20 p-md flex items-start gap-sm">
+        <CalendarRange size={18} className="text-primary-hover shrink-0 mt-0.5" />
+        <p className="font-sans text-data text-ink-muted">
+          {pick({ en: `Your rolling 12-month order forecast. The nearest ${FORECAST_NEAR_MONTHS} months are committed — changes there are limited to ±${f.changeLimitPct}% (set by the Jaz export manager). Later months can be adjusted freely, and when a month ends a new one opens at the end of the plan.`, ar: `خطة طلباتك المتجددة لـ ١٢ شهرًا. آخر ${FORECAST_NEAR_MONTHS} أشهر قادمة ملتزم بها — التغيير فيها محدود بنسبة ±${f.changeLimitPct}٪ (يحددها مدير التصدير في جاز). الأشهر الأبعد تعدّلها بحرية، وعند انتهاء شهر يُفتح شهر جديد في نهاية الخطة.` })}
+        </p>
+      </div>
+
+      {/* rolling-horizon prompt: a month ended → fill the newly-opened month */}
+      {needsFill && (
+        <div className="rounded-lg bg-primary/10 border border-primary/30 p-md flex items-start gap-sm">
+          <CalendarRange size={18} className="text-primary-hover shrink-0 mt-0.5" />
+          <p className="font-sans text-data text-ink">
+            {pick({ en: `A month has ended and ${pick(forecastMonths[forecastMonths.length - 1].label)} just opened at the end of your plan — fill in your forecast for it to complete the 12-month horizon.`, ar: `انتهى شهر وانفتح شهر ${pick(forecastMonths[forecastMonths.length - 1].label)} في نهاية خطتك — عبّئ توقعاتك له ليكتمل أفق الـ ١٢ شهرًا.` })}
+          </p>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-xs font-sans text-caption">
+        <span className="rounded-pill bg-surface-2 border border-hairline px-3 py-1 text-ink-muted tabular-nums">{yearPallets.toLocaleString()} {pick({ en: 'pallets / year', ar: 'طبلية / سنة' })}</span>
+        <span className="rounded-pill bg-surface-2 border border-hairline px-3 py-1 text-ink-muted tabular-nums">{pick({ en: 'Expected value', ar: 'القيمة المتوقعة' })} {money(yearValue)}</span>
+        <span className="rounded-pill px-3 py-1 font-medium" style={{ color: '#8a6b3f', backgroundColor: '#f6edde' }}>±{f.changeLimitPct}% {pick({ en: `within ${FORECAST_NEAR_MONTHS} months`, ar: `خلال ${FORECAST_NEAR_MONTHS} أشهر` })}</span>
+      </div>
+
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse min-w-[880px]">
+            <thead>
+              <tr className="bg-surface-2 border-b border-hairline">
+                <th className="text-start font-sans text-caption uppercase tracking-wide text-ink-subtle px-lg py-2.5">{pick({ en: 'Month', ar: 'الشهر' })}</th>
+                {skus.map((p) => <th key={p.sku} className="text-center font-sans text-caption uppercase tracking-wide text-ink-subtle px-sm py-2.5">{pick(p.name)}</th>)}
+                <th className="text-end font-sans text-caption uppercase tracking-wide text-ink-subtle px-lg py-2.5">{pick({ en: 'Pallets', ar: 'طبليات' })}</th>
+                <th className="text-end font-sans text-caption uppercase tracking-wide text-ink-subtle px-lg py-2.5">{pick({ en: 'Value', ar: 'القيمة' })}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {forecastMonths.map((m, i) => {
+                const near = i < FORECAST_NEAR_MONTHS
+                const isNew = m.key === lastKey && needsFill
+                return (
+                  <tr key={m.key} className={cn('border-b border-hairline last:border-0', isNew && 'bg-primary/[0.05]')}>
+                    <td className="px-lg py-sm whitespace-nowrap">
+                      <span className="font-sans text-data text-ink">{pick(m.label)}</span>
+                      {near && <span className="inline-flex items-center gap-xxs ms-2 rounded-pill px-2 py-0.5 font-sans text-caption" style={{ color: '#8a6b3f', backgroundColor: '#f6edde' }}><Lock size={10} /> ±{f.changeLimitPct}%</span>}
+                      {isNew && <span className="inline-flex items-center ms-2 rounded-pill px-2 py-0.5 font-sans text-caption font-medium" style={{ color: '#b5403b', backgroundColor: '#faeceb' }}>{pick({ en: 'New — fill in', ar: 'جديد — بانتظار التعبئة' })}</span>}
+                    </td>
+                    {skus.map((p) => {
+                      const range = near ? allowedRange(FORECAST_CLIENT_ID, m.key, p.sku) : null
+                      const base = committedOf(FORECAST_CLIENT_ID, m.key, p.sku)
+                      return (
+                        <td key={p.sku} className="px-sm py-sm text-center">
+                          <input
+                            value={cellOf(m.key, p.sku) || ''}
+                            onChange={(e) => {
+                              const v = parseInt(e.target.value.replace(/\D/g, ''), 10) || 0
+                              const clamped = range ? Math.min(range.max, Math.max(range.min, v)) : v
+                              if (range && clamped !== v) flash(`${pick({ en: 'Limited to', ar: 'مقيّد بـ' })} ±${f.changeLimitPct}% · ${range.min}–${range.max}`)
+                              setQty(FORECAST_CLIENT_ID, m.key, p.sku, v)
+                            }}
+                            title={range ? `${pick({ en: 'Allowed', ar: 'المسموح' })}: ${range.min}–${range.max} (${pick({ en: 'committed', ar: 'الملتزم به' })}: ${base})` : undefined}
+                            className={cn('input w-16 py-1.5 text-center tabular-nums mx-auto', near && 'border-primary/40 bg-primary/[0.03]')}
+                            inputMode="numeric" placeholder="0"
+                          />
+                        </td>
+                      )
+                    })}
+                    <td className="px-lg py-sm text-end font-sans text-data text-ink tabular-nums">{monthPallets(m.key)}</td>
+                    <td className="px-lg py-sm text-end font-sans text-data text-ink tabular-nums whitespace-nowrap">{money(monthValue(m.key), { withSymbol: false })}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="bg-surface-2 border-t border-hairline">
+                <td className="px-lg py-sm font-sans text-data font-medium text-ink">{pick({ en: 'Year total', ar: 'إجمالي السنة' })}</td>
+                {skus.map((p) => <td key={p.sku} className="px-sm py-sm text-center font-sans text-data text-ink tabular-nums">{forecastMonths.reduce((a, m) => a + cellOf(m.key, p.sku), 0)}</td>)}
+                <td className="px-lg py-sm text-end font-serif text-card-title text-ink tabular-nums">{yearPallets}</td>
+                <td className="px-lg py-sm text-end font-serif text-card-title text-ink tabular-nums whitespace-nowrap">{money(yearValue, { withSymbol: false })}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <div className="px-lg py-sm bg-surface-2 border-t border-hairline font-sans text-caption text-ink-subtle">
+          {pick({ en: 'Changes inside the near window are clamped to your allowed tolerance automatically; the Jaz team sees your plan live on their forecast calendar.', ar: 'التعديلات داخل النافذة المقيدة تُضبط تلقائيًا ضمن نسبتك المسموحة؛ وفريق جاز يرى خطتك مباشرة على تقويم التنبؤات.' })}
+        </div>
+      </div>
     </div>
   )
 }

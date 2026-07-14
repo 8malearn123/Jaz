@@ -14,6 +14,7 @@ import { statementMonths, type StatementStatus } from '@/data/vendorStatements'
 import { openStatementPdf } from '@/lib/statementPdf'
 import { cn } from '@/lib/cn'
 import { PanelHead, Pill, UtilBar, FilterChips } from './_shared'
+import { OwnerForecastPanel } from './OwnerForecast'
 
 const poMeta: Record<PoPayStatus, { label: { en: string; ar: string }; color: string; bg: string }> = {
   paid: { label: { en: 'Paid', ar: 'مسدّدة' }, color: '#355c4b', bg: '#e8f0ec' },
@@ -31,7 +32,7 @@ const stMeta: Record<StatementStatus, { label: { en: string; ar: string }; color
   confirmed: { label: { en: 'Approved by partner', ar: 'اعتمده الشريك' }, color: '#3f7d4e', bg: '#e9f4ec' },
 }
 
-export type VendorView = 'accounts' | 'collection' | 'statements' | 'credit'
+export type VendorView = 'accounts' | 'collection' | 'statements' | 'forecast' | 'credit'
 
 export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
   const { pick, money, locale } = useLocale()
@@ -170,6 +171,8 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
             </div>
           </div>
         </div>
+      ) : subTab === 'forecast' ? (
+        <OwnerForecastPanel />
       ) : subTab === 'statements' ? (
         <div className="flex flex-col gap-lg">
           {/* monthly statements: issued on the 1st, accountant approves & sends, partner approves back */}
