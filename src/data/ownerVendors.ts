@@ -1,4 +1,5 @@
 import type { Bilingual } from './types'
+import type { CountryCode } from './countries'
 
 // ── Owner vendor credit accounts + export clients (isolated). Credit-limit edits
 // are LOCAL overlay only — never written back to organization.credit / OrgSummary.
@@ -11,6 +12,7 @@ export interface OwnerVendor {
   limitMinor: number
   status: 'active' | 'pending' | 'invited'
   email?: string
+  country?: CountryCode // where the partner operates — captured on the registration form
   stage?: number // index into onboardingStages — the step currently in progress (pending accounts only)
   // profile & verification data (filled in during onboarding)
   contact?: Bilingual
@@ -22,13 +24,13 @@ export interface OwnerVendor {
 }
 
 export const ownerVendors: OwnerVendor[] = [
-  { id: 'V-01', name: { en: 'Najd Hospitality Group', ar: 'مجموعة نجد للضيافة' }, type: { en: 'Hospitality', ar: 'ضيافة' }, outstandingMinor: 8960000, limitMinor: 15000000, status: 'active', email: 'finance@najd-hg.sa', contact: { en: 'Faisal Al-Otaibi', ar: 'فيصل العتيبي' }, phone: '+966 55 214 8890', crNumber: '1010584312', vatNumber: '300458712400003', address: { en: 'King Fahd Rd, Riyadh 12271', ar: 'طريق الملك فهد، الرياض ١٢٢٧١' }, since: { en: 'Mar 2024', ar: 'مارس ٢٠٢٤' } },
-  { id: 'V-02', name: { en: 'Jeddah Grand Hotel', ar: 'فندق جدة الكبير' }, type: { en: 'Hospitality', ar: 'ضيافة' }, outstandingMinor: 11600000, limitMinor: 30000000, status: 'active', email: 'purchasing@jgh.sa', contact: { en: 'Reem Baeshen', ar: 'ريم باعشن' }, phone: '+966 54 903 2217', crNumber: '4030177845', vatNumber: '310079215800003', address: { en: 'Corniche Rd, Jeddah 23412', ar: 'طريق الكورنيش، جدة ٢٣٤١٢' }, since: { en: 'Jan 2024', ar: 'يناير ٢٠٢٤' } },
-  { id: 'V-03', name: { en: 'Al-Dana Markets', ar: 'أسواق الدانة' }, type: { en: 'Retail chain', ar: 'سلسلة تجزئة' }, outstandingMinor: 26400000, limitMinor: 25000000, status: 'active', email: 'supply@aldana.sa', contact: { en: 'Mansour Al-Harbi', ar: 'منصور الحربي' }, phone: '+966 50 671 4453', crNumber: '2050091236', vatNumber: '302214598700003', address: { en: 'Prince Sultan St, Dammam 32241', ar: 'شارع الأمير سلطان، الدمام ٣٢٢٤١' }, since: { en: 'Sep 2024', ar: 'سبتمبر ٢٠٢٤' } },
-  { id: 'V-04', name: { en: 'Al-Tazaj Restaurants', ar: 'مطاعم الطازج' }, type: { en: 'Restaurants', ar: 'مطاعم' }, outstandingMinor: 4200000, limitMinor: 6000000, status: 'active', email: 'ops@altazaj.sa', contact: { en: 'Khalid Fakieh', ar: 'خالد فقيه' }, phone: '+966 56 118 7702', crNumber: '4030022917', vatNumber: '300871345600003', address: { en: 'Al-Tahlia St, Jeddah 23321', ar: 'شارع التحلية، جدة ٢٣٣٢١' }, since: { en: 'Nov 2024', ar: 'نوفمبر ٢٠٢٤' } },
-  { id: 'V-05', name: { en: 'Rawabi Catering Co.', ar: 'شركة روابي للتموين' }, type: { en: 'Reseller', ar: 'موزّع' }, outstandingMinor: 900000, limitMinor: 5000000, status: 'pending', email: 'accounts@rawabi.sa', stage: 1, contact: { en: 'Sara Al-Dossari', ar: 'سارة الدوسري' }, phone: '+966 53 442 9018' },
-  { id: 'V-06', name: { en: 'Al-Murjan Sweets', ar: 'حلويات المرجان' }, type: { en: 'Retail chain', ar: 'سلسلة تجزئة' }, outstandingMinor: 0, limitMinor: 0, status: 'invited', email: 'buy@murjan.sa' },
-  { id: 'V-07', name: { en: 'Basmah Gifting Co.', ar: 'شركة بسمة للهدايا' }, type: { en: 'Corporate gifting', ar: 'هدايا شركات' }, outstandingMinor: 0, limitMinor: 0, status: 'pending', email: 'hello@basmah.sa', stage: 3, contact: { en: 'Nouf Al-Shehri', ar: 'نوف الشهري' }, phone: '+966 59 320 6641', crNumber: '1010773204', vatNumber: '311542880900003', address: { en: 'Olaya St, Riyadh 12213', ar: 'شارع العليا، الرياض ١٢٢١٣' } },
+  { id: 'V-01', name: { en: 'Najd Hospitality Group', ar: 'مجموعة نجد للضيافة' }, type: { en: 'Hospitality', ar: 'ضيافة' }, outstandingMinor: 8960000, limitMinor: 15000000, country: 'sa', status: 'active', email: 'finance@najd-hg.sa', contact: { en: 'Faisal Al-Otaibi', ar: 'فيصل العتيبي' }, phone: '+966 55 214 8890', crNumber: '1010584312', vatNumber: '300458712400003', address: { en: 'King Fahd Rd, Riyadh 12271', ar: 'طريق الملك فهد، الرياض ١٢٢٧١' }, since: { en: 'Mar 2024', ar: 'مارس ٢٠٢٤' } },
+  { id: 'V-02', name: { en: 'Jeddah Grand Hotel', ar: 'فندق جدة الكبير' }, type: { en: 'Hospitality', ar: 'ضيافة' }, outstandingMinor: 11600000, limitMinor: 30000000, country: 'sa', status: 'active', email: 'purchasing@jgh.sa', contact: { en: 'Reem Baeshen', ar: 'ريم باعشن' }, phone: '+966 54 903 2217', crNumber: '4030177845', vatNumber: '310079215800003', address: { en: 'Corniche Rd, Jeddah 23412', ar: 'طريق الكورنيش، جدة ٢٣٤١٢' }, since: { en: 'Jan 2024', ar: 'يناير ٢٠٢٤' } },
+  { id: 'V-03', name: { en: 'Al-Dana Markets', ar: 'أسواق الدانة' }, type: { en: 'Retail chain', ar: 'سلسلة تجزئة' }, outstandingMinor: 26400000, limitMinor: 25000000, country: 'ae', status: 'active', email: 'supply@aldana.sa', contact: { en: 'Mansour Al-Harbi', ar: 'منصور الحربي' }, phone: '+966 50 671 4453', crNumber: '2050091236', vatNumber: '302214598700003', address: { en: 'Prince Sultan St, Dammam 32241', ar: 'شارع الأمير سلطان، الدمام ٣٢٢٤١' }, since: { en: 'Sep 2024', ar: 'سبتمبر ٢٠٢٤' } },
+  { id: 'V-04', name: { en: 'Al-Tazaj Restaurants', ar: 'مطاعم الطازج' }, type: { en: 'Restaurants', ar: 'مطاعم' }, outstandingMinor: 4200000, limitMinor: 6000000, country: 'sa', status: 'active', email: 'ops@altazaj.sa', contact: { en: 'Khalid Fakieh', ar: 'خالد فقيه' }, phone: '+966 56 118 7702', crNumber: '4030022917', vatNumber: '300871345600003', address: { en: 'Al-Tahlia St, Jeddah 23321', ar: 'شارع التحلية، جدة ٢٣٣٢١' }, since: { en: 'Nov 2024', ar: 'نوفمبر ٢٠٢٤' } },
+  { id: 'V-05', name: { en: 'Rawabi Catering Co.', ar: 'شركة روابي للتموين' }, type: { en: 'Reseller', ar: 'موزّع' }, outstandingMinor: 900000, limitMinor: 5000000, country: 'kw', status: 'pending', email: 'accounts@rawabi.sa', stage: 1, contact: { en: 'Sara Al-Dossari', ar: 'سارة الدوسري' }, phone: '+966 53 442 9018' },
+  { id: 'V-06', name: { en: 'Al-Murjan Sweets', ar: 'حلويات المرجان' }, type: { en: 'Retail chain', ar: 'سلسلة تجزئة' }, outstandingMinor: 0, limitMinor: 0, country: 'sa', status: 'invited', email: 'buy@murjan.sa' },
+  { id: 'V-07', name: { en: 'Basmah Gifting Co.', ar: 'شركة بسمة للهدايا' }, type: { en: 'Corporate gifting', ar: 'هدايا شركات' }, outstandingMinor: 0, limitMinor: 0, country: 'ae', status: 'pending', email: 'hello@basmah.sa', stage: 3, contact: { en: 'Nouf Al-Shehri', ar: 'نوف الشهري' }, phone: '+966 59 320 6641', crNumber: '1010773204', vatNumber: '311542880900003', address: { en: 'Olaya St, Riyadh 12213', ar: 'شارع العليا، الرياض ١٢٢١٣' } },
 ]
 
 // ── Vendor documents (contract + verification papers). Seeded for accounts

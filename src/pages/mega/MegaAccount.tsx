@@ -9,6 +9,7 @@ import { AccountShell, type TabDef } from '@/components/account/AccountShell'
 import { ToastProvider, useToast } from '@/components/account/Toast'
 import { MegaStateProvider, useMegaState } from '@/state/MegaStateContext'
 import { useBilling } from '@/state/BillingContext'
+import { countryOf } from '@/data/countries'
 import { openPrintWindow } from '@/lib/printWindow'
 import { AreaTrend, UtilizationGauge } from '@/components/charts/Charts'
 import { Modal } from '@/components/ui/Modal'
@@ -228,10 +229,22 @@ function Catalog({ onTab }: { onTab: (id: string) => void }) {
   const { draft, addPallets, setDraftPallets, lineValueMinor, draftPallets, draftValueMinor } = useMegaState()
   const { flash } = useToast()
   const [reviewOpen, setReviewOpen] = useState(false)
-  const categories = [...new Set(megaCatalog.map((p) => pick(p.category)))]
+  // The catalog is country-scoped: this partner sees the products dedicated to
+  // their country plus the global ones — other countries' products never show.
+  const myCountry = countryOf(megaAccount.country)
+  const myCatalog = megaCatalog.filter((p) => (p.country ?? 'all') === 'all' || p.country === megaAccount.country)
+  const categories = [...new Set(myCatalog.map((p) => pick(p.category)))]
 
   return (
     <div className="flex flex-col gap-lg">
+      {/* country notice */}
+      {myCountry && (
+        <div className="rounded-md border border-hairline bg-surface-2 px-md py-sm font-sans text-caption text-ink-muted inline-flex items-start gap-xs">
+          <Globe size={13} className="shrink-0 mt-0.5" />
+          <span>{pick({ en: `Your catalog for ${myCountry.label.en} ${myCountry.flag} — country-dedicated products plus the global range.`, ar: `كتالوجك لدولة ${myCountry.label.ar} ${myCountry.flag} — المنتجات المخصصة لدولتك إضافة إلى التشكيلة العامة.` })}</span>
+        </div>
+      )}
+
       {/* volume ladder */}
       <div className="card p-lg flex flex-col gap-sm">
         <h3 className="font-serif text-card-title text-ink">{pick({ en: 'Volume pricing', ar: 'تسعير الكمية' })}</h3>
@@ -249,7 +262,7 @@ function Catalog({ onTab }: { onTab: (id: string) => void }) {
         <div key={cat} className="flex flex-col gap-sm">
           <h3 className="font-serif text-card-title text-ink">{cat}</h3>
           <div className="grid md:grid-cols-2 gap-sm">
-            {megaCatalog.filter((p) => pick(p.category) === cat).map((p) => {
+            {myCatalog.filter((p) => pick(p.category) === cat).map((p) => {
               const n = draft[p.sku] ?? 0
               const disc = volumeDiscount(Math.max(n, 1))
               return (

@@ -16,6 +16,7 @@ export interface LoyaltyConfig {
 }
 import { wasteLog as wasteSeed, finGrossMinor, type WasteEntry, type ExpenseEntry } from '@/data/ownerFinance'
 import { contracts as contractsSeed, b2cCatalog, stdCatalog, catTree, storeProductsSeed, type Contract, type CatNode, type StoreProduct } from '@/data/ownerCatalog'
+import type { CountryCode } from '@/data/countries'
 import { ownerVendors as ownerVendorsSeed, onboardingStages, vendorDocsSeed, type OwnerVendor, type VendorDoc, type VendorDocKind } from '@/data/ownerVendors'
 import type { Employee, TeamPermission } from '@/data/ownerTeam'
 import { useTeam } from '@/state/TeamContext'
@@ -128,7 +129,7 @@ interface OwnerStateValue {
   vendors: OwnerVendor[]
   advanceVendorStage: (id: string) => void
   rejectVendor: (id: string) => void
-  inviteVendor: (v: { name: Bilingual; type: Bilingual; email: string }) => string
+  inviteVendor: (v: { name: Bilingual; type: Bilingual; email: string; country: CountryCode }) => string
   recordVendorPayment: (id: string, amountMinor: number) => void
   // vendor profile documents: signed contract + verification papers
   vendorDocs: Record<string, Partial<Record<VendorDocKind, VendorDoc>>>
@@ -478,9 +479,9 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     return { ...v, stage: next }
   })), [])
   const rejectVendor = useCallback((id: string) => setVendors((prev) => prev.filter((v) => v.id !== id)), [])
-  const inviteVendor = useCallback((v: { name: Bilingual; type: Bilingual; email: string }) => {
+  const inviteVendor = useCallback((v: { name: Bilingual; type: Bilingual; email: string; country: CountryCode }) => {
     const id = `V-${String(vendSeqRef.current++).padStart(2, '0')}`
-    setVendors((prev) => [...prev, { id, name: v.name, type: v.type, email: v.email, outstandingMinor: 0, limitMinor: 0, status: 'invited' }])
+    setVendors((prev) => [...prev, { id, name: v.name, type: v.type, email: v.email, country: v.country, outstandingMinor: 0, limitMinor: 0, status: 'invited' }])
     return id
   }, [])
   const recordVendorPayment = useCallback((id: string, amountMinor: number) => setVendors((prev) => prev.map((v) => (v.id === id ? { ...v, outstandingMinor: Math.max(0, v.outstandingMinor - amountMinor) } : v))), [])

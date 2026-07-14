@@ -1,4 +1,5 @@
 import type { Bilingual } from './types'
+import type { CountryCode } from './countries'
 
 // ── Mega Business · Export account (isolated). This is the account-side portal
 // for a large wholesale/export B2B buyer — pallet catalog, bulk orders,
@@ -12,6 +13,7 @@ export const megaAccount = {
   crNumber: '1010 554 921',
   vatNumber: '3115 0092 8800 003',
   incoterm: 'CIF',
+  country: 'ae' as CountryCode, // where this partner operates — drives which catalog items they see
 }
 
 /* ── Pallet catalog ── */
@@ -25,11 +27,13 @@ export interface MegaProduct {
   unitsPerPallet: number
   moq: number // minimum pallets
   color: string
+  country?: CountryCode | 'all' // dedicated market — 'all' (default) shows to every partner
 }
 export const megaCatalog: MegaProduct[] = [
   { sku: 'PLT-ASSORTED', name: { en: 'Assorted bar pallet', ar: 'طبلية ألواح مشكّلة' }, category: { en: 'Retail pallets', ar: 'طبليات تجزئة' }, pricePerPalletMinor: 1100000, cbm: 1.2, grossKg: 480, unitsPerPallet: 1800, moq: 3, color: '#365766' },
-  { sku: 'PLT-SEASON', name: { en: 'Seasonal assortment pallet', ar: 'طبلية تشكيلة موسمية' }, category: { en: 'Retail pallets', ar: 'طبليات تجزئة' }, pricePerPalletMinor: 1400000, cbm: 1.4, grossKg: 520, unitsPerPallet: 1600, moq: 3, color: '#8e2f55' },
+  { sku: 'PLT-SEASON', name: { en: 'Seasonal assortment pallet', ar: 'طبلية تشكيلة موسمية' }, category: { en: 'Retail pallets', ar: 'طبليات تجزئة' }, pricePerPalletMinor: 1400000, cbm: 1.4, grossKg: 520, unitsPerPallet: 1600, moq: 3, color: '#8e2f55', country: 'ae' },
   { sku: 'PLT-GIFTBOX', name: { en: 'Luxury gift-box pallet', ar: 'طبلية بوكسات فاخرة' }, category: { en: 'Retail pallets', ar: 'طبليات تجزئة' }, pricePerPalletMinor: 2050000, cbm: 1.5, grossKg: 440, unitsPerPallet: 720, moq: 2, color: '#b5403b' },
+  { sku: 'PLT-DATES', name: { en: 'Chocolate-dates pallet (KSA)', ar: 'طبلية تمور بالشوكولاتة (السعودية)' }, category: { en: 'Retail pallets', ar: 'طبليات تجزئة' }, pricePerPalletMinor: 1750000, cbm: 1.3, grossKg: 500, unitsPerPallet: 1200, moq: 2, color: '#7a5230', country: 'sa' },
   { sku: 'BULK-COUVERTURE', name: { en: 'Bulk couverture (ton)', ar: 'كوفرتور خام (طن)' }, category: { en: 'Raw by ton', ar: 'خام بالطن' }, pricePerPalletMinor: 2160000, cbm: 1.0, grossKg: 1000, unitsPerPallet: 1, moq: 1, color: '#3b241a' },
   { sku: 'BULK-COCOA', name: { en: 'Cocoa mass (ton)', ar: 'كتلة كاكاو (طن)' }, category: { en: 'Raw by ton', ar: 'خام بالطن' }, pricePerPalletMinor: 1840000, cbm: 1.0, grossKg: 1000, unitsPerPallet: 1, moq: 1, color: '#6b4a30' },
 ]
