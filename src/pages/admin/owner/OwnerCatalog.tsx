@@ -11,12 +11,13 @@ import type { ProdChannel } from '@/data/ownerProducts'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { cn } from '@/lib/cn'
 import { readResizedImage } from '@/lib/image'
-import { PanelHead, Pill } from './_shared'
+import { countries, countryOf, type CountryCode } from '@/data/countries'
+import { PanelHead, Pill, FilterChips } from './_shared'
 
 // Fallback "photo" — a colour tile with a subtle chocolate weave, used when no image is uploaded.
 const tile = (color: string) => ({ backgroundColor: color, backgroundImage: 'repeating-linear-gradient(135deg, rgba(255,255,255,0.10) 0 3px, transparent 3px 12px)' })
 
-type Draft = { name: string; desc: string; category: string; variants: StoreVariant[]; color: string; image: string | null; badges: StoreBadge[]; visible: boolean; sku: string; moq: number; components: StoreComponent[]; netWeight: string; shelfLife: string; barcode: string; notes: string }
+type Draft = { name: string; desc: string; category: string; variants: StoreVariant[]; color: string; image: string | null; badges: StoreBadge[]; visible: boolean; sku: string; moq: number; country: CountryCode | 'all'; components: StoreComponent[]; netWeight: string; shelfLife: string; barcode: string; notes: string }
 type CompRow = { id: number; name: string; qty: string; unit: string } // qty kept as raw text so decimals type cleanly
 
 // Numeric-input parser: normalize Arabic-Indic digits, take the integer part (a stray "30.5" can't concatenate to 305).
@@ -35,7 +36,10 @@ export function OwnerCatalog({ view: chan }: { view: ProdChannel }) {
   // would otherwise go stale (a keyboard user can tab out of the modal to the sidebar sub-nav).
   useEffect(() => setEditing(null), [chan])
 
-  const list = storeProducts[chan]
+  const [countryF, setCountryF] = useState<'all' | CountryCode>('all')
+  const all = storeProducts[chan]
+  // country filter: a country chip shows its dedicated products plus the global ones
+  const list = countryF === 'all' ? all : all.filter((p) => (p.country ?? 'all') === 'all' || p.country === countryF)
   const visibleCount = list.filter((p) => p.visible).length
   const hiddenCount = list.length - visibleCount
   // distinct categories (localized), each keeping its bilingual value for the editor's suggestions
@@ -52,7 +56,7 @@ export function OwnerCatalog({ view: chan }: { view: ProdChannel }) {
     const orig = editing !== 'new' && editing ? list.find((p) => p.id === editing.id) : undefined
     // headline "from" price = cheapest variant retail
     const priceMinor = d.variants.length ? Math.min(...d.variants.map((v) => v.retailPriceMinor)) : 0
-    const fields = { name: bi(d.name, orig?.name), desc: bi(d.desc, orig?.desc), category: resolveCategory(d.category), priceMinor, color: d.color, image: d.image ?? undefined, badges: d.badges, variants: d.variants, sku: d.sku.trim() || undefined, moq: d.moq || undefined, components: d.components.length ? d.components : undefined, netWeight: d.netWeight.trim() || undefined, shelfLife: d.shelfLife.trim() || undefined, barcode: d.barcode.trim() || undefined, notes: d.notes.trim() || undefined }
+    const fields = { name: bi(d.name, orig?.name), desc: bi(d.desc, orig?.desc), category: resolveCategory(d.category), priceMinor, color: d.color, image: d.image ?? undefined, badges: d.badges, variants: d.variants, sku: d.sku.trim() || undefined, moq: d.moq || undefined, country: d.country, components: d.components.length ? d.components : undefined, netWeight: d.netWeight.trim() || undefined, shelfLife: d.shelfLife.trim() || undefined, barcode: d.barcode.trim() || undefined, notes: d.notes.trim() || undefined }
     if (editing === 'new') { addStoreProduct(chan, fields); flash(`${pick({ en: 'Product added', ar: 'أُضيف المنتج' })} · ${d.name}`) }
     else if (editing) { updateStoreProduct(chan, editing.id, { ...fields, visible: d.visible }); flash(pick({ en: 'Product updated', ar: 'حُدّث المنتج' })) }
     setEditing(null)
@@ -69,6 +73,12 @@ export function OwnerCatalog({ view: chan }: { view: ProdChannel }) {
         {hiddenCount > 0 && <Pill color="#8a6b3f" bg="#f6edde">{hiddenCount} {pick({ en: 'hidden', ar: 'مخفي' })}</Pill>}
         <span className="font-sans text-caption text-ink-subtle">{list.length} {pick({ en: 'products in this channel', ar: 'منتجًا في هذه القناة' })}</span>
       </div>
+
+      {/* country filter — dedicated products are tagged when added; partners only see their country's catalog */}
+      <FilterChips
+        chips={[{ id: 'all' as const, label: pick({ en: 'All countries', ar: 'كل الدول' }), count: all.length },
+          ...countries.map((c) => ({ id: c.code, label: `${c.flag} ${pick(c.label)}`, count: all.filter((p) => (p.country ?? 'all') === 'all' || p.country === c.code).length }))]}
+        active={countryF} onChange={setCountryF} label={pick({ en: 'Country', ar: 'الدولة' })} />
 
       {list.length === 0 ? (
         <div className="card p-xl grid place-items-center text-center gap-sm">
@@ -138,6 +148,7 @@ function ProductCard({ p, onEdit, onToggle }: { p: StoreProduct; onEdit: () => v
         <p className="font-sans text-caption text-ink-subtle line-clamp-2">{pick(p.desc)}</p>
         <div className="flex flex-wrap items-center gap-x-sm gap-y-xxs">
           <span className="font-sans text-caption text-ink-subtle">{p.variants.length} {pick(p.variants.length === 1 ? { en: 'size', ar: 'مقاس' } : { en: 'sizes', ar: 'مقاسات' })}</span>
+          {p.country && p.country !== 'all' && countryOf(p.country) && <span className="rounded-pill bg-surface-2 border border-hairline px-2 py-0.5 font-sans text-caption text-ink-muted">{countryOf(p.country)!.flag} {pick(countryOf(p.country)!.label)}</span>}
           {coldChain && <Snowflake size={12} className="text-brand-blue" />}
           {!anyInStock && <span className="font-sans text-caption text-danger">{pick({ en: 'Out of stock', ar: 'غير متوفر' })}</span>}
         </div>
@@ -187,6 +198,7 @@ function ProductEditor({ product, catOptions, onClose, onSave }: { product: Stor
   const [badges, setBadges] = useState<StoreBadge[]>(product ? product.badges : [])
   const [visible, setVisible] = useState(product ? product.visible : true)
   const [sku, setSku] = useState(product?.sku ?? '')
+  const [country, setCountry] = useState<CountryCode | 'all'>(product?.country ?? 'all')
   const [moq, setMoq] = useState(product?.moq ?? 0)
   const [comps, setComps] = useState<CompRow[]>(() => (product?.components ?? []).map((c, i) => ({ id: i, name: c.name, qty: String(c.qty), unit: c.unit })))
   const compId = useRef(product?.components?.length ?? 0)
@@ -216,7 +228,7 @@ function ProductEditor({ product, catOptions, onClose, onSave }: { product: Stor
     <Modal open onClose={onClose} size="lg" eyebrow={pick(product ? { en: 'Edit product', ar: 'تعديل منتج' } : { en: 'New product', ar: 'منتج جديد' })} title={product ? pick(product.name) : pick({ en: 'New product', ar: 'منتج جديد' })}
       footer={<>
         <button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button>
-        <button onClick={() => onSave({ name, desc, category, variants, color, image, badges, visible, sku, moq, components: cleanComps(), netWeight, shelfLife, barcode, notes })} disabled={!valid} className={buttonClass('primary', 'sm')}>{product ? pick({ en: 'Save', ar: 'حفظ' }) : pick({ en: 'Create product', ar: 'إنشاء المنتج' })}</button>
+        <button onClick={() => onSave({ name, desc, category, variants, color, image, badges, visible, sku, moq, country, components: cleanComps(), netWeight, shelfLife, barcode, notes })} disabled={!valid} className={buttonClass('primary', 'sm')}>{product ? pick({ en: 'Save', ar: 'حفظ' }) : pick({ en: 'Create product', ar: 'إنشاء المنتج' })}</button>
       </>}>
       <div className="flex flex-col gap-md">
         {/* product image — upload a photo, or fall back to a colour tile */}
@@ -256,6 +268,15 @@ function ProductEditor({ product, catOptions, onClose, onSave }: { product: Stor
           <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'SKU', ar: 'رمز الصنف SKU' })}</span><input value={sku} onChange={(e) => setSku(e.target.value)} className="input tabular-nums" placeholder={pick({ en: 'e.g. JAZ-BAR-01', ar: 'مثال: JAZ-BAR-01' })} /></label>
           <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'MOQ (min order)', ar: 'الحد الأدنى للشراء' })}</span><input value={moq || ''} onChange={(e) => setMoq(parseNum(e.target.value))} className="input tabular-nums" inputMode="numeric" placeholder="0" /></label>
         </div>
+
+        {/* dedicated market — decides which partners see this product in their catalog */}
+        <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Country (dedicated market)', ar: 'الدولة المخصصة للمنتج' })}</span>
+          <select value={country} onChange={(e) => setCountry(e.target.value as CountryCode | 'all')} className="input cursor-pointer">
+            <option value="all">{pick({ en: 'All countries', ar: 'كل الدول' })}</option>
+            {countries.map((c) => <option key={c.code} value={c.code}>{c.flag} {pick(c.label)}</option>)}
+          </select>
+          <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'A dedicated product only appears in the catalog of partners from this country.', ar: 'المنتج المخصص لدولة يظهر فقط في كتالوج شركاء تلك الدولة.' })}</span>
+        </label>
 
         {/* variants & pricing — asked first: multi-variant builder or a single price */}
         {hasVariants === null ? (

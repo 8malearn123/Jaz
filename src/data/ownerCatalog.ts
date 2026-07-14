@@ -1,5 +1,6 @@
 import type { Bilingual } from './types'
 import type { ProdChannel } from './ownerProducts'
+import type { CountryCode } from './countries'
 
 // ── Owner catalog & pricing config per channel (isolated). Category tree,
 // channel catalog items, volume pricing, contracts. All edits are local overlay.
@@ -99,6 +100,7 @@ export interface StoreProduct {
   badges: StoreBadge[]
   variants: StoreVariant[]
   visible: boolean // shown on the storefront
+  country?: CountryCode | 'all' // dedicated market — 'all' (default) shows everywhere
   // extended metadata
   sku?: string
   moq?: number // minimum order quantity (B2B / MEGA)
@@ -135,17 +137,17 @@ const baseSeed: Record<ProdChannel, Omit<StoreProduct, 'variants'>[]> = {
     { id: 'bar-dark-banana', name: { en: 'Dark chocolate with banana', ar: 'لوح داكن بالموز' }, desc: { en: 'Dark chocolate with mellow ripe banana.', ar: 'شوكولاتة داكنة بالموز الناضج.' }, category: CAT.bars, priceMinor: 4200, color: '#a8862e', image: '/products/bar-dark-banana.jpg', badges: [], visible: true },
     { id: 'sp-b2c-4', name: { en: 'Jasmine luxury box', ar: 'بوكس الفُل الفاخر' }, desc: { en: 'A curated dozen — our jasmine collection, boxed to gift.', ar: 'اثنتا عشرة قطعة منتقاة — مجموعة الفُل في علبة هدية.' }, category: CAT.boxes, priceMinor: 16800, color: '#b08a57', badges: ['bestseller'], visible: true },
     { id: 'sp-b2c-5', name: { en: 'Rose gift box', ar: 'بوكس الورد' }, desc: { en: 'Damascena rose ganache in a keepsake case.', ar: 'غاناش ورد دمشقي في علبة تُقتنى.' }, category: CAT.boxes, priceMinor: 31000, color: '#9c5566', badges: ['limited'], visible: false },
-    { id: 'sp-b2c-6', name: { en: 'Founding Day box', ar: 'بوكس يوم التأسيس' }, desc: { en: 'Limited seasonal assortment for Founding Day.', ar: 'تشكيلة موسمية محدودة ليوم التأسيس.' }, category: CAT.season, priceMinor: 22000, color: '#8a5a3a', badges: ['seasonal'], visible: true },
+    { id: 'sp-b2c-6', name: { en: 'Founding Day box', ar: 'بوكس يوم التأسيس' }, desc: { en: 'Limited seasonal assortment for Founding Day.', ar: 'تشكيلة موسمية محدودة ليوم التأسيس.' }, category: CAT.season, priceMinor: 22000, color: '#8a5a3a', badges: ['seasonal'], visible: true, country: 'sa' },
   ],
   b2b: [
     { id: 'sp-b2b-1', name: { en: 'Hotel amenity bar', ar: 'لوح ضيافة الفندق' }, desc: { en: 'Turn-down amenity bar, cold-chain ready.', ar: 'لوح ضيافة للغرف، جاهز لسلسلة التبريد.' }, category: CAT.hotel, priceMinor: 3800, color: '#6b4a2e', badges: [], visible: true },
     { id: 'sp-b2b-2', name: { en: 'Café couverture drops', ar: 'قطرات كوفرتور للمقاهي' }, desc: { en: 'Bulk couverture drops for café kitchens.', ar: 'قطرات كوفرتور بالجملة لمطابخ المقاهي.' }, category: CAT.hotel, priceMinor: 21000, color: '#4a2c1a', badges: [], visible: true },
     { id: 'sp-b2b-3', name: { en: 'Corporate crescent', ar: 'هلال الشركات' }, desc: { en: 'Branded crescent centerpiece for corporate gifting.', ar: 'قطعة هلال مُخصّصة لهدايا الشركات.' }, category: CAT.corp, priceMinor: 30300, color: '#b08a57', badges: ['bestseller'], visible: true },
-    { id: 'sp-b2b-4', name: { en: 'Founding Day hamper', ar: 'سلة يوم التأسيس' }, desc: { en: 'Seasonal hamper for corporate orders.', ar: 'سلة موسمية لطلبات الشركات.' }, category: CAT.corp, priceMinor: 26700, color: '#8a5a3a', badges: ['seasonal'], visible: true },
+    { id: 'sp-b2b-4', name: { en: 'Founding Day hamper', ar: 'سلة يوم التأسيس' }, desc: { en: 'Seasonal hamper for corporate orders.', ar: 'سلة موسمية لطلبات الشركات.' }, category: CAT.corp, priceMinor: 26700, color: '#8a5a3a', badges: ['seasonal'], visible: true, country: 'sa' },
   ],
   mega: [
     { id: 'sp-mega-1', name: { en: 'Assorted bar pallet', ar: 'طبلية ألواح مشكّلة' }, desc: { en: 'Mixed retail bars, palletised for distribution.', ar: 'ألواح تجزئة مشكّلة، مرصوصة للتوزيع.' }, category: CAT.pallet, priceMinor: 1100000, color: '#6b4a2e', badges: ['bestseller'], visible: true },
-    { id: 'sp-mega-2', name: { en: 'Seasonal pallet', ar: 'طبلية موسمية' }, desc: { en: 'Seasonal SKUs consolidated per pallet.', ar: 'أصناف موسمية مجمّعة لكل طبلية.' }, category: CAT.pallet, priceMinor: 1400000, color: '#8a5a3a', badges: ['seasonal'], visible: true },
+    { id: 'sp-mega-2', name: { en: 'Seasonal pallet', ar: 'طبلية موسمية' }, desc: { en: 'Seasonal SKUs consolidated per pallet.', ar: 'أصناف موسمية مجمّعة لكل طبلية.' }, category: CAT.pallet, priceMinor: 1400000, color: '#8a5a3a', badges: ['seasonal'], visible: true, country: 'ae' },
     { id: 'sp-mega-3', name: { en: 'Bulk couverture (ton)', ar: 'كوفرتور خام بالطن' }, desc: { en: 'Industrial couverture by the metric ton.', ar: 'كوفرتور صناعي بالطن المتري.' }, category: CAT.ton, priceMinor: 21600000, color: '#2e1a10', badges: [], visible: true },
   ],
 }

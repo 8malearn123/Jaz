@@ -6,6 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import type { Bilingual } from '@/data/types'
 import { poByVendor, onboardingStages, vendorDocMeta, type PoPayStatus, type OwnerVendor, type VendorDoc, type VendorDocKind } from '@/data/ownerVendors'
+import { countries, countryOf, type CountryCode } from '@/data/countries'
 import { collectionRows, receivables, type ReceivableRow } from '@/data/ownerFinance'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { useStatements } from '@/state/StatementsContext'
@@ -43,6 +44,7 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
   useEffect(() => setSubTab(view), [view])
   const [stMonth, setStMonth] = useState(statementMonths[0].key)
   const [query, setQuery] = useState('')
+  const [countryF, setCountryF] = useState<'all' | CountryCode>('all')
   const [profileId, setProfileId] = useState<string | null>(null)
   const [payId, setPayId] = useState<string | null>(null)
   const [viewRec, setViewRec] = useState<ReceivableRow | null>(null)
@@ -52,11 +54,12 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
   const requests = vendors.filter((v) => v.status === 'pending')
   const invitations = vendors.filter((v) => v.status === 'invited')
 
-  // directory search — matches name, activity, id, email or CR number in either language
+  // directory search — matches name, activity, id, email or CR number in either
+  // language, combined with the country filter (every partner carries a country)
   const q = query.trim().toLowerCase()
-  const shownVendors = q === ''
-    ? activeVendors
-    : activeVendors.filter((v) => [v.name.en, v.name.ar, v.type.en, v.type.ar, v.id, v.email ?? '', v.crNumber ?? ''].some((s) => s.toLowerCase().includes(q)))
+  const shownVendors = activeVendors
+    .filter((v) => countryF === 'all' || v.country === countryF)
+    .filter((v) => q === '' || [v.name.en, v.name.ar, v.type.en, v.type.ar, v.id, v.email ?? '', v.crNumber ?? ''].some((s) => s.toLowerCase().includes(q)))
 
   const profileVendor = vendors.find((v) => v.id === profileId) ?? null
   const payVendor = vendors.find((v) => v.id === payId) ?? null
@@ -74,6 +77,12 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
             <input value={query} onChange={(e) => setQuery(e.target.value)} className="input ps-10" placeholder={pick({ en: 'Search by name, activity, ID, email or CR number…', ar: 'ابحث بالاسم أو النشاط أو الرقم أو البريد أو السجل التجاري…' })} />
           </div>
 
+          {/* country filter — every contracted partner carries a country from the registration form */}
+          <FilterChips
+            chips={[{ id: 'all' as const, label: pick({ en: 'All countries', ar: 'كل الدول' }), count: activeVendors.length },
+              ...countries.map((c) => ({ id: c.code, label: `${c.flag} ${pick(c.label)}`, count: activeVendors.filter((v) => v.country === c.code).length }))]}
+            active={countryF} onChange={setCountryF} label={pick({ en: 'Country', ar: 'الدولة' })} />
+
           <div className="card overflow-hidden">
             <ul className="divide-y divide-hairline">
               {shownVendors.length === 0 && (
@@ -88,7 +97,7 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
                   <li key={v.id} className="flex flex-wrap items-center gap-md px-lg py-md">
                     <span className="grid place-items-center w-10 h-10 rounded-pill shrink-0 font-serif text-card-title" style={{ backgroundColor: col + '22', color: col }}>{initials}</span>
                     <div className="flex-1 min-w-[180px]">
-                      <p className="font-sans text-data text-ink truncate">{pick(v.name)} <span className="text-ink-subtle">· {pick(v.type)}</span></p>
+                      <p className="font-sans text-data text-ink truncate">{pick(v.name)} <span className="text-ink-subtle">· {pick(v.type)}</span>{v.country && countryOf(v.country) && <span className="text-ink-subtle text-caption"> · {countryOf(v.country)!.flag} {pick(countryOf(v.country)!.label)}</span>}</p>
                       <p className="font-sans text-caption text-ink-subtle tabular-nums truncate">{v.id} · {pick({ en: 'Outstanding', ar: 'المستحق' })} {money(v.outstandingMinor)} · {pick({ en: 'Limit', ar: 'الحد' })} {money(lm)}</p>
                     </div>
                     <div className="hidden sm:flex flex-col gap-xxs w-28 shrink-0">
@@ -250,7 +259,7 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
                   <div className="flex flex-wrap items-start justify-between gap-sm">
                     <div>
                       <h3 className="font-serif text-card-title text-ink">{pick(v.name)}</h3>
-                      <p className="font-sans text-caption text-ink-subtle">{pick(v.type)} · {v.id}{v.email && <span dir="ltr"> · {v.email}</span>}</p>
+                      <p className="font-sans text-caption text-ink-subtle">{pick(v.type)}{v.country && countryOf(v.country) && <> · {countryOf(v.country)!.flag} {pick(countryOf(v.country)!.label)}</>} · {v.id}{v.email && <span dir="ltr"> · {v.email}</span>}</p>
                     </div>
                     <div className="flex items-center gap-xs">
                       <Pill color="#8a6b3f" bg="#f6edde">{pick({ en: 'Stage', ar: 'المرحلة' })} {stage + 1}/{onboardingStages.length}</Pill>
@@ -437,6 +446,7 @@ function VendorProfileModal({ vendor, limitMinor, docs, onClose, onSaveLimit, on
           <div className="flex flex-col gap-sm">
             <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Contact', ar: 'بيانات التواصل' })}</h4>
             <div className="rounded-lg border border-hairline divide-y divide-hairline">
+              {infoRow(pick({ en: 'Country', ar: 'الدولة' }), vendor.country && countryOf(vendor.country) ? `${countryOf(vendor.country)!.flag} ${pick(countryOf(vendor.country)!.label)}` : missing)}
               {infoRow(pick({ en: 'Contact person', ar: 'جهة الاتصال' }), vendor.contact ? pick(vendor.contact) : missing)}
               {infoRow(pick({ en: 'Phone', ar: 'الجوال' }), vendor.phone ? <span dir="ltr" className="tabular-nums">{vendor.phone}</span> : missing)}
               {infoRow(pick({ en: 'Email', ar: 'البريد الإلكتروني' }), vendor.email ? <span dir="ltr">{vendor.email}</span> : missing)}
@@ -628,15 +638,17 @@ function RecordPaymentModal({ vendor, onClose, onRecord }: { vendor: OwnerVendor
 
 /** Invite a vendor to open a credit account: name, activity and email — lands in
  *  'Join requests & invitations' until they accept and get approved. */
-function InviteVendorModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (v: { name: Bilingual; type: Bilingual; email: string }) => void }) {
+function InviteVendorModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (v: { name: Bilingual; type: Bilingual; email: string; country: CountryCode }) => void }) {
   const { pick } = useLocale()
   const [name, setName] = useState('')
   const [type, setType] = useState('')
   const [email, setEmail] = useState('')
+  const [country, setCountry] = useState<CountryCode | ''>('')
   const emailOk = /^\S+@\S+\.\S+$/.test(email.trim())
-  const valid = name.trim() !== '' && type.trim() !== '' && emailOk
+  const valid = name.trim() !== '' && type.trim() !== '' && emailOk && country !== ''
   const submit = () => {
-    onSubmit({ name: { en: name.trim(), ar: name.trim() }, type: { en: type.trim(), ar: type.trim() }, email: email.trim() })
+    if (country === '') return
+    onSubmit({ name: { en: name.trim(), ar: name.trim() }, type: { en: type.trim(), ar: type.trim() }, email: email.trim(), country })
     onClose()
   }
   return (
@@ -648,6 +660,14 @@ function InviteVendorModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
           <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Activity', ar: 'النشاط' })}</span><input value={type} onChange={(e) => setType(e.target.value)} className="input" placeholder={pick({ en: 'e.g. Retail chain', ar: 'مثال: سلسلة تجزئة' })} /></label>
           <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Email', ar: 'البريد الإلكتروني' })}</span><input value={email} onChange={(e) => setEmail(e.target.value)} className={cn('input', email.trim() !== '' && !emailOk && 'border-danger')} dir="ltr" inputMode="email" placeholder="orders@vendor.sa" /></label>
         </div>
+        {/* the partner's country is mandatory — it decides which catalog they see */}
+        <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Country', ar: 'الدولة' })}</span>
+          <select value={country} onChange={(e) => setCountry(e.target.value as CountryCode | '')} className={cn('input cursor-pointer', country === '' && 'text-ink-subtle')}>
+            <option value="" disabled>{pick({ en: 'Choose the partner’s country…', ar: 'اختر دولة الشريك…' })}</option>
+            {countries.map((c) => <option key={c.code} value={c.code}>{c.flag} {pick(c.label)}</option>)}
+          </select>
+          <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Their catalog shows the products dedicated to this country.', ar: 'كتالوج الشريك يعرض المنتجات المخصصة لدولته.' })}</span>
+        </label>
         <p className="font-sans text-caption text-ink-subtle rounded-lg bg-surface-2 border border-hairline p-md">{pick({ en: 'The vendor receives an invitation to open a credit account. Once they accept, the request appears here for your approval, then you set their credit limit.', ar: 'يستلم المورّد دعوة لفتح حساب ائتماني. عند قبوله تظهر لك هنا كطلب انضمام لاعتماده، ثم تحدد له الحد الائتماني.' })}</p>
       </div>
     </Modal>
