@@ -83,6 +83,7 @@ const VENDOR_VIEWS: SubView[] = [
   { id: 'accounts', label: { en: 'Accounts', ar: 'الحسابات' } },
   { id: 'collection', label: { en: 'Collection', ar: 'التحصيل' } },
   { id: 'statements', label: { en: 'Statements', ar: 'كشوف الحساب' } },
+  { id: 'forecast', label: { en: 'Order forecasts', ar: 'تنبؤات الطلبات' } },
   { id: 'credit', label: { en: 'Join requests', ar: 'طلبات الانضمام' } },
 ]
 const SUB_NAVS: Partial<Record<Section, SubView[]>> = {
