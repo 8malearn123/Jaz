@@ -2,8 +2,9 @@ import { openPrintWindow } from './printWindow'
 import type { Bilingual } from '@/data/types'
 import type { VendorStatement } from '@/data/vendorStatements'
 
-/** Printable monthly statement of account — the browser's "Save as PDF"
- *  produces the PDF. Shows the month's movement and both approvals. */
+/** Printable cumulative statement of account — the browser's "Save as PDF"
+ *  produces the PDF. Covers the full period from the start of the relationship
+ *  to the end of the previous month, with both approval states. */
 export function openStatementPdf(s: VendorStatement, opts: { locale: string; pick: (b: Bilingual) => string; money: (minor: number) => string }) {
   const { locale, pick, money } = opts
   const dir = locale === 'ar' ? 'rtl' : 'ltr'
@@ -33,21 +34,21 @@ export function openStatementPdf(s: VendorStatement, opts: { locale: string; pic
     .foot{margin-top:24px;font-size:11px;color:#999}
     @media print{body{padding:0}}
   </style></head><body>
-    <h1>${L('Statement of account', 'كشف حساب')} · ${pick(s.monthLabel)}</h1>
-    <div class="sub">Jaz · ${L('Issued automatically on the 1st of every month', 'يصدر تلقائيًا في اليوم الأول من كل شهر')}</div>
+    <h1>${L('Statement of account', 'كشف حساب')} · ${pick(s.periodLabel)}</h1>
+    <div class="sub">Jaz · ${L('Issued on the 1st of every month for the entire preceding period', 'يصدر في اليوم الأول من كل شهر عن كامل الفترة السابقة')}</div>
     <div class="meta">
       <div><b>${L('Partner', 'الشريك')}</b>${pick(s.vendor)}</div>
       <div><b>${L('Statement no.', 'رقم الكشف')}</b>${s.id}</div>
-      <div><b>${L('Period', 'الفترة')}</b>${pick(s.monthLabel)}</div>
+      <div><b>${L('Partner since', 'بداية التعامل')}</b>${pick(s.sinceLabel)}</div>
       <div><b>${L('Issued on', 'تاريخ الإصدار')}</b>${pick(s.issuedOn)}</div>
+      <div><b>${L('Covered period', 'الفترة المغطاة')}</b>${pick(s.periodLabel)}</div>
     </div>
     <table>
       <thead><tr><th>${L('Item', 'البند')}</th><th>${L('Amount', 'المبلغ')}</th></tr></thead>
       <tbody>
-        <tr><td>${L('Opening balance', 'الرصيد الافتتاحي')}</td><td>${money(s.openingMinor)}</td></tr>
-        <tr><td>${L('Purchases during the month', 'مشتريات الشهر')}</td><td>${money(s.chargesMinor)}</td></tr>
-        <tr><td>${L('Payments received', 'المدفوعات المستلمة')}</td><td>−${money(s.paymentsMinor)}</td></tr>
-        <tr class="net"><td>${L('Closing balance', 'الرصيد الختامي')}</td><td>${money(s.closingMinor)}</td></tr>
+        <tr><td>${L('Total purchases since the start of the relationship', 'إجمالي المشتريات منذ بداية التعامل')}</td><td>${money(s.chargesMinor)}</td></tr>
+        <tr><td>${L('Total payments received since the start', 'إجمالي المدفوعات المستلمة منذ البداية')}</td><td>−${money(s.paymentsMinor)}</td></tr>
+        <tr class="net"><td>${L('Balance at period end', 'الرصيد الختامي في نهاية الفترة')}</td><td>${money(s.closingMinor)}</td></tr>
       </tbody>
     </table>
     <div class="apprs">

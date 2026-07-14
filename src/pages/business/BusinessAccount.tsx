@@ -237,8 +237,8 @@ function Credit() {
             {myStatements.map((s) => (
               <li key={s.id} className="px-lg py-md flex flex-wrap items-center justify-between gap-sm">
                 <div className="flex flex-col gap-xxs min-w-0">
-                  <span className="font-serif text-body text-ink">{pick(s.monthLabel)}</span>
-                  <span className="font-sans text-caption text-ink-subtle tabular-nums">{pick({ en: 'Closing', ar: 'الختامي' })} {money(s.closingMinor)} · {pick({ en: 'Issued', ar: 'صدر' })} {pick(s.issuedOn)}</span>
+                  <span className="font-serif text-body text-ink">{pick(s.periodLabel)}</span>
+                  <span className="font-sans text-caption text-ink-subtle tabular-nums">{pick({ en: 'Balance', ar: 'الرصيد' })} {money(s.closingMinor)} · {pick({ en: 'Issued', ar: 'صدر' })} {pick(s.issuedOn)}</span>
                   {s.status === 'confirmed'
                     ? <span className="inline-flex items-center gap-xxs font-sans text-caption text-success"><CheckCircle2 size={12} /> {pick({ en: 'Approved', ar: 'معتمد' })}{s.partnerAt && <> · {pick(s.partnerAt)}</>}</span>
                     : <span className="font-sans text-caption font-medium" style={{ color: '#8a6b3f' }}>{pick({ en: 'Awaiting your approval', ar: 'بانتظار اعتمادكم' })}</span>}

@@ -166,7 +166,7 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
           {/* monthly statements: issued on the 1st, accountant approves & sends, partner approves back */}
           <div className="rounded-lg bg-primary/[0.05] border border-primary/20 p-md flex items-start gap-sm">
             <FileText size={18} className="text-primary-hover shrink-0 mt-0.5" />
-            <p className="font-sans text-data text-ink-muted">{pick({ en: 'A statement of account is issued for every credit partner automatically on the 1st of each month. The accountant reviews and approves it, it is then sent to the partner, and the partner approves it back.', ar: 'يصدر كشف حساب لكل شريك ائتماني تلقائيًا في اليوم الأول من كل شهر. يراجعه المحاسب ويعتمده، ثم يُرسل إلى الشريك ليقوم باعتماده بدوره.' })}</p>
+            <p className="font-sans text-data text-ink-muted">{pick({ en: 'On the 1st of every month a statement of account is issued for every credit partner covering the entire period from the start of the relationship to the end of the previous month. The accountant reviews and approves it, it is then sent to the partner, and the partner approves it back.', ar: 'في اليوم الأول من كل شهر يصدر كشف حساب لكل شريك ائتماني يغطي كامل الفترة من بداية التعامل حتى نهاية الشهر السابق. يراجعه المحاسب ويعتمده، ثم يُرسل إلى الشريك ليقوم باعتماده بدوره.' })}</p>
           </div>
 
           <FilterChips
@@ -178,7 +178,7 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
               <table className="w-full border-collapse min-w-[860px]">
                 <thead>
                   <tr className="bg-surface-2 border-b border-hairline">
-                    {[{ h: { en: 'Partner', ar: 'الشريك' }, a: 'text-start' }, { h: { en: 'Opening', ar: 'الافتتاحي' }, a: 'text-end' }, { h: { en: 'Purchases', ar: 'المشتريات' }, a: 'text-end' }, { h: { en: 'Payments', ar: 'المدفوعات' }, a: 'text-end' }, { h: { en: 'Closing', ar: 'الختامي' }, a: 'text-end' }, { h: { en: 'Status', ar: 'الحالة' }, a: 'text-start' }, { h: { en: 'Actions', ar: 'إجراءات' }, a: 'text-end' }].map((c, i) => (
+                    {[{ h: { en: 'Partner', ar: 'الشريك' }, a: 'text-start' }, { h: { en: 'Covered period', ar: 'الفترة المغطاة' }, a: 'text-start' }, { h: { en: 'Total purchases', ar: 'إجمالي المشتريات' }, a: 'text-end' }, { h: { en: 'Total payments', ar: 'إجمالي المدفوعات' }, a: 'text-end' }, { h: { en: 'Balance', ar: 'الرصيد' }, a: 'text-end' }, { h: { en: 'Status', ar: 'الحالة' }, a: 'text-start' }, { h: { en: 'Actions', ar: 'إجراءات' }, a: 'text-end' }].map((c, i) => (
                       <th key={i} className={cn('font-sans text-caption uppercase tracking-wide text-ink-subtle px-lg py-2.5', c.a)}>{pick(c.h)}</th>
                     ))}
                   </tr>
@@ -192,7 +192,10 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
                           <p className="font-sans text-data text-ink truncate max-w-[200px]">{pick(s.vendor)}</p>
                           <p className="font-sans text-caption text-ink-subtle tabular-nums">{s.id} · {pick({ en: 'Issued', ar: 'صدر' })} {pick(s.issuedOn)}</p>
                         </td>
-                        <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums whitespace-nowrap">{money(s.openingMinor, { withSymbol: false })}</td>
+                        <td className="px-lg py-md">
+                          <p className="font-sans text-caption text-ink-muted max-w-[170px]">{pick(s.periodLabel)}</p>
+                          <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Partner since', ar: 'بداية التعامل' })} {pick(s.sinceLabel)}</p>
+                        </td>
                         <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums whitespace-nowrap">{money(s.chargesMinor, { withSymbol: false })}</td>
                         <td className="px-lg py-md text-end font-sans text-data text-success tabular-nums whitespace-nowrap">−{money(s.paymentsMinor, { withSymbol: false })}</td>
                         <td className="px-lg py-md text-end font-serif text-card-title text-ink tabular-nums whitespace-nowrap">{money(s.closingMinor)}</td>
@@ -217,7 +220,7 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
               </table>
             </div>
             <div className="px-lg py-sm bg-surface-2 border-t border-hairline font-sans text-caption text-ink-subtle">
-              {pick({ en: 'The PDF carries the month movement and both approvals. The partner approves from their business portal.', ar: 'ملف الـ PDF يتضمن حركة الشهر وحالتي الاعتماد. الشريك يعتمد الكشف من بوابة أعماله.' })}
+              {pick({ en: 'The PDF covers the entire period since the relationship began, with both approval states. The partner approves from their business portal.', ar: 'ملف الـ PDF يغطي كامل الفترة منذ بداية التعامل ويتضمن حالتي الاعتماد. الشريك يعتمد الكشف من بوابة أعماله.' })}
             </div>
           </div>
         </div>
