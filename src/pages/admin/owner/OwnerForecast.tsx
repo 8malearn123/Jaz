@@ -137,6 +137,7 @@ export function OwnerForecastPanel() {
             const actuals = forecastActualsSeed[m.key]
             const actualTotal = actuals ? Object.values(actuals).reduce((x, q) => x + q, 0) : 0
             const pct = actuals && a.pallets > 0 ? Math.round((actualTotal / a.pallets) * 100) : null
+            const unfilled = forecasts.filter((f) => cellQty(f, m.key) === 0).length
             return (
               <div key={m.key} className={cn('card p-lg flex flex-col gap-sm', i < FORECAST_NEAR_MONTHS && 'ring-1 ring-primary/20')}>
                 {/* title row stays clean: month + eye; the state pills get their own line */}
@@ -144,12 +145,13 @@ export function OwnerForecastPanel() {
                   <span className="font-serif text-card-title text-ink whitespace-nowrap">{pick(m.label)}</span>
                   <button onClick={() => setViewMonth(m)} className="grid place-items-center w-8 h-8 rounded-md border border-hairline text-ink-muted hover:text-ink hover:border-ink/30 transition-colors shrink-0" aria-label={pick({ en: 'View month details', ar: 'عرض تفاصيل الشهر' })}><Eye size={15} /></button>
                 </div>
-                {(pct != null || i < FORECAST_NEAR_MONTHS || a.pallets === 0) && (
+                {(pct != null || i < FORECAST_NEAR_MONTHS || a.pallets === 0 || unfilled > 0) && (
                   <div className="flex flex-wrap items-center gap-xs -mt-xs">
                     {pct != null && <Pill color={fulfillColor(pct)} bg={fulfillColor(pct) + '1a'}>{pick({ en: 'Fulfilled', ar: 'التنفيذ' })} {pct}%</Pill>}
                     {i < FORECAST_NEAR_MONTHS
                       ? <Pill color="#8a6b3f" bg="#f6edde">{pick({ en: 'Near window', ar: 'ضمن نافذة التقييد' })}</Pill>
                       : a.pallets === 0 ? <Pill color="#b5403b" bg="#faeceb">{pick({ en: 'Awaiting fill', ar: 'بانتظار التعبئة' })}</Pill> : null}
+                    {unfilled > 0 && a.pallets > 0 && <Pill color="#b5403b" bg="#faeceb">{unfilled} {pick({ en: 'not filled', ar: 'لم يعبّئ' })}</Pill>}
                   </div>
                 )}
                 <div className="grid grid-cols-3 gap-xs">
@@ -302,11 +304,33 @@ function MonthDetailModal({ month, forecasts, onClose }: { month: ForecastMonthD
           )}
         </div>
 
-        {/* per-client plan + fulfillment */}
+        {/* who hasn't filled their forecast for this month — shown first, loudly */}
+        {(() => {
+          const unfilledClients = forecasts.filter((f) => Object.values(f.qty[month.key] ?? {}).reduce((a, q) => a + q, 0) === 0)
+          return unfilledClients.length > 0 ? (
+            <div className="rounded-md bg-danger/6 border border-danger/25 p-md flex items-start gap-sm">
+              <CalendarRange size={17} className="text-danger mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <p className="font-sans text-data font-medium text-ink">{unfilledClients.length} {pick({ en: 'client(s) have not filled this month yet', ar: 'من العملاء لم يعبّئوا تنبؤات هذا الشهر بعد' })}</p>
+                <div className="flex flex-wrap gap-xs mt-xs">
+                  {unfilledClients.map((f) => (
+                    <span key={f.clientId} className="rounded-pill bg-danger/10 text-danger px-2.5 py-0.5 font-sans text-caption">{pick(f.client)}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null
+        })()}
+
+        {/* per-client plan + fulfillment — unfilled clients pinned to the top */}
         <div className="flex flex-col gap-sm">
           <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Clients — orders vs forecast', ar: 'العملاء — الطلبات مقابل التنبؤ' })}</h4>
           <div className="rounded-lg border border-hairline divide-y divide-hairline">
-            {forecasts.map((f) => {
+            {[...forecasts].sort((x, y) => {
+              const px = Object.values(x.qty[month.key] ?? {}).reduce((a, q) => a + q, 0)
+              const py = Object.values(y.qty[month.key] ?? {}).reduce((a, q) => a + q, 0)
+              return (px === 0 ? 0 : 1) - (py === 0 ? 0 : 1)
+            }).map((f) => {
               const planned = Object.values(f.qty[month.key] ?? {}).reduce((a, q) => a + q, 0)
               const actual = actuals?.[f.clientId] ?? null
               const remaining = actual != null ? Math.max(0, planned - actual) : null
@@ -323,9 +347,11 @@ function MonthDetailModal({ month, forecasts, onClose }: { month: ForecastMonthD
                         ? <span className="font-sans text-caption text-primary-hover tabular-nums">{pick({ en: 'Remaining', ar: 'المتبقي' })}: {remaining}</span>
                         : <span className="font-sans text-caption text-success">{pick({ en: 'Plan complete', ar: 'اكتملت الخطة' })} ✓</span>
                     )}
-                    {pct != null
-                      ? <Pill color={fulfillColor(pct)} bg={fulfillColor(pct) + '1a'}>{pct}%</Pill>
-                      : <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'No orders yet', ar: 'لا طلبات بعد' })}</span>}
+                    {planned === 0
+                      ? <Pill color="#b5403b" bg="#faeceb">{pick({ en: 'Forecast not filled', ar: 'لم يعبّئ تنبؤاته' })}</Pill>
+                      : pct != null
+                        ? <Pill color={fulfillColor(pct)} bg={fulfillColor(pct) + '1a'}>{pct}%</Pill>
+                        : <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'No orders yet', ar: 'لا طلبات بعد' })}</span>}
                   </div>
                   {items.length > 0 && (
                     <div className="flex flex-wrap gap-xs">
