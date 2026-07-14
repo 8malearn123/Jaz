@@ -74,3 +74,11 @@ export const clientForecastsSeed: ClientForecast[] = [
     }),
   },
 ]
+
+// ── Actual booked orders per month (pallets per client) ──
+// Filled from confirmed export orders as they land; drives the
+// orders-vs-forecast analysis (fulfillment %) on the owner's calendar.
+export const forecastActualsSeed: Record<string, Record<string, number>> = {
+  '2026-08': { 'MEGA-01': 13, 'V-03': 15, 'V-01': 6 },
+  '2026-09': { 'MEGA-01': 7, 'V-03': 10, 'V-01': 3 },
+}
