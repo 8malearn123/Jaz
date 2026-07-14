@@ -1,5 +1,5 @@
 import { useState, useEffect, type ReactNode } from 'react'
-import { ShieldCheck, Check, X, Send, UserPlus, HandCoins, Upload, CheckCircle2, Eye, Search, FileText } from 'lucide-react'
+import { ShieldCheck, Check, X, Send, UserPlus, HandCoins, Upload, CheckCircle2, Eye, Search, FileText, Download } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
@@ -8,8 +8,11 @@ import type { Bilingual } from '@/data/types'
 import { poByVendor, onboardingStages, vendorDocMeta, type PoPayStatus, type OwnerVendor, type VendorDoc, type VendorDocKind } from '@/data/ownerVendors'
 import { collectionRows, receivables, type ReceivableRow } from '@/data/ownerFinance'
 import { useOwnerState } from '@/state/OwnerStateContext'
+import { useStatements } from '@/state/StatementsContext'
+import { statementMonths, type StatementStatus } from '@/data/vendorStatements'
+import { openStatementPdf } from '@/lib/statementPdf'
 import { cn } from '@/lib/cn'
-import { PanelHead, Pill, UtilBar } from './_shared'
+import { PanelHead, Pill, UtilBar, FilterChips } from './_shared'
 
 const poMeta: Record<PoPayStatus, { label: { en: string; ar: string }; color: string; bg: string }> = {
   paid: { label: { en: 'Paid', ar: 'مسدّدة' }, color: '#355c4b', bg: '#e8f0ec' },
@@ -20,16 +23,25 @@ const poMeta: Record<PoPayStatus, { label: { en: string; ar: string }; color: st
 
 const utilColor = (pct: number) => (pct >= 100 ? '#b5403b' : pct >= 85 ? '#b08a57' : '#355c4b')
 
-export type VendorView = 'accounts' | 'collection' | 'credit'
+// monthly statement lifecycle: accountant review → sent to partner → partner approved
+const stMeta: Record<StatementStatus, { label: { en: string; ar: string }; color: string; bg: string }> = {
+  review: { label: { en: 'Awaiting accountant review', ar: 'بانتظار مراجعة المحاسب' }, color: '#8a6b3f', bg: '#f6edde' },
+  sent: { label: { en: 'Sent — awaiting partner', ar: 'أُرسل — بانتظار الشريك' }, color: '#2e5f8a', bg: '#e7f0f8' },
+  confirmed: { label: { en: 'Approved by partner', ar: 'اعتمده الشريك' }, color: '#3f7d4e', bg: '#e9f4ec' },
+}
+
+export type VendorView = 'accounts' | 'collection' | 'statements' | 'credit'
 
 export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
-  const { pick, money } = useLocale()
+  const { pick, money, locale } = useLocale()
   const { flash } = useToast()
   const { creditLimits: limits, setCreditLimit, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment, vendorDocs, attachVendorDoc } = useOwnerState() // limits are overlay only — never written to shared org credit
+  const { statements, accountantApprove } = useStatements()
   // The active sub-view is driven by the sidebar sub-nav (see AdminConsole);
   // local overrides (e.g. jumping to Accounts after activating a vendor) still work.
   const [subTab, setSubTab] = useState<VendorView>(view)
   useEffect(() => setSubTab(view), [view])
+  const [stMonth, setStMonth] = useState(statementMonths[0].key)
   const [query, setQuery] = useState('')
   const [profileId, setProfileId] = useState<string | null>(null)
   const [payId, setPayId] = useState<string | null>(null)
@@ -146,6 +158,66 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
             <div className="px-lg py-sm bg-surface-2 border-t border-hairline flex flex-wrap items-center justify-between gap-sm">
               <span className="font-sans text-caption text-ink-muted tabular-nums">{pick({ en: 'Total outstanding', ar: 'إجمالي المستحق' })}: {money(receivables.reduce((a, r) => a + r.outstandingMinor, 0))}</span>
               <span className="font-sans text-caption text-danger tabular-nums">{pick({ en: 'Overdue', ar: 'المتأخر' })}: {money(receivables.filter((r) => r.daysLate > 0).reduce((a, r) => a + r.outstandingMinor, 0))} · {receivables.filter((r) => r.daysLate > 0).length} {pick({ en: 'accounts', ar: 'حسابات' })}</span>
+            </div>
+          </div>
+        </div>
+      ) : subTab === 'statements' ? (
+        <div className="flex flex-col gap-lg">
+          {/* monthly statements: issued on the 1st, accountant approves & sends, partner approves back */}
+          <div className="rounded-lg bg-primary/[0.05] border border-primary/20 p-md flex items-start gap-sm">
+            <FileText size={18} className="text-primary-hover shrink-0 mt-0.5" />
+            <p className="font-sans text-data text-ink-muted">{pick({ en: 'A statement of account is issued for every credit partner automatically on the 1st of each month. The accountant reviews and approves it, it is then sent to the partner, and the partner approves it back.', ar: 'يصدر كشف حساب لكل شريك ائتماني تلقائيًا في اليوم الأول من كل شهر. يراجعه المحاسب ويعتمده، ثم يُرسل إلى الشريك ليقوم باعتماده بدوره.' })}</p>
+          </div>
+
+          <FilterChips
+            chips={statementMonths.map((m) => ({ id: m.key, label: pick(m.label), count: statements.filter((s) => s.month === m.key).length }))}
+            active={stMonth} onChange={setStMonth} label={pick({ en: 'Month', ar: 'الشهر' })} />
+
+          <div className="card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse min-w-[860px]">
+                <thead>
+                  <tr className="bg-surface-2 border-b border-hairline">
+                    {[{ h: { en: 'Partner', ar: 'الشريك' }, a: 'text-start' }, { h: { en: 'Opening', ar: 'الافتتاحي' }, a: 'text-end' }, { h: { en: 'Purchases', ar: 'المشتريات' }, a: 'text-end' }, { h: { en: 'Payments', ar: 'المدفوعات' }, a: 'text-end' }, { h: { en: 'Closing', ar: 'الختامي' }, a: 'text-end' }, { h: { en: 'Status', ar: 'الحالة' }, a: 'text-start' }, { h: { en: 'Actions', ar: 'إجراءات' }, a: 'text-end' }].map((c, i) => (
+                      <th key={i} className={cn('font-sans text-caption uppercase tracking-wide text-ink-subtle px-lg py-2.5', c.a)}>{pick(c.h)}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {statements.filter((s) => s.month === stMonth).map((s) => {
+                    const m = stMeta[s.status]
+                    return (
+                      <tr key={s.id} className="border-b border-hairline last:border-0 align-middle">
+                        <td className="px-lg py-md">
+                          <p className="font-sans text-data text-ink truncate max-w-[200px]">{pick(s.vendor)}</p>
+                          <p className="font-sans text-caption text-ink-subtle tabular-nums">{s.id} · {pick({ en: 'Issued', ar: 'صدر' })} {pick(s.issuedOn)}</p>
+                        </td>
+                        <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums whitespace-nowrap">{money(s.openingMinor, { withSymbol: false })}</td>
+                        <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums whitespace-nowrap">{money(s.chargesMinor, { withSymbol: false })}</td>
+                        <td className="px-lg py-md text-end font-sans text-data text-success tabular-nums whitespace-nowrap">−{money(s.paymentsMinor, { withSymbol: false })}</td>
+                        <td className="px-lg py-md text-end font-serif text-card-title text-ink tabular-nums whitespace-nowrap">{money(s.closingMinor)}</td>
+                        <td className="px-lg py-md">
+                          <Pill color={m.color} bg={m.bg}>{pick(m.label)}</Pill>
+                          {s.partnerAt && <p className="font-sans text-caption text-ink-subtle mt-xxs">{pick({ en: 'Partner approved', ar: 'اعتماد الشريك' })} · {pick(s.partnerAt)}</p>}
+                        </td>
+                        <td className="px-lg py-md">
+                          <div className="flex items-center justify-end gap-xs">
+                            <button onClick={() => openStatementPdf(s, { locale, pick, money })} className={buttonClass('secondary', 'sm')}><Download size={14} /> PDF</button>
+                            {s.status === 'review' && (
+                              <button onClick={() => { accountantApprove(s.id); flash(`${pick({ en: 'Approved & sent to', ar: 'اعتُمد وأُرسل إلى' })} ${pick(s.vendor)}`) }} className={buttonClass('primary', 'sm')}>
+                                <Check size={14} /> {pick({ en: 'Approve & send', ar: 'اعتماد وإرسال' })}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-lg py-sm bg-surface-2 border-t border-hairline font-sans text-caption text-ink-subtle">
+              {pick({ en: 'The PDF carries the month movement and both approvals. The partner approves from their business portal.', ar: 'ملف الـ PDF يتضمن حركة الشهر وحالتي الاعتماد. الشريك يعتمد الكشف من بوابة أعماله.' })}
             </div>
           </div>
         </div>

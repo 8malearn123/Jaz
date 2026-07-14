@@ -2,7 +2,7 @@ import { useState } from 'react'
 import {
   LayoutGrid, Landmark, Package, Building2, ShieldCheck, BadgeCheck, Download,
   ArrowUpRight, ArrowDownRight, MapPin, Plus, Lock, FileText, TrendingUp,
-  Store, Bell, Phone,
+  Store, Bell, Phone, Check, CheckCircle2,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { WholesaleOrderProvider } from '@/state/WholesaleOrderContext'
@@ -25,8 +25,14 @@ import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
 import { useTab } from '@/lib/useTab'
 import { cn } from '@/lib/cn'
-import { downloadExcel } from '@/lib/excel'
 import { openPrintWindow } from '@/lib/printWindow'
+import { useStatements } from '@/state/StatementsContext'
+import { statementMonths } from '@/data/vendorStatements'
+import { openStatementPdf } from '@/lib/statementPdf'
+
+// This organization's vendor account in the Jaz credit ledger — its monthly
+// statements are keyed by this id in the shared statements store.
+const VENDOR_ID = 'V-01'
 
 const org = organization
 const roleAccent: Record<OrgMember['role'], 'gold' | 'success' | 'neutral'> = { b2b_admin: 'gold', approver: 'success', buyer: 'neutral', viewer: 'neutral' }
@@ -149,18 +155,11 @@ function Credit() {
   const termLabel: Record<string, Bilingual> = {
     net_15: { en: 'Net 15', ar: 'صافي ١٥' }, net_30: { en: 'Net 30', ar: 'صافي ٣٠' }, net_60: { en: 'Net 60', ar: 'صافي ٦٠' }, prepaid: { en: 'Prepaid', ar: 'مسبق' },
   }
-  const downloadStatement = (id: string) => {
-    const s = org.statements.find((x) => x.id === id)!
-    downloadExcel(`statement-${s.id}`, pick({ en: 'Statement', ar: 'كشف الحساب' }), [
-      [pick({ en: 'Item', ar: 'البند' }), pick({ en: 'Value', ar: 'القيمة' })],
-      [pick({ en: 'Period', ar: 'الفترة' }), pick(s.period)],
-      [pick({ en: 'Opening balance (SAR)', ar: 'الرصيد الافتتاحي (ريال)' }), s.openingMinor / 100],
-      [pick({ en: 'Charges (SAR)', ar: 'المشتريات (ريال)' }), s.chargesMinor / 100],
-      [pick({ en: 'Payments (SAR)', ar: 'المدفوعات (ريال)' }), s.paymentsMinor / 100],
-      [pick({ en: 'Closing balance (SAR)', ar: 'الرصيد الختامي (ريال)' }), s.closingMinor / 100],
-    ])
-    flash(pick({ en: 'Statement downloaded (Excel)', ar: 'نُزّل كشف الحساب (إكسل)' }))
-  }
+  // Monthly statements arrive from Jaz once the accountant approves them; the
+  // org approves each one back, and everything is filterable by month.
+  const { statements, partnerApprove } = useStatements()
+  const [stMonth, setStMonth] = useState<string>('all')
+  const myStatements = statements.filter((s) => s.vendorId === VENDOR_ID && s.status !== 'review' && (stMonth === 'all' || s.month === stMonth))
 
   return (
     <div className="flex flex-col gap-lg">
@@ -225,15 +224,33 @@ function Credit() {
           <ul className="divide-y divide-hairline">{org.ledger.map((e) => <LedgerRow key={e.id} entry={e} showBalance />)}</ul>
         </div>
         <div className="card overflow-hidden">
-          <div className="bg-surface-2 px-lg py-md border-b border-hairline"><h3 className="font-serif text-card-title text-ink">{t('credit.statements')}</h3></div>
+          <div className="bg-surface-2 px-lg py-md border-b border-hairline flex flex-wrap items-center justify-between gap-sm">
+            <h3 className="font-serif text-card-title text-ink">{t('credit.statements')}</h3>
+            {/* month filter — approval happens per statement, month by month */}
+            <select value={stMonth} onChange={(e) => setStMonth(e.target.value)} className="input !w-auto py-1.5 font-sans text-caption cursor-pointer" aria-label={pick({ en: 'Filter by month', ar: 'فلترة بالشهر' })}>
+              <option value="all">{pick({ en: 'All months', ar: 'كل الشهور' })}</option>
+              {statementMonths.map((m) => <option key={m.key} value={m.key}>{pick(m.label)}</option>)}
+            </select>
+          </div>
           <ul className="divide-y divide-hairline">
-            {org.statements.map((s) => (
-              <li key={s.id} className="px-lg py-md flex items-center justify-between gap-md">
+            {myStatements.length === 0 && <li className="px-lg py-md font-sans text-caption text-ink-subtle">{pick({ en: 'No statements for this month yet — statements arrive after Jaz approves them.', ar: 'لا كشوف لهذا الشهر بعد — تصلكم الكشوف بعد اعتماد جاز لها.' })}</li>}
+            {myStatements.map((s) => (
+              <li key={s.id} className="px-lg py-md flex flex-wrap items-center justify-between gap-sm">
                 <div className="flex flex-col gap-xxs min-w-0">
-                  <span className="font-serif text-body text-ink">{pick(s.period)}</span>
-                  <span className="font-sans text-caption text-ink-subtle tabular-nums">{pick({ en: 'Closing', ar: 'الختامي' })} {money(s.closingMinor)}</span>
+                  <span className="font-serif text-body text-ink">{pick(s.monthLabel)}</span>
+                  <span className="font-sans text-caption text-ink-subtle tabular-nums">{pick({ en: 'Closing', ar: 'الختامي' })} {money(s.closingMinor)} · {pick({ en: 'Issued', ar: 'صدر' })} {pick(s.issuedOn)}</span>
+                  {s.status === 'confirmed'
+                    ? <span className="inline-flex items-center gap-xxs font-sans text-caption text-success"><CheckCircle2 size={12} /> {pick({ en: 'Approved', ar: 'معتمد' })}{s.partnerAt && <> · {pick(s.partnerAt)}</>}</span>
+                    : <span className="font-sans text-caption font-medium" style={{ color: '#8a6b3f' }}>{pick({ en: 'Awaiting your approval', ar: 'بانتظار اعتمادكم' })}</span>}
                 </div>
-                <button onClick={() => downloadStatement(s.id)} className="inline-flex items-center gap-xs font-sans text-caption uppercase tracking-[0.08em] text-primary-hover hover:text-ink"><Download size={15} /> Excel</button>
+                <div className="flex items-center gap-xs">
+                  <button onClick={() => openStatementPdf(s, { locale, pick, money })} className={buttonClass('secondary', 'sm')}><Download size={14} /> PDF</button>
+                  {s.status === 'sent' && (
+                    <button onClick={() => { partnerApprove(s.id); flash(`${pick({ en: 'Statement approved', ar: 'اعتُمد كشف الحساب' })} · ${pick(s.monthLabel)}`) }} className={buttonClass('primary', 'sm')}>
+                      <Check size={14} /> {pick({ en: 'Approve statement', ar: 'اعتماد الكشف' })}
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
