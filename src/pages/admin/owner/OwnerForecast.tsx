@@ -1,15 +1,19 @@
 import { useState } from 'react'
-import { CalendarRange, Check, Percent } from 'lucide-react'
+import { CalendarRange, Check, Percent, Eye, TrendingUp } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { buttonClass } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 import { megaCatalog } from '@/data/mega'
-import { forecastMonths, FORECAST_NEAR_MONTHS, type ClientForecast } from '@/data/forecasts'
+import { forecastMonths, forecastActualsSeed, FORECAST_NEAR_MONTHS, type ClientForecast, type ForecastMonthDef } from '@/data/forecasts'
 import { useForecast } from '@/state/ForecastContext'
 import { cn } from '@/lib/cn'
-import { StatCard, Pill } from './_shared'
+import { StatCard, Pill, UtilBar } from './_shared'
 
 const bySku = Object.fromEntries(megaCatalog.map((p) => [p.sku, p]))
+
+// Fulfillment tone: green when the month is essentially delivered on plan.
+const fulfillColor = (pct: number) => (pct >= 90 ? '#2f7d5b' : pct >= 60 ? '#8a6b3f' : '#b5403b')
 
 /** Owner/export-manager view of the yearly forecasts: every client, a month
  *  calendar with expected sales value & purchase cost, and the per-client
@@ -19,6 +23,7 @@ export function OwnerForecastPanel() {
   const { flash } = useToast()
   const { forecasts, setChangeLimit } = useForecast()
   const [draftPct, setDraftPct] = useState<Record<string, string>>({})
+  const [viewMonth, setViewMonth] = useState<ForecastMonthDef | null>(null)
 
   const cellQty = (f: ClientForecast, mk: string) =>
     Object.entries(f.qty[mk] ?? {}).reduce((a, [, q]) => a + q, 0)
@@ -93,19 +98,55 @@ export function OwnerForecastPanel() {
         </ul>
       </div>
 
+      {/* orders vs forecast — how much of the committed plan actually landed as orders */}
+      <div className="card overflow-hidden">
+        <div className="px-lg py-md bg-surface-2 border-b border-hairline flex items-center gap-xs">
+          <TrendingUp size={16} className="text-primary-hover" />
+          <div>
+            <h3 className="font-serif text-card-title text-ink">{pick({ en: 'Orders vs forecast', ar: 'تحليل الطلبات مقابل التنبؤات' })}</h3>
+            <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Booked order pallets against the committed plan, per month', ar: 'طبليات الطلبات الفعلية مقابل الخطة الملتزم بها، لكل شهر' })}</p>
+          </div>
+        </div>
+        <ul className="divide-y divide-hairline">
+          {forecastMonths.filter((m) => forecastActualsSeed[m.key]).map((m) => {
+            const planned = monthAgg(m.key).pallets
+            const actual = Object.values(forecastActualsSeed[m.key]).reduce((a, q) => a + q, 0)
+            const pct = planned > 0 ? Math.round((actual / planned) * 100) : 0
+            return (
+              <li key={m.key} className="flex flex-wrap items-center gap-md px-lg py-md">
+                <span className="font-sans text-data text-ink w-28 shrink-0">{pick(m.label)}</span>
+                <div className="flex-1 min-w-[160px]"><UtilBar pct={Math.min(100, pct)} color={fulfillColor(pct)} /></div>
+                <span className="font-sans text-caption text-ink-subtle tabular-nums">{actual} / {planned} {pick({ en: 'plt', ar: 'طبلية' })}</span>
+                <Pill color={fulfillColor(pct)} bg={fulfillColor(pct) + '1a'}>{pct}%</Pill>
+              </li>
+            )
+          })}
+          {forecastMonths.every((m) => !forecastActualsSeed[m.key]) && (
+            <li className="px-lg py-md font-sans text-caption text-ink-subtle">{pick({ en: 'No booked orders inside the forecast horizon yet.', ar: 'لا طلبات فعلية ضمن أفق الخطة بعد.' })}</li>
+          )}
+        </ul>
+      </div>
+
       {/* the calendar: a card per month with totals and the client breakdown */}
       <div className="flex flex-col gap-sm">
         <h3 className="font-serif text-card-title text-ink">{pick({ en: 'Forecast calendar', ar: 'تقويم التنبؤات' })}</h3>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-md">
           {forecastMonths.map((m, i) => {
             const a = monthAgg(m.key)
+            const actuals = forecastActualsSeed[m.key]
+            const actualTotal = actuals ? Object.values(actuals).reduce((x, q) => x + q, 0) : 0
+            const pct = actuals && a.pallets > 0 ? Math.round((actualTotal / a.pallets) * 100) : null
             return (
               <div key={m.key} className={cn('card p-lg flex flex-col gap-sm', i < FORECAST_NEAR_MONTHS && 'ring-1 ring-primary/20')}>
                 <div className="flex items-center justify-between gap-sm">
                   <span className="font-serif text-card-title text-ink">{pick(m.label)}</span>
-                  {i < FORECAST_NEAR_MONTHS
-                    ? <Pill color="#8a6b3f" bg="#f6edde">{pick({ en: 'Near window', ar: 'ضمن نافذة التقييد' })}</Pill>
-                    : a.pallets === 0 ? <Pill color="#b5403b" bg="#faeceb">{pick({ en: 'Awaiting fill', ar: 'بانتظار التعبئة' })}</Pill> : null}
+                  <div className="flex items-center gap-xs">
+                    {pct != null && <Pill color={fulfillColor(pct)} bg={fulfillColor(pct) + '1a'}>{pick({ en: 'Fulfilled', ar: 'التنفيذ' })} {pct}%</Pill>}
+                    {i < FORECAST_NEAR_MONTHS
+                      ? <Pill color="#8a6b3f" bg="#f6edde">{pick({ en: 'Near window', ar: 'ضمن نافذة التقييد' })}</Pill>
+                      : a.pallets === 0 ? <Pill color="#b5403b" bg="#faeceb">{pick({ en: 'Awaiting fill', ar: 'بانتظار التعبئة' })}</Pill> : null}
+                    <button onClick={() => setViewMonth(m)} className="grid place-items-center w-8 h-8 rounded-md border border-hairline text-ink-muted hover:text-ink hover:border-ink/30 transition-colors shrink-0" aria-label={pick({ en: 'View month details', ar: 'عرض تفاصيل الشهر' })}><Eye size={15} /></button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-3 gap-xs">
                   <div className="flex flex-col gap-xxs"><span className="label !mb-0">{pick({ en: 'Pallets', ar: 'طبليات' })}</span><span className="font-serif text-card-title text-ink tabular-nums">{a.pallets}</span></div>
@@ -125,6 +166,106 @@ export function OwnerForecastPanel() {
           })}
         </div>
       </div>
+
+      {viewMonth && <MonthDetailModal month={viewMonth} forecasts={forecasts} onClose={() => setViewMonth(null)} />}
     </div>
+  )
+}
+
+/** Month drill-down: the requested products (aggregated across clients), each
+ *  client's plan, and — when orders exist — actual vs forecast with a fulfillment %. */
+function MonthDetailModal({ month, forecasts, onClose }: { month: ForecastMonthDef; forecasts: ClientForecast[]; onClose: () => void }) {
+  const { pick, money } = useLocale()
+  const actuals = forecastActualsSeed[month.key]
+
+  // Aggregate the requested products for this month across all clients.
+  const skuTotals = new Map<string, number>()
+  for (const f of forecasts) {
+    for (const [sku, q] of Object.entries(f.qty[month.key] ?? {})) {
+      if (q > 0) skuTotals.set(sku, (skuTotals.get(sku) ?? 0) + q)
+    }
+  }
+  const skuRows = [...skuTotals.entries()]
+    .map(([sku, q]) => ({ sku, q, p: bySku[sku] }))
+    .filter((r) => r.p)
+    .sort((a, b) => b.q - a.q)
+  const totals = skuRows.reduce((acc, r) => ({ pallets: acc.pallets + r.q, sales: acc.sales + r.q * r.p.pricePerPalletMinor, cost: acc.cost + r.q * r.p.costPerPalletMinor }), { pallets: 0, sales: 0, cost: 0 })
+
+  return (
+    <Modal open onClose={onClose} size="lg" eyebrow={pick({ en: 'Forecast month', ar: 'شهر التنبؤ' })} title={pick(month.label)}
+      footer={<button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Close', ar: 'إغلاق' })}</button>}>
+      <div className="flex flex-col gap-lg">
+        {/* requested products */}
+        <div className="flex flex-col gap-sm">
+          <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Requested products', ar: 'الأصناف المطلوبة' })}</h4>
+          {skuRows.length === 0 ? (
+            <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'No products planned for this month yet.', ar: 'لا أصناف مخططة لهذا الشهر بعد.' })}</p>
+          ) : (
+            <div className="rounded-lg border border-hairline overflow-hidden">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-surface-2 border-b border-hairline">
+                    <th className="text-start font-sans text-caption uppercase tracking-wide text-ink-subtle px-md py-2">{pick({ en: 'Product', ar: 'الصنف' })}</th>
+                    <th className="text-end font-sans text-caption uppercase tracking-wide text-ink-subtle px-md py-2">{pick({ en: 'Pallets', ar: 'طبليات' })}</th>
+                    <th className="text-end font-sans text-caption uppercase tracking-wide text-ink-subtle px-md py-2">{pick({ en: 'Sales', ar: 'مبيعات' })}</th>
+                    <th className="text-end font-sans text-caption uppercase tracking-wide text-ink-subtle px-md py-2">{pick({ en: 'Cost', ar: 'تكلفة' })}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {skuRows.map((r) => (
+                    <tr key={r.sku} className="border-b border-hairline last:border-0">
+                      <td className="px-md py-2.5 font-sans text-data text-ink">{pick(r.p.name)}</td>
+                      <td className="px-md py-2.5 text-end font-sans text-data text-ink tabular-nums">{r.q}</td>
+                      <td className="px-md py-2.5 text-end font-sans text-data text-success tabular-nums">{money(r.q * r.p.pricePerPalletMinor, { withSymbol: false })}</td>
+                      <td className="px-md py-2.5 text-end font-sans text-data text-ink-muted tabular-nums">{money(r.q * r.p.costPerPalletMinor, { withSymbol: false })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-surface-2 border-t border-hairline">
+                    <td className="px-md py-2 font-sans text-data font-medium text-ink">{pick({ en: 'Total', ar: 'الإجمالي' })}</td>
+                    <td className="px-md py-2 text-end font-sans text-data font-medium text-ink tabular-nums">{totals.pallets}</td>
+                    <td className="px-md py-2 text-end font-sans text-data font-medium text-success tabular-nums">{money(totals.sales, { withSymbol: false })}</td>
+                    <td className="px-md py-2 text-end font-sans text-data font-medium text-ink-muted tabular-nums">{money(totals.cost, { withSymbol: false })}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* per-client plan + fulfillment */}
+        <div className="flex flex-col gap-sm">
+          <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Clients — orders vs forecast', ar: 'العملاء — الطلبات مقابل التنبؤ' })}</h4>
+          <div className="rounded-lg border border-hairline divide-y divide-hairline">
+            {forecasts.map((f) => {
+              const planned = Object.values(f.qty[month.key] ?? {}).reduce((a, q) => a + q, 0)
+              const actual = actuals?.[f.clientId] ?? null
+              const pct = actual != null && planned > 0 ? Math.round((actual / planned) * 100) : null
+              const items = Object.entries(f.qty[month.key] ?? {}).filter(([, q]) => q > 0)
+              return (
+                <div key={f.clientId} className="px-md py-sm flex flex-col gap-xs">
+                  <div className="flex flex-wrap items-center gap-sm">
+                    <span className="font-sans text-data text-ink flex-1 min-w-[140px] truncate">{pick(f.client)}</span>
+                    <span className="font-sans text-caption text-ink-subtle tabular-nums">{pick({ en: 'Forecast', ar: 'التنبؤ' })}: {planned} {pick({ en: 'plt', ar: 'طبلية' })}</span>
+                    {actual != null && <span className="font-sans text-caption text-ink-subtle tabular-nums">{pick({ en: 'Orders', ar: 'الطلبات' })}: {actual}</span>}
+                    {pct != null
+                      ? <Pill color={fulfillColor(pct)} bg={fulfillColor(pct) + '1a'}>{pct}%</Pill>
+                      : <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'No orders yet', ar: 'لا طلبات بعد' })}</span>}
+                  </div>
+                  {items.length > 0 && (
+                    <div className="flex flex-wrap gap-xs">
+                      {items.map(([sku, q]) => (
+                        <span key={sku} className="rounded-pill border border-hairline-strong bg-surface-2 px-2.5 py-0.5 font-sans text-caption text-ink-muted">{pick(bySku[sku]?.name ?? { en: sku, ar: sku })} · <span className="tabular-nums">{q}</span></span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </Modal>
   )
 }
