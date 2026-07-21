@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Bilingual } from '@/data/types'
 import { ownerOrdersSeed, ownerOrderStatuses, type OwnerOrder, type OwnerChannel, type OwnerOrderStage } from '@/data/ownerOrders'
-import { rawMaterials, finishedBatches, bomBySku, purchaseInvoices, suppliers as suppliersSeed, stockMovementsSeed, stockUnits, unitFactor, type RawKey, type FinishedBatch, type PurchaseInvoice, type ExtraRaw, type Supplier, type SupplierContact, type StockMovement, type StockTakeReport } from '@/data/ownerSupply'
+import { rawMaterials, finishedBatches, bomBySku, purchaseInvoices, suppliers as suppliersSeed, stockMovementsSeed, stockUnits, unitFactor, type RawKey, type FinishedBatch, type PurchaseInvoice, type InvoiceExtraCost, type ExtraRaw, type Supplier, type SupplierContact, type StockMovement, type StockTakeReport } from '@/data/ownerSupply'
 import { ownerProductsByChannel, type OwnerProduct, type ProdChannel } from '@/data/ownerProducts'
 import { ownerCustomers, ownerTiers, loyaltyLedgerSeed, type OwnerCustomer, type OwnerTier, type LoyaltyLedgerEntry } from '@/data/ownerCustomers'
 
@@ -92,7 +92,7 @@ interface OwnerStateValue {
   reconcileInvoice: (id: string) => void
   addPurchaseInvoice: (inv: { supplier: Bilingual; material: Bilingual; date: Bilingual; totalMinor: number; po?: string; rawKey?: RawKey; qty?: number }) => void
   // multi-line purchase: each line is assigned to a stock item (seed raw or owner-added) and restocks it
-  receivePurchase: (inv: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[] }) => void
+  receivePurchase: (inv: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extraCosts?: InvoiceExtraCost[] }) => void
   // waste → finance
   wasteLog: WasteEntry[]
   logWaste: (e: { item: Bilingual; reason: Bilingual; lossMinor: number }) => void
@@ -354,12 +354,12 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
 
   // Multi-line purchase entry: one invoice, every line assigned to a stock item.
   // Seed raws restock rawQty; owner-added items restock qty and refresh their unit cost from the line.
-  const receivePurchase = useCallback((inv: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[] }) => {
+  const receivePurchase = useCallback((inv: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extraCosts?: InvoiceExtraCost[] }) => {
     const id = `PINV-${invSeq}`
     setInvSeq((s) => s + 1)
     const names: Bilingual[] = inv.lines.map((l) => rawMaterials.find((r) => r.key === l.itemId)?.name ?? extraRaws.find((x) => x.id === l.itemId)?.name ?? { en: l.itemId, ar: l.itemId })
     const material: Bilingual = names.length === 1 ? names[0] : { en: `${names[0].en} +${names.length - 1}`, ar: `${names[0].ar} +${names.length - 1}` }
-    setInvoices((prev) => [{ id, supplier: inv.supplier, material, date: { en: 'Today', ar: 'اليوم' }, totalMinor: inv.totalMinor, match: inv.po ? 'pending' : 'flagged', po: inv.po }, ...prev])
+    setInvoices((prev) => [{ id, supplier: inv.supplier, material, date: { en: 'Today', ar: 'اليوم' }, totalMinor: inv.totalMinor, match: inv.po ? 'pending' : 'flagged', po: inv.po, extraCosts: inv.extraCosts?.length ? inv.extraCosts : undefined }, ...prev])
     for (const l of inv.lines) {
       if (rawMaterials.some((r) => r.key === l.itemId)) {
         const k = l.itemId as RawKey

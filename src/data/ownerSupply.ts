@@ -93,6 +93,23 @@ export interface StockTakeReport {
 }
 
 export type PurchaseMatch = 'matched' | 'pending' | 'flagged'
+
+// Extra (landed) costs on a purchase invoice — each one is classified by source
+// so the invoice records where the cost came from, not just a lump sum.
+export type ExtraCostType = 'shipping' | 'packaging' | 'customs' | 'insurance' | 'other'
+export const extraCostTypes: { key: ExtraCostType; label: Bilingual }[] = [
+  { key: 'shipping', label: { en: 'Shipping / delivery', ar: 'شحن / توصيل' } },
+  { key: 'packaging', label: { en: 'Packaging', ar: 'تغليف' } },
+  { key: 'customs', label: { en: 'Customs & clearance', ar: 'جمارك وتخليص' } },
+  { key: 'insurance', label: { en: 'Insurance', ar: 'تأمين' } },
+  { key: 'other', label: { en: 'Other…', ar: 'أخرى…' } },
+]
+export interface InvoiceExtraCost {
+  type: ExtraCostType
+  note?: string // free-text source, e.g. carrier name — required when type is 'other'
+  amountMinor: number
+}
+
 export interface PurchaseInvoice {
   id: string
   supplier: Bilingual
@@ -103,6 +120,7 @@ export interface PurchaseInvoice {
   po?: string // linked purchase order (absent → no PO, so it can't 3-way match → flagged)
   rawKey?: RawKey // raw stock this invoice restocks (drives the automatic stock/cost update)
   qty?: number // received quantity in the raw's unit
+  extraCosts?: InvoiceExtraCost[] // classified extra costs included in totalMinor
 }
 export const purchaseInvoices: PurchaseInvoice[] = [
   { id: 'PINV-3312', supplier: { en: 'Barry Callebaut', ar: 'باري كاليبو' }, material: { en: 'Cocoa mass', ar: 'كتلة كاكاو' }, date: { en: '04 Jul', ar: '٠٤ يوليو' }, totalMinor: 26450000, match: 'matched', po: 'PO-2041', rawKey: 'cacao', qty: 5000 },

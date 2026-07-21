@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import type { Bilingual } from '@/data/types'
 import {
-  rawMaterials, stockUnits, unitFactor, type PurchaseMatch, type RawKey, type ExtraRaw, type Supplier, type StockTakeReport,
+  rawMaterials, stockUnits, unitFactor, extraCostTypes, type PurchaseMatch, type RawKey, type ExtraRaw, type Supplier, type StockTakeReport, type ExtraCostType, type InvoiceExtraCost,
 } from '@/data/ownerSupply'
 import { wasteReasons } from '@/data/ownerFinance'
 import { useOwnerState } from '@/state/OwnerStateContext'
@@ -75,6 +75,11 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
                         <td className="px-lg py-md align-top">
                           <p className="font-sans text-data text-ink">{pick(iv.supplier)}</p>
                           <p className="font-sans text-caption text-ink-subtle">{iv.po ?? pick({ en: 'No PO', ar: 'بدون أمر شراء' })} · {pick(iv.material)}</p>
+                          {iv.extraCosts && iv.extraCosts.length > 0 && (
+                            <p className="font-sans text-caption text-ink-subtle tabular-nums">
+                              {pick({ en: 'Extra costs', ar: 'تكاليف إضافية' })}: {iv.extraCosts.map((x) => `${pick(extraCostTypes.find((t) => t.key === x.type)!.label).replace('…', '')}${x.note ? ` (${x.note})` : ''} ${money(x.amountMinor)}`).join(' · ')}
+                            </p>
+                          )}
                         </td>
                         <td className="px-lg py-md text-end font-sans text-data text-ink-muted tabular-nums whitespace-nowrap align-top">{pick(iv.date)}</td>
                         <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums whitespace-nowrap align-top">{money(iv.totalMinor)}</td>
@@ -289,13 +294,14 @@ function SupplierSearch({ supplierId, onPick }: { supplierId: string; onPick: (i
 /** Enter a supplier invoice with line items — each line is assigned to a stock product
  *  (search-as-you-type), bought in a chosen unit with automatic conversion to the
  *  product's stock unit; totals (subtotal, VAT, extra cost) are computed live. */
-function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[] }) => void }) {
+function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extraCosts?: InvoiceExtraCost[] }) => void }) {
   const { pick, money } = useLocale()
   const { suppliers, extraRaws, rawQty } = useOwnerState()
   type Line = { itemId: string; q: string; qtyStr: string; cost: number }
   const emptyLine: Line = { itemId: '', q: '', qtyStr: '', cost: 0 }
+  type ExtraRow = { type: ExtraCostType; note: string; amount: number }
   const [supplierId, setSupplierId] = useState('')
-  const [extraCost, setExtraCost] = useState(0)
+  const [extras, setExtras] = useState<ExtraRow[]>([])
   const [lines, setLines] = useState<Line[]>([emptyLine])
 
   const items = [
@@ -308,17 +314,27 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
   const supplier = suppliers.find((s) => s.id === supplierId) ?? null
   const subtotal = lines.reduce((a, l) => a + l.cost, 0)
   const vat = Math.round(subtotal * 0.15)
-  const total = subtotal + vat + extraCost
-  const valid = !!supplier && lines.length > 0 && lines.every((l) => itemOf(l.itemId) && parseDec(l.qtyStr) > 0 && l.cost > 0)
+  const extraTotal = extras.reduce((a, x) => a + x.amount, 0)
+  const total = subtotal + vat + extraTotal
+  const extrasValid = extras.every((x) => x.amount > 0 && (x.type !== 'other' || x.note.trim() !== ''))
+  const valid = !!supplier && lines.length > 0 && lines.every((l) => itemOf(l.itemId) && parseDec(l.qtyStr) > 0 && l.cost > 0) && extrasValid
 
   const setLine = (i: number, patch: Partial<Line>) => setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
   const pickItem = (i: number, it: Item) => setLine(i, { itemId: it.id, q: '' })
   const addLine = () => setLines((prev) => [...prev, emptyLine])
   const removeLine = (i: number) => setLines((prev) => prev.filter((_, idx) => idx !== i))
 
+  const setExtra = (i: number, patch: Partial<ExtraRow>) => setExtras((prev) => prev.map((x, idx) => (idx === i ? { ...x, ...patch } : x)))
+  const addExtra = () => setExtras((prev) => [...prev, { type: 'shipping', note: '', amount: 0 }])
+  const removeExtra = (i: number) => setExtras((prev) => prev.filter((_, idx) => idx !== i))
+
   const submit = () => {
     if (!supplier) return
-    onSubmit({ supplier: supplier.name, po: supplier.id, totalMinor: total * 100, lines: lines.map((l) => ({ itemId: l.itemId, qty: Math.round(parseDec(l.qtyStr)), costMinor: l.cost * 100 })) })
+    onSubmit({
+      supplier: supplier.name, po: supplier.id, totalMinor: total * 100,
+      lines: lines.map((l) => ({ itemId: l.itemId, qty: Math.round(parseDec(l.qtyStr)), costMinor: l.cost * 100 })),
+      extraCosts: extras.length > 0 ? extras.map((x) => ({ type: x.type, note: x.note.trim() || undefined, amountMinor: x.amount * 100 })) : undefined,
+    })
     onClose()
   }
 
@@ -384,11 +400,44 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
           </div>
         </div>
 
+        {/* extra costs — each classified by source (shipping, packaging, customs…) */}
+        <div className="flex flex-col gap-xs">
+          <div className="flex items-center justify-between">
+            <span className="label">{pick({ en: 'Extra costs', ar: 'التكاليف الإضافية' })}{extras.length > 0 && <> · {extras.length}</>}</span>
+            <button type="button" onClick={addExtra} className="link-gold text-caption">＋ {pick({ en: 'Add cost', ar: 'إضافة تكلفة' })}</button>
+          </div>
+          {extras.length === 0 ? (
+            <p className="font-sans text-caption text-ink-subtle rounded-md border border-dashed border-hairline-strong px-3 py-2">{pick({ en: 'No extra costs — add shipping, packaging or customs if the invoice includes them.', ar: 'لا توجد تكاليف إضافية — أضف شحنًا أو تغليفًا أو جمارك إن تضمّنتها الفاتورة.' })}</p>
+          ) : (
+            <div className="rounded-md border border-hairline-strong divide-y divide-hairline">
+              {extras.map((x, i) => {
+                const noteMissing = x.type === 'other' && x.note.trim() === ''
+                return (
+                  <div key={i} className="flex flex-wrap items-end gap-sm px-3 py-2">
+                    <label className="flex flex-col gap-xxs w-40"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Cost type', ar: 'نوع التكلفة' })}</span>
+                      <select value={x.type} onChange={(e) => setExtra(i, { type: e.target.value as ExtraCostType })} className="input py-1.5 cursor-pointer">
+                        {extraCostTypes.map((t) => <option key={t.key} value={t.key}>{pick(t.label)}</option>)}
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-xxs flex-1 min-w-[160px]"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Source / details', ar: 'المصدر / التفاصيل' })}{x.type !== 'other' && ` (${pick({ en: 'optional', ar: 'اختياري' })})`}</span>
+                      <input value={x.note} onChange={(e) => setExtra(i, { note: e.target.value })} className={cn('input py-1.5', noteMissing && 'border-danger')} placeholder={x.type === 'other' ? pick({ en: 'Specify what this cost is…', ar: 'حدّد ما هذه التكلفة…' }) : pick({ en: 'e.g. carrier or provider name…', ar: 'مثال: اسم شركة الشحن أو الجهة…' })} />
+                    </label>
+                    <label className="flex flex-col gap-xxs w-28"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Amount (﷼)', ar: 'المبلغ (﷼)' })}</span>
+                      <input value={x.amount || ''} onChange={(e) => setExtra(i, { amount: parseNum(e.target.value) })} className="input py-1.5 tabular-nums" inputMode="numeric" placeholder="0" />
+                    </label>
+                    <button type="button" onClick={() => removeExtra(i)} className="grid place-items-center w-8 h-8 rounded-md text-ink-subtle hover:text-danger shrink-0 mb-0.5" aria-label={pick({ en: 'Remove cost', ar: 'إزالة التكلفة' })}><X size={15} /></button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
         {/* computed totals */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-md rounded-lg bg-surface-2 border border-hairline p-md">
           <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Subtotal', ar: 'المجموع الفرعي' })}</span><span className="font-sans text-data text-ink tabular-nums">{money(subtotal * 100)}</span></div>
           <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'VAT 15%', ar: 'الضريبة ١٥٪' })}</span><span className="font-sans text-data text-ink tabular-nums">{money(vat * 100)}</span></div>
-          <label className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Extra cost (﷼)', ar: 'التكلفة الإضافية (﷼)' })}</span><input value={extraCost || ''} onChange={(e) => setExtraCost(parseNum(e.target.value))} className="input py-1.5 tabular-nums" inputMode="numeric" placeholder="0" /></label>
+          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Extra costs', ar: 'التكاليف الإضافية' })}</span><span className="font-sans text-data text-ink tabular-nums">{extraTotal > 0 ? money(extraTotal * 100) : '—'}</span></div>
           <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Total', ar: 'الإجمالي' })}</span><span className="font-serif text-card-title text-ink tabular-nums">{money(total * 100)}</span></div>
         </div>
 
