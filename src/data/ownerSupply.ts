@@ -103,7 +103,16 @@ export interface PurchaseInvoice {
   po?: string // linked purchase order (absent → no PO, so it can't 3-way match → flagged)
   rawKey?: RawKey // raw stock this invoice restocks (drives the automatic stock/cost update)
   qty?: number // received quantity in the raw's unit
+  extra?: { label: Bilingual; amountMinor: number } // classified extra cost (shipping, packaging…) allocated into the lines' landed cost
 }
+
+// Classified line items an invoice's extra cost can be recorded under (plus a free-text "other").
+export const extraCostTypes: Bilingual[] = [
+  { en: 'Shipping & freight', ar: 'شحن ونقل' },
+  { en: 'Packaging', ar: 'تغليف' },
+  { en: 'Customs & clearance', ar: 'جمارك وتخليص' },
+  { en: 'Loading & handling', ar: 'تحميل ومناولة' },
+]
 export const purchaseInvoices: PurchaseInvoice[] = [
   { id: 'PINV-3312', supplier: { en: 'Barry Callebaut', ar: 'باري كاليبو' }, material: { en: 'Cocoa mass', ar: 'كتلة كاكاو' }, date: { en: '04 Jul', ar: '٠٤ يوليو' }, totalMinor: 26450000, match: 'matched', po: 'PO-2041', rawKey: 'cacao', qty: 5000 },
   { id: 'PINV-3310', supplier: { en: 'Almarai', ar: 'المراعي' }, material: { en: 'Milk powder', ar: 'حليب مجفف' }, date: { en: '03 Jul', ar: '٠٣ يوليو' }, totalMinor: 6831000, match: 'pending', po: 'PO-2044', rawKey: 'milk', qty: 3000 },

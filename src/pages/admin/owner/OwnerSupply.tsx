@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import type { Bilingual } from '@/data/types'
 import {
-  rawMaterials, stockUnits, unitFactor, type PurchaseMatch, type RawKey, type ExtraRaw, type Supplier, type StockTakeReport,
+  rawMaterials, stockUnits, unitFactor, extraCostTypes, type PurchaseMatch, type RawKey, type ExtraRaw, type Supplier, type StockTakeReport,
 } from '@/data/ownerSupply'
 import { wasteReasons } from '@/data/ownerFinance'
 import { useOwnerState } from '@/state/OwnerStateContext'
@@ -74,7 +74,7 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
                         <td className="px-lg py-md font-sans text-data text-ink tabular-nums whitespace-nowrap align-top">{iv.id}</td>
                         <td className="px-lg py-md align-top">
                           <p className="font-sans text-data text-ink">{pick(iv.supplier)}</p>
-                          <p className="font-sans text-caption text-ink-subtle">{iv.po ?? pick({ en: 'No PO', ar: 'بدون أمر شراء' })} · {pick(iv.material)}</p>
+                          <p className="font-sans text-caption text-ink-subtle">{iv.po ?? pick({ en: 'No PO', ar: 'بدون أمر شراء' })} · {pick(iv.material)}{iv.extra && <span className="tabular-nums"> · {pick(iv.extra.label)} {money(iv.extra.amountMinor)}</span>}</p>
                         </td>
                         <td className="px-lg py-md text-end font-sans text-data text-ink-muted tabular-nums whitespace-nowrap align-top">{pick(iv.date)}</td>
                         <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums whitespace-nowrap align-top">{money(iv.totalMinor)}</td>
@@ -286,16 +286,31 @@ function SupplierSearch({ supplierId, onPick }: { supplierId: string; onPick: (i
   )
 }
 
+// Split an extra cost (minor units) across the lines proportionally to their cost, exactly —
+// floor each share, then hand the rounding remainder to the largest line.
+const allocateExtra = (extraMinor: number, costsMinor: number[]): number[] => {
+  const subtotal = costsMinor.reduce((a, c) => a + c, 0)
+  if (extraMinor <= 0 || subtotal <= 0) return costsMinor.map(() => 0)
+  const shares = costsMinor.map((c) => Math.floor((extraMinor * c) / subtotal))
+  const biggest = costsMinor.indexOf(Math.max(...costsMinor))
+  shares[biggest] += extraMinor - shares.reduce((a, s) => a + s, 0)
+  return shares
+}
+
 /** Enter a supplier invoice with line items — each line is assigned to a stock product
  *  (search-as-you-type), bought in a chosen unit with automatic conversion to the
- *  product's stock unit; totals (subtotal, VAT, extra cost) are computed live. */
-function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[] }) => void }) {
+ *  product's stock unit; totals (subtotal, VAT, extra cost) are computed live.
+ *  The extra cost is classified under a named line item (shipping, packaging…) and
+ *  allocated across the invoice lines so it enters the stock products' landed cost. */
+function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extra?: { label: Bilingual; amountMinor: number } }) => void }) {
   const { pick, money } = useLocale()
   const { suppliers, extraRaws, rawQty } = useOwnerState()
   type Line = { itemId: string; q: string; qtyStr: string; cost: number }
   const emptyLine: Line = { itemId: '', q: '', qtyStr: '', cost: 0 }
   const [supplierId, setSupplierId] = useState('')
   const [extraCost, setExtraCost] = useState(0)
+  const [extraTypeIdx, setExtraTypeIdx] = useState(-1)
+  const [extraOther, setExtraOther] = useState('')
   const [lines, setLines] = useState<Line[]>([emptyLine])
 
   const items = [
@@ -309,7 +324,10 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
   const subtotal = lines.reduce((a, l) => a + l.cost, 0)
   const vat = Math.round(subtotal * 0.15)
   const total = subtotal + vat + extraCost
-  const valid = !!supplier && lines.length > 0 && lines.every((l) => itemOf(l.itemId) && parseDec(l.qtyStr) > 0 && l.cost > 0)
+  const isOtherExtra = extraTypeIdx === extraCostTypes.length
+  const extraLabel: Bilingual | null = extraTypeIdx < 0 ? null : isOtherExtra ? (extraOther.trim() === '' ? null : { en: extraOther.trim(), ar: extraOther.trim() }) : extraCostTypes[extraTypeIdx]
+  const extraShares = allocateExtra(extraCost * 100, lines.map((l) => l.cost * 100))
+  const valid = !!supplier && lines.length > 0 && lines.every((l) => itemOf(l.itemId) && parseDec(l.qtyStr) > 0 && l.cost > 0) && (extraCost === 0 || extraLabel != null)
 
   const setLine = (i: number, patch: Partial<Line>) => setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
   const pickItem = (i: number, it: Item) => setLine(i, { itemId: it.id, q: '' })
@@ -318,7 +336,11 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
 
   const submit = () => {
     if (!supplier) return
-    onSubmit({ supplier: supplier.name, po: supplier.id, totalMinor: total * 100, lines: lines.map((l) => ({ itemId: l.itemId, qty: Math.round(parseDec(l.qtyStr)), costMinor: l.cost * 100 })) })
+    onSubmit({
+      supplier: supplier.name, po: supplier.id, totalMinor: total * 100,
+      lines: lines.map((l, i) => ({ itemId: l.itemId, qty: Math.round(parseDec(l.qtyStr)), costMinor: l.cost * 100 + extraShares[i] })),
+      extra: extraCost > 0 && extraLabel ? { label: extraLabel, amountMinor: extraCost * 100 } : undefined,
+    })
     onClose()
   }
 
@@ -362,6 +384,9 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
                     </label>
                     <button type="button" onClick={() => removeLine(i)} disabled={lines.length === 1} className="grid place-items-center w-8 h-8 rounded-md text-ink-subtle hover:text-danger disabled:opacity-30 shrink-0 mb-0.5" aria-label={pick({ en: 'Remove line', ar: 'إزالة الصنف' })}><X size={15} /></button>
                   </div>
+                  {extraCost > 0 && l.cost > 0 && (
+                    <p className="font-sans text-caption text-ink-subtle tabular-nums">＋ {money(extraShares[i])} {pick({ en: 'share of the extra cost', ar: 'نصيب الصنف من التكلفة الإضافية' })}{extraLabel && ` (${pick(extraLabel)})`} · {pick({ en: 'enters its stock cost', ar: 'يدخل في تكلفة مخزونه' })}</p>
+                  )}
                   {sugg.length > 0 && (
                     <div className="rounded-md border border-hairline bg-surface-1 shadow-soft max-h-40 overflow-y-auto divide-y divide-hairline">
                       {sugg.map((x) => (
@@ -388,12 +413,24 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-md rounded-lg bg-surface-2 border border-hairline p-md">
           <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Subtotal', ar: 'المجموع الفرعي' })}</span><span className="font-sans text-data text-ink tabular-nums">{money(subtotal * 100)}</span></div>
           <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'VAT 15%', ar: 'الضريبة ١٥٪' })}</span><span className="font-sans text-data text-ink tabular-nums">{money(vat * 100)}</span></div>
-          <label className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Extra cost (﷼)', ar: 'التكلفة الإضافية (﷼)' })}</span><input value={extraCost || ''} onChange={(e) => setExtraCost(parseNum(e.target.value))} className="input py-1.5 tabular-nums" inputMode="numeric" placeholder="0" /></label>
+          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Extra cost (﷼)', ar: 'التكلفة الإضافية (﷼)' })}</span>
+            <input value={extraCost || ''} onChange={(e) => setExtraCost(parseNum(e.target.value))} className="input py-1.5 tabular-nums" inputMode="numeric" placeholder="0" />
+            {extraCost > 0 && (
+              <select value={extraTypeIdx} onChange={(e) => setExtraTypeIdx(Number(e.target.value))} className={cn('input py-1.5 cursor-pointer', extraTypeIdx < 0 && 'border-danger')}>
+                <option value={-1} disabled>{pick({ en: 'Cost line item…', ar: 'بند التكلفة…' })}</option>
+                {extraCostTypes.map((t, i) => <option key={i} value={i}>{pick(t)}</option>)}
+                <option value={extraCostTypes.length}>{pick({ en: 'Other…', ar: 'أخرى…' })}</option>
+              </select>
+            )}
+            {extraCost > 0 && isOtherExtra && (
+              <input value={extraOther} onChange={(e) => setExtraOther(e.target.value)} className={cn('input py-1.5', extraOther.trim() === '' && 'border-danger')} placeholder={pick({ en: 'Name the cost line item…', ar: 'سمِّ بند التكلفة…' })} />
+            )}
+          </div>
           <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Total', ar: 'الإجمالي' })}</span><span className="font-serif text-card-title text-ink tabular-nums">{money(total * 100)}</span></div>
         </div>
 
         <p className="font-sans text-caption rounded-lg bg-surface-2 border border-hairline p-md text-ink-subtle">
-          {pick({ en: 'On entry: every line restocks its assigned stock product, the invoice is linked to the supplier number and awaits 3-way match.', ar: 'عند الإدخال: يرتفع رصيد كل منتج مخزون مُسكَّن عليه صنف، وتُربط الفاتورة برقم المورد وتنتظر المطابقة الثلاثية.' })}
+          {pick({ en: 'On entry: every line restocks its assigned stock product, the extra cost is recorded under its named line item and allocated across the lines into their landed cost, the invoice is linked to the supplier number and awaits 3-way match.', ar: 'عند الإدخال: يرتفع رصيد كل منتج مخزون مُسكَّن عليه صنف، وتُسجَّل التكلفة الإضافية تحت بندها وتُوزَّع على الأصناف لتدخل في تكلفتها الفعلية، وتُربط الفاتورة برقم المورد وتنتظر المطابقة الثلاثية.' })}
         </p>
       </div>
     </Modal>

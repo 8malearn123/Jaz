@@ -92,7 +92,7 @@ interface OwnerStateValue {
   reconcileInvoice: (id: string) => void
   addPurchaseInvoice: (inv: { supplier: Bilingual; material: Bilingual; date: Bilingual; totalMinor: number; po?: string; rawKey?: RawKey; qty?: number }) => void
   // multi-line purchase: each line is assigned to a stock item (seed raw or owner-added) and restocks it
-  receivePurchase: (inv: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[] }) => void
+  receivePurchase: (inv: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extra?: { label: Bilingual; amountMinor: number } }) => void
   // waste → finance
   wasteLog: WasteEntry[]
   logWaste: (e: { item: Bilingual; reason: Bilingual; lossMinor: number }) => void
@@ -353,13 +353,14 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   }, [invSeq, logMovement])
 
   // Multi-line purchase entry: one invoice, every line assigned to a stock item.
-  // Seed raws restock rawQty; owner-added items restock qty and refresh their unit cost from the line.
-  const receivePurchase = useCallback((inv: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[] }) => {
+  // Seed raws restock rawQty; owner-added items restock qty and refresh their unit cost from the line
+  // (line costs arrive with the classified extra cost already allocated in, so unit costs are landed).
+  const receivePurchase = useCallback((inv: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extra?: { label: Bilingual; amountMinor: number } }) => {
     const id = `PINV-${invSeq}`
     setInvSeq((s) => s + 1)
     const names: Bilingual[] = inv.lines.map((l) => rawMaterials.find((r) => r.key === l.itemId)?.name ?? extraRaws.find((x) => x.id === l.itemId)?.name ?? { en: l.itemId, ar: l.itemId })
     const material: Bilingual = names.length === 1 ? names[0] : { en: `${names[0].en} +${names.length - 1}`, ar: `${names[0].ar} +${names.length - 1}` }
-    setInvoices((prev) => [{ id, supplier: inv.supplier, material, date: { en: 'Today', ar: 'اليوم' }, totalMinor: inv.totalMinor, match: inv.po ? 'pending' : 'flagged', po: inv.po }, ...prev])
+    setInvoices((prev) => [{ id, supplier: inv.supplier, material, date: { en: 'Today', ar: 'اليوم' }, totalMinor: inv.totalMinor, match: inv.po ? 'pending' : 'flagged', po: inv.po, extra: inv.extra }, ...prev])
     for (const l of inv.lines) {
       if (rawMaterials.some((r) => r.key === l.itemId)) {
         const k = l.itemId as RawKey
