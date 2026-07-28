@@ -10,6 +10,7 @@ import { BillingProvider } from '@/state/BillingContext'
 import { StatementsProvider } from '@/state/StatementsContext'
 import { ForecastProvider } from '@/state/ForecastContext'
 import { TeamProvider } from '@/state/TeamContext'
+import { GovernanceProvider } from '@/state/GovernanceContext'
 import { BrandProvider } from '@/state/BrandContext'
 
 createRoot(document.getElementById('root')!).render(
@@ -21,11 +22,14 @@ createRoot(document.getElementById('root')!).render(
            <StatementsProvider>
            <ForecastProvider>
             <TeamProvider>
-              <BrandProvider>
-                <BrowserRouter>
-                  <App />
-                </BrowserRouter>
-              </BrandProvider>
+              {/* Governance sits above the console: it needs to know who is signed in. */}
+              <GovernanceProvider>
+                <BrandProvider>
+                  <BrowserRouter>
+                    <App />
+                  </BrowserRouter>
+                </BrandProvider>
+              </GovernanceProvider>
             </TeamProvider>
            </ForecastProvider>
            </StatementsProvider>

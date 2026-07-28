@@ -6,8 +6,10 @@ import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import type { Bilingual } from '@/data/types'
 import { prodChannelMeta, type ProdChannel, type OwnerProduct } from '@/data/ownerProducts'
-import { rawMaterials, type RawKey } from '@/data/ownerSupply'
+import { rawMaterials, stockUnits, unitFactor, type RawKey } from '@/data/ownerSupply'
 import { useOwnerState } from '@/state/OwnerStateContext'
+import { useGovernance } from '@/state/GovernanceContext'
+import { PRICE_MOVE_TOLERANCE } from '@/data/governance'
 import { cn } from '@/lib/cn'
 import { PanelHead, Pill } from './_shared'
 
@@ -72,25 +74,97 @@ export function OwnerProducts({ view: chan }: { view: ProdChannel }) {
 }
 
 function ProductModal({ chan, product, onClose }: { chan: ProdChannel; product: OwnerProduct; onClose: () => void }) {
-  const { pick } = useLocale()
+  const { pick, money } = useLocale()
   const { flash } = useToast()
-  const { buildable, produceBatch, bomOf, updateProduct, addBomComponent } = useOwnerState()
+  const { buildable, produceBatch, bomOf, updateProduct, addBomComponent, shelfLife, bomHistory } = useOwnerState()
+  const { submit } = useGovernance()
   const meta = prodChannelMeta[chan]
   const [price, setPrice] = useState(Math.round(product.priceMinor / 100))
     const [moqVal, setMoqVal] = useState(product.moq)
     const [produceQty, setProduceQty] = useState(0)
     const [compKey, setCompKey] = useState<RawKey>('cacao')
     const [compPer, setCompPer] = useState('')
+    const [shelf, setShelf] = useState(String(shelfLife[product.sku] ?? 90))
     const { qty, bottleneck } = buildable(product.sku)
     const bom = bomOf(product.sku)
-    const save = () => { updateProduct(chan, product.sku, { priceMinor: price * 100, moq: moqVal }); flash(pick({ en: 'Product saved', ar: 'حُفظ المنتج' })); onClose() }
+    const versions = bomHistory[product.sku] ?? []
+    // What the recipe costs to make one unit — the floor a price should not quietly fall below.
+    const unitCostMinor = (Object.keys(bom) as RawKey[]).reduce((a, k) => {
+      const m = rawMaterials.find((r) => r.key === k)
+      if (!m) return a
+      const cu = stockUnits.find((u) => u.label.en === m.costUnit.en)
+      const su = stockUnits.find((u) => u.label.en === m.unit.en)
+      const perUnit = Math.round(m.landedMinor / Math.max(1, cu && su ? unitFactor(cu.key, su.key) : 1))
+      return a + Math.round((bom[k] ?? 0) * perUnit)
+    }, 0)
+
+    const save = () => {
+      const nextMinor = price * 100
+      const moved = Math.abs(nextMinor - product.priceMinor) / Math.max(product.priceMinor, 1)
+      const belowCost = unitCostMinor > 0 && nextMinor < unitCostMinor
+      // Two gates, and the second is the one that matters: a swing is worth a second look,
+      // but a price under its own cost should never slip through unnoticed.
+      if (nextMinor !== product.priceMinor && (moved > PRICE_MOVE_TOLERANCE || belowCost)) {
+        submit({
+          kind: 'price_change',
+          subject: { en: product.name.en, ar: product.name.ar },
+          detail: belowCost
+            ? { en: `Set price to ${nextMinor / 100} — below its ${unitCostMinor / 100} unit cost`, ar: `ضبط السعر على ${nextMinor / 100} — دون تكلفته ${unitCostMinor / 100}` }
+            : { en: `Move price from ${product.priceMinor / 100} to ${nextMinor / 100} (${Math.round(moved * 100)}%)`, ar: `تحريك السعر من ${product.priceMinor / 100} إلى ${nextMinor / 100} (${Math.round(moved * 100)}٪)` },
+          reason: '', payload: { sku: product.sku, chan, priceMinor: nextMinor },
+        })
+        // MOQ is not a guarded field — it saves either way.
+        if (moqVal !== product.moq) updateProduct(chan, product.sku, { moq: moqVal })
+        flash(pick({ en: 'Price sent for approval — it is unchanged for now', ar: 'رُفع السعر للاعتماد — ولم يتغير بعد' }))
+        onClose(); return
+      }
+      updateProduct(chan, product.sku, { priceMinor: nextMinor, moq: moqVal })
+      flash(pick({ en: 'Product saved', ar: 'حُفظ المنتج' })); onClose()
+    }
+
+    // A live product's formulation is not an operational tweak: it moves taste, cost and
+    // what the line can build. Editing one raises a decision; a product with no recipe yet
+    // is still being defined, so its first components go in directly.
+    const isLive = Object.keys(bom).length > 0
+    const addComponent = () => {
+      const per = parseFloat(compPer)
+      if (!(per > 0)) return
+      const name = rawName(compKey)
+      if (isLive) {
+        submit({
+          kind: 'recipe_change',
+          subject: { en: `${product.name.en} · ${name.en}`, ar: `${product.name.ar} · ${name.ar}` },
+          detail: { en: `Set ${name.en} to ${per} per unit (was ${bom[compKey] ?? 0})`, ar: `ضبط ${name.ar} على ${per} لكل وحدة (كان ${bom[compKey] ?? 0})` },
+          reason: '', payload: { sku: product.sku, rawKey: compKey, per },
+        })
+        flash(pick({ en: 'Sent to the chef — the recipe is unchanged', ar: 'أُرسلت للشيف — الوصفة لم تتغير' }))
+      } else {
+        addBomComponent(chan, product.sku, compKey, per)
+        flash(`${pick({ en: 'Component added', ar: 'أُضيف مكوّن' })} · ${pick(name)}`)
+      }
+      setCompPer('')
+    }
+
+    const saveShelf = () => {
+      const days = Math.max(1, parseInt(shelf.replace(/\D/g, ''), 10) || 0)
+      submit({
+        kind: 'shelf_life',
+        subject: { en: product.name.en, ar: product.name.ar },
+        detail: { en: `Set shelf life to ${days} days for every batch of this product`, ar: `ضبط العمر الافتراضي على ${days} يومًا لكل دفعة من هذا المنتج` },
+        reason: '', payload: { sku: product.sku, days },
+      })
+      flash(pick({ en: 'Sent to the chef for approval', ar: 'أُرسلت للشيف للاعتماد' }))
+    }
 
     return (
       <Modal open onClose={onClose} size="md" eyebrow={product.sku} title={pick(product.name)}
         footer={<><button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button><button onClick={save} className={buttonClass('primary', 'sm')}>{pick({ en: 'Save', ar: 'حفظ' })}</button></>}>
         <div className="flex flex-col gap-md">
           <div className="grid grid-cols-2 gap-md">
-            <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Price (﷼)', ar: 'السعر (﷼)' })}</span><input value={price} onChange={(e) => setPrice(Math.max(0, parseInt(e.target.value.replace(/\D/g, ''), 10) || 0))} className="input tabular-nums" inputMode="numeric" /></label>
+            <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Price (﷼)', ar: 'السعر (﷼)' })}</span>
+              <input value={price} onChange={(e) => setPrice(Math.max(0, parseInt(e.target.value.replace(/\D/g, ''), 10) || 0))} className={cn('input tabular-nums', unitCostMinor > 0 && price * 100 < unitCostMinor && 'border-danger')} inputMode="numeric" />
+              {unitCostMinor > 0 && <span className={cn('font-sans text-caption tabular-nums', price * 100 < unitCostMinor ? 'text-danger' : 'text-ink-subtle')}>{pick({ en: 'Recipe cost', ar: 'تكلفة الوصفة' })}: {money(unitCostMinor)}{price * 100 < unitCostMinor && ` · ${pick({ en: 'below cost', ar: 'دون التكلفة' })}`}</span>}
+            </label>
             {meta.needsMoq && <label className="flex flex-col gap-xs"><span className="label">MOQ</span><input value={moqVal} onChange={(e) => setMoqVal(Math.max(0, parseInt(e.target.value.replace(/\D/g, ''), 10) || 0))} className="input tabular-nums" inputMode="numeric" /></label>}
           </div>
           <div className="rounded-lg bg-surface-2 border border-hairline p-md flex items-center justify-between">
@@ -117,9 +191,33 @@ function ProductModal({ chan, product, onClose }: { chan: ProdChannel; product: 
             <label className="flex flex-col gap-xs flex-1 min-w-[120px]"><span className="label">{pick({ en: 'Raw material', ar: 'مادة خام' })}</span>
               <select value={compKey} onChange={(e) => setCompKey(e.target.value as RawKey)} className="input cursor-pointer">{rawMaterials.map((m) => <option key={m.key} value={m.key}>{pick(m.name)}</option>)}</select></label>
             <label className="flex flex-col gap-xs w-28"><span className="label">{pick({ en: 'Per unit', ar: 'لكل وحدة' })}</span><input value={compPer} onChange={(e) => setCompPer(e.target.value.replace(/[^\d.]/g, ''))} placeholder="0" className="input tabular-nums" inputMode="decimal" /></label>
-            <button onClick={() => { const per = parseFloat(compPer); if (per > 0) { addBomComponent(chan, product.sku, compKey, per); flash(`${pick({ en: 'Component added', ar: 'أُضيف مكوّن' })} · ${pick(rawName(compKey))}`); setCompPer('') } }}
-              disabled={!(parseFloat(compPer) > 0)} className={buttonClass('ghost', 'sm')}><Plus size={14} /> {pick({ en: 'Add component', ar: 'أضف مكوّنًا' })}</button>
+            <button onClick={addComponent} disabled={!(parseFloat(compPer) > 0)} className={buttonClass('ghost', 'sm')}>
+              <Plus size={14} /> {isLive ? pick({ en: 'Request change', ar: 'طلب تعديل' }) : pick({ en: 'Add component', ar: 'أضف مكوّنًا' })}</button>
+            {isLive && <p className="w-full font-sans text-caption text-ink-subtle">{pick({ en: 'This product is live — a formulation change needs the chef’s approval, and the recipe it replaces is kept.', ar: 'هذا المنتج قائم — تعديل التركيبة يحتاج اعتماد الشيف، وتُحفظ الوصفة التي يستبدلها.' })}</p>}
           </div>
+
+          {/* shelf life — a property of the product, inherited by every batch it produces */}
+          <div className="rounded-lg border border-hairline p-md flex flex-wrap items-end gap-sm">
+            <label className="flex flex-col gap-xs flex-1 min-w-[120px]"><span className="label">{pick({ en: 'Shelf life (days)', ar: 'العمر الافتراضي (يوم)' })}</span>
+              <input value={shelf} onChange={(e) => setShelf(e.target.value.replace(/\D/g, ''))} className="input tabular-nums" inputMode="numeric" placeholder="90" /></label>
+            <button onClick={saveShelf} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Request change', ar: 'طلب تعديل' })}</button>
+            <p className="w-full font-sans text-caption text-ink-subtle">{pick({ en: 'Every batch produced from this product inherits it — nobody extends an expiry by typing a bigger number on a batch.', ar: 'ترثه كل دفعة تُنتج من هذا المنتج — فلا يمدّد أحد صلاحية بكتابة رقم أكبر على الدفعة.' })}</p>
+          </div>
+
+          {/* formulation history */}
+          {versions.length > 0 && (
+            <div className="rounded-lg border border-hairline overflow-hidden">
+              <div className="px-md py-2 bg-surface-2 border-b border-hairline font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Recipe history', ar: 'سجل الوصفات' })} · {versions.length}</div>
+              <ul className="divide-y divide-hairline">
+                {versions.map((v, i) => (
+                  <li key={i} className="px-md py-2 font-sans text-caption">
+                    <span className="text-ink">{pick(v.by)}</span> <span className="text-ink-subtle">· {pick(v.at)}</span>
+                    <span className="block text-ink-subtle tabular-nums">{(Object.keys(v.after) as RawKey[]).map((k) => `${pick(rawName(k))} ${v.before[k] ?? 0}→${v.after[k]}`).join(' · ')}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* produce → consumes raw, adds finished stock */}
           <div className="rounded-lg border border-primary/20 bg-primary/[0.04] p-md flex flex-wrap items-end gap-sm">

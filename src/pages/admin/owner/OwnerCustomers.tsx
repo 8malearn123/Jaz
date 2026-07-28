@@ -6,6 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import { loyaltyStats, ownerTiers, customerOrders, type OwnerTier, type OwnerCustomer, type LoyaltyLedgerEntry, type LoyaltySourceKind } from '@/data/ownerCustomers'
 import { useOwnerState, type LoyaltyConfig } from '@/state/OwnerStateContext'
+import { useGovernance } from '@/state/GovernanceContext'
 import { cn } from '@/lib/cn'
 import { PanelHead, StatCard, FilterChips, Pill, UtilBar } from './_shared'
 
@@ -15,6 +16,7 @@ export function OwnerCustomers() {
   const { pick, money } = useLocale()
   const { flash } = useToast()
   const { customers: allCustomers, rewardCustomer, loyaltyLedgers, loyalty, setLoyalty } = useOwnerState()
+  const { submit } = useGovernance()
   // Loyalty is a B2C program — business (B2B) accounts live under their own sections.
   const customers = allCustomers.filter((c) => c.type === 'B2C')
   const [tier, setTier] = useState<OwnerTier | 'all'>('all')
@@ -89,7 +91,17 @@ export function OwnerCustomers() {
 
       {detail && <CustomerDetail customer={detail} loyalty={loyalty} ledger={loyaltyLedgers[detail.id] ?? []} onClose={() => setDetailId(null)} onReward={() => { setRewardId(detail.id) }} />}
 
-      {settingsOpen && <LoyaltySettingsModal loyalty={loyalty} onClose={() => setSettingsOpen(false)} onSave={(patch) => { setLoyalty(patch); flash(pick({ en: 'Loyalty settings saved', ar: 'حُفظت إعدادات الولاء' })) }} />}
+      {settingsOpen && <LoyaltySettingsModal loyalty={loyalty} onClose={() => setSettingsOpen(false)} onSave={(patch) => {
+        // Earning and redemption rates cost money on every future order, quietly.
+        const out = submit({
+          kind: 'loyalty',
+          subject: { en: 'Loyalty mechanics', ar: 'آلية الولاء' },
+          detail: { en: 'Change how points are earned, redeemed or expire', ar: 'تغيير طريقة اكتساب النقاط أو استبدالها أو انتهائها' },
+          reason: '', payload: { loyalty: patch },
+        })
+        if (out.outcome === 'pending') { flash(pick({ en: 'Sent for approval — settings unchanged', ar: 'رُفعت للاعتماد — لم تتغير الإعدادات' })); return }
+        setLoyalty(patch); flash(pick({ en: 'Loyalty settings saved', ar: 'حُفظت إعدادات الولاء' }))
+      }} />}
     </div>
   )
 }

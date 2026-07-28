@@ -10,6 +10,7 @@ import { countries, countryOf, type CountryCode } from '@/data/countries'
 import { collectionRows, receivables, type ReceivableRow } from '@/data/ownerFinance'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { useStatements } from '@/state/StatementsContext'
+import { useGovernance } from '@/state/GovernanceContext'
 import { statementMonths, type StatementStatus } from '@/data/vendorStatements'
 import { openStatementPdf } from '@/lib/statementPdf'
 import { makeSellingMoney, useSellingMoney } from '@/lib/useSellingMoney'
@@ -40,6 +41,7 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
   const { flash } = useToast()
   const { creditLimits: limits, setCreditLimit, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment, vendorDocs, attachVendorDoc } = useOwnerState() // limits are overlay only — never written to shared org credit
   const { statements, accountantApprove } = useStatements()
+  const { submit } = useGovernance()
   // The active sub-view is driven by the sidebar sub-nav (see AdminConsole);
   // local overrides (e.g. jumping to Accounts after activating a vendor) still work.
   const [subTab, setSubTab] = useState<VendorView>(view)
@@ -365,7 +367,22 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
           limitMinor={limits[profileVendor.id] ?? profileVendor.limitMinor}
           docs={vendorDocs[profileVendor.id] ?? {}}
           onClose={() => setProfileId(null)}
-          onSaveLimit={(minor) => { setCreditLimit(profileVendor.id, minor); flash(`${pick({ en: 'Credit limit saved for', ar: 'حُفظ الحد الائتماني لـ' })} ${pick(profileVendor.name)}`) }}
+          onSaveLimit={(minor) => {
+            const current = limits[profileVendor.id] ?? profileVendor.limitMinor
+            // Only a raise is a decision — the increase itself is what is being risked.
+            if (minor > current) {
+              const out = submit({
+                kind: 'credit_limit',
+                subject: { en: profileVendor.name.en, ar: profileVendor.name.ar },
+                detail: { en: `Raise the credit limit by ${(minor - current) / 100} SAR`, ar: `رفع الحد الائتماني بمقدار ${(minor - current) / 100} ريال` },
+                amountMinor: minor - current, reason: '',
+                payload: { vendorId: profileVendor.id, limitMinor: minor },
+              })
+              if (out.outcome === 'pending') { flash(pick({ en: 'Sent for approval — the limit is unchanged', ar: 'رُفعت للاعتماد — الحد لم يتغير' })); return }
+            }
+            setCreditLimit(profileVendor.id, minor)
+            flash(`${pick({ en: 'Credit limit saved for', ar: 'حُفظ الحد الائتماني لـ' })} ${pick(profileVendor.name)}`)
+          }}
           onAttachDoc={(kind, doc) => { attachVendorDoc(profileVendor.id, kind, doc); flash(`${pick({ en: 'Attached', ar: 'أُرفق' })} · ${pick(vendorDocMeta[kind].label)}`) }}
           onPay={profileVendor.status === 'active' ? () => setPayId(profileVendor.id) : undefined}
         />
@@ -376,7 +393,17 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
         <RecordPaymentModal
           vendor={payVendor}
           onClose={() => setPayId(null)}
-          onRecord={(minor) => { recordVendorPayment(payVendor.id, minor); flash(`${pick({ en: 'Payment recorded', ar: 'سُجّل سداد' })} ${makeSellingMoney(money, payVendor.country).money(minor)} · ${pick(payVendor.name)}`) }}
+          onRecord={(minor) => {
+            const out = submit({
+              kind: 'vendor_payment',
+              subject: { en: payVendor.name.en, ar: payVendor.name.ar },
+              detail: { en: `Record a settlement against ${payVendor.name.en}'s balance`, ar: `تسجيل سداد على رصيد ${payVendor.name.ar}` },
+              amountMinor: minor, payload: { vendorId: payVendor.id, amountMinor: minor },
+            })
+            if (out.outcome === 'pending') { flash(pick({ en: 'Sent for approval — the balance is unchanged', ar: 'رُفع للاعتماد — الرصيد لم يتغير' })); return }
+            recordVendorPayment(payVendor.id, minor)
+            flash(`${pick({ en: 'Payment recorded', ar: 'سُجّل سداد' })} ${makeSellingMoney(money, payVendor.country).money(minor)} · ${pick(payVendor.name)}`)
+          }}
         />
       )}
 
@@ -532,6 +559,7 @@ function VendorProfileModal({ vendor, limitMinor, docs, onClose, onSaveLimit, on
                   <input value={draft ?? Math.round(toBuyer(limitMinor) / 100)} onChange={(e) => setDraft(parseInt(e.target.value.replace(/\D/g, ''), 10) || 0)} className="input tabular-nums" inputMode="numeric" /></label>
                 <button onClick={() => { if (draft != null) { onSaveLimit(fromBuyer(draft * 100)); setDraft(null) } }} disabled={draft == null || fromBuyer(draft * 100) === limitMinor} className={buttonClass('primary', 'sm')}>{pick({ en: 'Save limit', ar: 'حفظ الحد' })}</button>
               </div>
+              <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Raising a limit is a decision — it is held for finance. Lowering one applies at once, since it only reduces exposure.', ar: 'رفع الحد قرار — يُحجز لاعتماد المالية. وخفضه ينفذ فورًا لأنه يقلّل المخاطرة فقط.' })}</p>
               {isExport && (
                 <p className="font-sans text-caption text-ink-subtle">{pick({ en: `Billed and credit-limited in ${currency} — this partner operates outside the Kingdom.`, ar: `يُفوتر ويُمنح الحد الائتماني بالـ${currency} — هذا الشريك يعمل خارج المملكة.` })} {pick({ en: 'In the books', ar: 'في دفاتر الشركة' })}: {sarMoney(limitMinor)}</p>
               )}
