@@ -92,6 +92,28 @@ export interface StockTakeReport {
   netValueMinor: number
 }
 
+// ── Invoice currencies ──────────────────────────────────────────────────────
+// Suppliers bill in their own currency, but stock cost, finance and reports are all SAR.
+// An invoice is therefore converted on entry at the market rate, and that rate is frozen
+// onto the invoice: a later rate move can never restate an invoice that is already booked,
+// so its value stays equal to what was received and no variance can appear afterwards.
+export interface CurrencyDef {
+  code: string
+  label: Bilingual
+  symbol: string
+  sarPerUnit: number // market rate — how many SAR one unit of this currency buys
+}
+export const currencies: CurrencyDef[] = [
+  { code: 'SAR', label: { en: 'Saudi riyal', ar: 'ريال سعودي' }, symbol: '﷼', sarPerUnit: 1 },
+  { code: 'USD', label: { en: 'US dollar', ar: 'دولار أمريكي' }, symbol: '$', sarPerUnit: 3.75 }, // pegged by SAMA
+  { code: 'EUR', label: { en: 'Euro', ar: 'يورو' }, symbol: '€', sarPerUnit: 4.08 },
+  { code: 'GBP', label: { en: 'Pound sterling', ar: 'جنيه إسترليني' }, symbol: '£', sarPerUnit: 4.87 },
+  { code: 'CHF', label: { en: 'Swiss franc', ar: 'فرنك سويسري' }, symbol: 'CHF', sarPerUnit: 4.22 },
+  { code: 'AED', label: { en: 'UAE dirham', ar: 'درهم إماراتي' }, symbol: 'د.إ', sarPerUnit: 1.021 },
+  { code: 'TRY', label: { en: 'Turkish lira', ar: 'ليرة تركية' }, symbol: '₺', sarPerUnit: 0.094 },
+]
+export const currencyOf = (code: string): CurrencyDef => currencies.find((c) => c.code === code) ?? currencies[0]
+
 export type PurchaseMatch = 'matched' | 'pending' | 'flagged'
 export interface PurchaseInvoice {
   id: string
@@ -104,6 +126,7 @@ export interface PurchaseInvoice {
   rawKey?: RawKey // raw stock this invoice restocks (drives the automatic stock/cost update)
   qty?: number // received quantity in the raw's unit
   extra?: { label: Bilingual; amountMinor: number } // classified extra cost (shipping, packaging…) allocated into the lines' landed cost
+  fx?: { code: string; rate: number; totalMinor: number } // billed currency, rate frozen at entry, and the total in that currency
 }
 
 // Classified line items an invoice's extra cost can be recorded under (plus a free-text "other").

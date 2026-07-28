@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Bilingual } from '@/data/types'
 import { ownerOrdersSeed, ownerOrderStatuses, type OwnerOrder, type OwnerChannel, type OwnerOrderStage } from '@/data/ownerOrders'
-import { rawMaterials, finishedBatches, bomBySku, purchaseInvoices, suppliers as suppliersSeed, stockMovementsSeed, stockUnits, unitFactor, type RawKey, type FinishedBatch, type PurchaseInvoice, type ExtraRaw, type Supplier, type SupplierContact, type StockMovement, type StockTakeReport } from '@/data/ownerSupply'
+import { rawMaterials, finishedBatches, bomBySku, purchaseInvoices, suppliers as suppliersSeed, stockMovementsSeed, stockUnits, unitFactor, currencies, type RawKey, type FinishedBatch, type PurchaseInvoice, type ExtraRaw, type Supplier, type SupplierContact, type StockMovement, type StockTakeReport } from '@/data/ownerSupply'
 import { ownerProductsByChannel, type OwnerProduct, type ProdChannel } from '@/data/ownerProducts'
 import { ownerCustomers, ownerTiers, loyaltyLedgerSeed, type OwnerCustomer, type OwnerTier, type LoyaltyLedgerEntry } from '@/data/ownerCustomers'
 
@@ -91,8 +91,13 @@ interface OwnerStateValue {
   invoices: PurchaseInvoice[]
   reconcileInvoice: (id: string) => void
   addPurchaseInvoice: (inv: { supplier: Bilingual; material: Bilingual; date: Bilingual; totalMinor: number; po?: string; rawKey?: RawKey; qty?: number }) => void
-  // multi-line purchase: each line is assigned to a stock item (seed raw or owner-added) and restocks it
-  receivePurchase: (inv: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extra?: { label: Bilingual; amountMinor: number } }) => void
+  // multi-line purchase: each line is assigned to a stock item (seed raw or owner-added) and restocks it.
+  // Amounts arrive already converted to SAR — the invoice's own currency and rate ride along in `fx`.
+  receivePurchase: (inv: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extra?: { label: Bilingual; amountMinor: number }; fx?: { code: string; rate: number; totalMinor: number } }) => void
+  // market exchange rates (SAR per unit) the owner keeps current — they seed each invoice's rate
+  fxRates: Record<string, number>
+  fxUpdatedAt: Bilingual
+  setFxRate: (code: string, sarPerUnit: number) => void
   // waste → finance
   wasteLog: WasteEntry[]
   logWaste: (e: { item: Bilingual; reason: Bilingual; lossMinor: number }) => void
@@ -172,6 +177,8 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   const [prodSeq, setProdSeq] = useState(1)
   const [bomOverride, setBomOverride] = useState<Record<string, BOM>>({})
   const [invoices, setInvoices] = useState<PurchaseInvoice[]>(() => clone(purchaseInvoices))
+  const [fxRates, setFxRates] = useState<Record<string, number>>(() => Object.fromEntries(currencies.map((c) => [c.code, c.sarPerUnit])))
+  const [fxUpdatedAt, setFxUpdatedAt] = useState<Bilingual>({ en: 'Seeded rates', ar: 'أسعار افتراضية' })
   const [invSeq, setInvSeq] = useState(3313)
   const [extraRaws, setExtraRaws] = useState<ExtraRaw[]>([])
   const [extraCats, setExtraCats] = useState<Bilingual[]>([])
@@ -339,6 +346,13 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   }, [])
 
   /* ── purchase invoices ── */
+  // The market rate is what new invoices convert at; invoices already booked keep the rate
+  // frozen on them, so updating a rate here never restates a past invoice's value.
+  const setFxRate = useCallback((code: string, sarPerUnit: number) => {
+    if (code === 'SAR' || !(sarPerUnit > 0)) return
+    setFxRates((prev) => ({ ...prev, [code]: sarPerUnit }))
+    setFxUpdatedAt({ en: 'Updated now', ar: 'حُدّثت الآن' })
+  }, [])
   const reconcileInvoice = useCallback((id: string) => setInvoices((prev) => prev.map((iv) => (iv.id === id ? { ...iv, match: 'matched' } : iv))), [])
   // Entering a supplier invoice restocks its raw material automatically (rawQty) and records the imported cost.
   const addPurchaseInvoice = useCallback((inv: { supplier: Bilingual; material: Bilingual; date: Bilingual; totalMinor: number; po?: string; rawKey?: RawKey; qty?: number }) => {
@@ -355,12 +369,12 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   // Multi-line purchase entry: one invoice, every line assigned to a stock item.
   // Seed raws restock rawQty; owner-added items restock qty and refresh their unit cost from the line
   // (line costs arrive with the classified extra cost already allocated in, so unit costs are landed).
-  const receivePurchase = useCallback((inv: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extra?: { label: Bilingual; amountMinor: number } }) => {
+  const receivePurchase = useCallback((inv: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extra?: { label: Bilingual; amountMinor: number }; fx?: { code: string; rate: number; totalMinor: number } }) => {
     const id = `PINV-${invSeq}`
     setInvSeq((s) => s + 1)
     const names: Bilingual[] = inv.lines.map((l) => rawMaterials.find((r) => r.key === l.itemId)?.name ?? extraRaws.find((x) => x.id === l.itemId)?.name ?? { en: l.itemId, ar: l.itemId })
     const material: Bilingual = names.length === 1 ? names[0] : { en: `${names[0].en} +${names.length - 1}`, ar: `${names[0].ar} +${names.length - 1}` }
-    setInvoices((prev) => [{ id, supplier: inv.supplier, material, date: { en: 'Today', ar: 'اليوم' }, totalMinor: inv.totalMinor, match: inv.po ? 'pending' : 'flagged', po: inv.po, extra: inv.extra }, ...prev])
+    setInvoices((prev) => [{ id, supplier: inv.supplier, material, date: { en: 'Today', ar: 'اليوم' }, totalMinor: inv.totalMinor, match: inv.po ? 'pending' : 'flagged', po: inv.po, extra: inv.extra, fx: inv.fx }, ...prev])
     for (const l of inv.lines) {
       if (rawMaterials.some((r) => r.key === l.itemId)) {
         const k = l.itemId as RawKey
@@ -538,7 +552,7 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate,
     stockTakeReports, addStockTakeReport, movements,
     suppliers, addSupplier,
-    invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase,
+    invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, fxRates, fxUpdatedAt, setFxRate,
     wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor,
     expenses, recordExpense, opexTotalMinor,
     customers, rewardCustomer, loyaltyLedgers, loyalty, setLoyalty,
@@ -551,7 +565,7 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible,
     dismissedExpiry, dismissExpiry,
     cocoaDelta, setCocoa,
-  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, stockTakeReports, addStockTakeReport, movements, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor, expenses, recordExpense, opexTotalMinor, customers, rewardCustomer, loyaltyLedgers, loyalty, setLoyalty, employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive, creditLimits, setCreditLimit, contracts, renewContract, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment, vendorDocs, attachVendorDoc, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, dismissedExpiry, dismissExpiry, cocoaDelta])
+  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, stockTakeReports, addStockTakeReport, movements, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, fxRates, fxUpdatedAt, setFxRate, wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor, expenses, recordExpense, opexTotalMinor, customers, rewardCustomer, loyaltyLedgers, loyalty, setLoyalty, employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive, creditLimits, setCreditLimit, contracts, renewContract, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment, vendorDocs, attachVendorDoc, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, dismissedExpiry, dismissExpiry, cocoaDelta])
 
   return <OwnerStateContext.Provider value={value}>{children}</OwnerStateContext.Provider>
 }

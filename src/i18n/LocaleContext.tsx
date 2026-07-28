@@ -21,7 +21,7 @@ const STORAGE_KEY = 'jaz.locale'
 
 // Eastern-Arabic numerals for Arabic locale
 const arabicDigits = '٠١٢٣٤٥٦٧٨٩'
-function toArabicDigits(s: string): string {
+export function toArabicDigits(s: string): string {
   return s.replace(/\d/g, (d) => arabicDigits[Number(d)])
 }
 // Inverse: normalize Eastern-Arabic (٠-٩) and Persian (۰-۹) numerals to ASCII for parsing user input.

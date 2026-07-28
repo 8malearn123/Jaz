@@ -1,12 +1,13 @@
 import { Fragment, useState } from 'react'
-import { Lock, ClipboardCheck, Check, Plus, Eye, FileText, X, Printer, Trash2 } from 'lucide-react'
-import { useLocale, toAsciiDigits } from '@/i18n/LocaleContext'
+import { Lock, ClipboardCheck, Check, Plus, Eye, FileText, X, Printer, Trash2, Coins } from 'lucide-react'
+import { useLocale, toAsciiDigits, toArabicDigits } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import type { Bilingual } from '@/data/types'
 import {
-  rawMaterials, stockUnits, unitFactor, extraCostTypes, type PurchaseMatch, type RawKey, type ExtraRaw, type Supplier, type StockTakeReport,
+  rawMaterials, stockUnits, unitFactor, extraCostTypes, currencies, currencyOf,
+  type PurchaseMatch, type RawKey, type ExtraRaw, type Supplier, type StockTakeReport,
 } from '@/data/ownerSupply'
 import { wasteReasons } from '@/data/ownerFinance'
 import { useOwnerState } from '@/state/OwnerStateContext'
@@ -15,6 +16,12 @@ import { PanelHead, Pill, UtilBar } from './_shared'
 
 // Whole-number parser: normalize Arabic digits, take the integer part (so a stray "1500.50" can't concatenate to 150050).
 const parseNum = (s: string) => Math.max(0, parseInt(toAsciiDigits(s).replace(/[^\d.]/g, '').split('.')[0] || '0', 10) || 0)
+// Money parser → minor units, keeping at most two decimals ("1500.5" → 150050). Invoice amounts
+// are captured to the cent so a foreign-currency invoice converts without losing its fractions.
+const parseMoneyMinor = (s: string) => {
+  const [whole, frac = ''] = toAsciiDigits(s).replace(/[^\d.]/g, '').split('.')
+  return Math.max(0, (parseInt(whole || '0', 10) || 0) * 100 + (parseInt((frac + '00').slice(0, 2), 10) || 0))
+}
 
 const matchMeta: Record<PurchaseMatch, { label: { en: string; ar: string }; color: string; bg: string }> = {
   matched: { label: { en: 'Matched', ar: 'مطابقة تامة' }, color: '#355c4b', bg: '#e8f0ec' },
@@ -28,6 +35,7 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
   const { flash } = useToast()
   const { invoices, reconcileInvoice, receivePurchase } = useOwnerState()
   const [invoiceOpen, setInvoiceOpen] = useState(false)
+  const [ratesOpen, setRatesOpen] = useState(false)
 
   const matched = invoices.filter((iv) => iv.match === 'matched').length
   const pending = invoices.filter((iv) => iv.match === 'pending').length
@@ -45,7 +53,10 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
               <h3 className="font-serif text-card-title text-ink">{pick({ en: 'Purchase invoices', ar: 'فواتير المشتريات' })}</h3>
               <p className="font-sans text-caption text-ink-subtle mt-xxs max-w-xl">{pick({ en: 'Enter supplier invoices against raw-material lines · imported cost and stock balance update automatically', ar: 'إدخال فواتير الموردين على بنود المواد الخام · تُحدّث التكلفة المستوردة ورصيد المخزون آليًا' })}</p>
             </div>
-            <button onClick={() => setInvoiceOpen(true)} className={buttonClass('primary', 'sm')}><Plus size={15} /> {pick({ en: 'Enter purchase invoice', ar: 'إدخال فاتورة مشتريات' })}</button>
+            <div className="flex flex-wrap items-center gap-sm">
+              <button onClick={() => setRatesOpen(true)} className={buttonClass('secondary', 'sm')}><Coins size={15} /> {pick({ en: 'Exchange rates', ar: 'أسعار الصرف' })}</button>
+              <button onClick={() => setInvoiceOpen(true)} className={buttonClass('primary', 'sm')}><Plus size={15} /> {pick({ en: 'Enter purchase invoice', ar: 'إدخال فاتورة مشتريات' })}</button>
+            </div>
           </div>
 
           {/* match summary */}
@@ -77,7 +88,10 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
                           <p className="font-sans text-caption text-ink-subtle">{iv.po ?? pick({ en: 'No PO', ar: 'بدون أمر شراء' })} · {pick(iv.material)}{iv.extra && <span className="tabular-nums"> · {pick(iv.extra.label)} {money(iv.extra.amountMinor)}</span>}</p>
                         </td>
                         <td className="px-lg py-md text-end font-sans text-data text-ink-muted tabular-nums whitespace-nowrap align-top">{pick(iv.date)}</td>
-                        <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums whitespace-nowrap align-top">{money(iv.totalMinor)}</td>
+                        <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums whitespace-nowrap align-top">
+                          {money(iv.totalMinor)}
+                          {iv.fx && <span dir="ltr" className="block font-sans text-caption text-ink-subtle">{currencyOf(iv.fx.code).symbol} {money(iv.fx.totalMinor, { withSymbol: false })} · 1 {iv.fx.code} = {iv.fx.rate}</span>}
+                        </td>
                         <td className="px-lg py-md align-top">
                           <div className="flex items-center gap-sm">
                             <Pill color={m.color} bg={m.bg}>{pick(m.label)}</Pill>
@@ -98,6 +112,8 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
             <EnterInvoiceModal onClose={() => setInvoiceOpen(false)}
               onSubmit={(payload) => { receivePurchase(payload); flash(`${pick({ en: 'Invoice entered · stock updated', ar: 'أُدخلت الفاتورة · حُدّث المخزون' })}`) }} />
           )}
+
+          {ratesOpen && <ExchangeRatesModal onClose={() => setRatesOpen(false)} flash={flash} />}
         </div>
       )}
 
@@ -261,6 +277,49 @@ export function RecordWasteModal({ flash, onClose }: { flash: (m: string) => voi
   )
 }
 
+/** Market exchange rates the owner keeps current — they seed the rate on every new
+ *  foreign-currency invoice. Invoices already booked keep the rate frozen on them, so
+ *  updating a rate here re-prices future purchases only and never restates the past. */
+function ExchangeRatesModal({ onClose, flash }: { onClose: () => void; flash: (m: string) => void }) {
+  const { pick } = useLocale()
+  const { fxRates, fxUpdatedAt, setFxRate } = useOwnerState()
+  const foreign = currencies.filter((c) => c.code !== 'SAR')
+  const [draft, setDraft] = useState<Record<string, string>>(() => Object.fromEntries(foreign.map((c) => [c.code, String(fxRates[c.code] ?? c.sarPerUnit)])))
+  const rateOf = (code: string) => parseDec(draft[code] ?? '')
+  const valid = foreign.every((c) => rateOf(c.code) > 0)
+  const submit = () => {
+    for (const c of foreign) setFxRate(c.code, rateOf(c.code))
+    flash(pick({ en: 'Exchange rates updated', ar: 'حُدّثت أسعار الصرف' }))
+    onClose()
+  }
+  return (
+    <Modal open onClose={onClose} size="md" eyebrow={pick({ en: 'Supply', ar: 'الإمداد' })} title={pick({ en: 'Market exchange rates', ar: 'أسعار الصرف في السوق' })}
+      footer={<><button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button><button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}>{pick({ en: 'Save rates', ar: 'حفظ الأسعار' })}</button></>}>
+      <div className="flex flex-col gap-md">
+        <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'How many riyals one unit buys. These seed the rate on every new foreign-currency purchase invoice.', ar: 'كم ريالًا تساوي وحدة واحدة من كل عملة. تُستخدم كسعر افتراضي عند إدخال أي فاتورة مشتريات بعملة أجنبية.' })}</p>
+        <div className="rounded-md border border-hairline-strong divide-y divide-hairline">
+          {foreign.map((c) => (
+            <div key={c.code} className="flex items-center justify-between gap-sm px-3 py-2">
+              <span className="min-w-0">
+                <span className="block font-sans text-data text-ink">{c.code} · {pick(c.label)}</span>
+                <span className="block font-sans text-caption text-ink-subtle">{c.symbol}</span>
+              </span>
+              <span className="inline-flex items-center gap-xs shrink-0">
+                <span dir="ltr" className="font-sans text-caption text-ink-subtle tabular-nums whitespace-nowrap">1 {c.code} =</span>
+                <input value={draft[c.code] ?? ''} onChange={(e) => setDraft((p) => ({ ...p, [c.code]: e.target.value }))} className={cn('input py-1.5 tabular-nums w-24', !(rateOf(c.code) > 0) && 'border-danger')} inputMode="decimal" placeholder="0.00" />
+                <span className="font-sans text-data text-ink-muted">﷼</span>
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="font-sans text-caption rounded-lg bg-surface-2 border border-hairline p-md text-ink-subtle">
+          {pick({ en: 'Last update', ar: 'آخر تحديث' })}: {pick(fxUpdatedAt)} · {pick({ en: 'invoices already entered keep the rate they were booked at, so updating rates here never changes a past invoice or its stock cost.', ar: 'الفواتير المُدخلة تحتفظ بسعر الصرف الذي قُيّدت به، فتحديث الأسعار هنا لا يغيّر أي فاتورة سابقة ولا تكلفة مخزونها.' })}
+        </p>
+      </div>
+    </Modal>
+  )
+}
+
 /** Shared supplier search-as-you-type: type part of a name, pick from matches. */
 function SupplierSearch({ supplierId, onPick }: { supplierId: string; onPick: (id: string) => void }) {
   const { pick } = useLocale()
@@ -286,29 +345,34 @@ function SupplierSearch({ supplierId, onPick }: { supplierId: string; onPick: (i
   )
 }
 
-// Split an extra cost (minor units) across the lines proportionally to their cost, exactly —
-// floor each share, then hand the rounding remainder to the largest line.
-const allocateExtra = (extraMinor: number, costsMinor: number[]): number[] => {
-  const subtotal = costsMinor.reduce((a, c) => a + c, 0)
-  if (extraMinor <= 0 || subtotal <= 0) return costsMinor.map(() => 0)
-  const shares = costsMinor.map((c) => Math.floor((extraMinor * c) / subtotal))
-  const biggest = costsMinor.indexOf(Math.max(...costsMinor))
-  shares[biggest] += extraMinor - shares.reduce((a, s) => a + s, 0)
+// Split an amount (minor units) across lines in proportion to their weights, exactly — floor
+// every share, then hand the rounding remainder to the largest line. The shares always add
+// back up to the amount, so nothing is created or lost by the split.
+const allocate = (amountMinor: number, weightsMinor: number[]): number[] => {
+  const total = weightsMinor.reduce((a, w) => a + w, 0)
+  if (amountMinor <= 0 || total <= 0) return weightsMinor.map(() => 0)
+  const shares = weightsMinor.map((w) => Math.floor((amountMinor * w) / total))
+  const biggest = weightsMinor.indexOf(Math.max(...weightsMinor))
+  shares[biggest] += amountMinor - shares.reduce((a, s) => a + s, 0)
   return shares
 }
 
 /** Enter a supplier invoice with line items — each line is assigned to a stock product
  *  (search-as-you-type), bought in a chosen unit with automatic conversion to the
  *  product's stock unit; totals (subtotal, VAT, extra cost) are computed live.
- *  The extra cost is classified under a named line item (shipping, packaging…) and
- *  allocated across the invoice lines so it enters the stock products' landed cost. */
-function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extra?: { label: Bilingual; amountMinor: number } }) => void }) {
-  const { pick, money } = useLocale()
-  const { suppliers, extraRaws, rawQty } = useOwnerState()
-  type Line = { itemId: string; q: string; qtyStr: string; cost: number }
-  const emptyLine: Line = { itemId: '', q: '', qtyStr: '', cost: 0 }
+ *  The invoice is entered in the supplier's own currency and converted to SAR at the
+ *  market rate, which is frozen onto the invoice on entry. The extra cost is classified
+ *  under a named line item (shipping, packaging…) and allocated across the lines so it
+ *  enters the stock products' landed cost. */
+function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extra?: { label: Bilingual; amountMinor: number }; fx?: { code: string; rate: number; totalMinor: number } }) => void }) {
+  const { pick, money, locale } = useLocale()
+  const { suppliers, extraRaws, rawQty, fxRates, fxUpdatedAt } = useOwnerState()
+  type Line = { itemId: string; q: string; qtyStr: string; costStr: string }
+  const emptyLine: Line = { itemId: '', q: '', qtyStr: '', costStr: '' }
   const [supplierId, setSupplierId] = useState('')
-  const [extraCost, setExtraCost] = useState(0)
+  const [code, setCode] = useState('SAR')
+  const [rateStr, setRateStr] = useState('')
+  const [extraStr, setExtraStr] = useState('')
   const [extraTypeIdx, setExtraTypeIdx] = useState(-1)
   const [extraOther, setExtraOther] = useState('')
   const [lines, setLines] = useState<Line[]>([emptyLine])
@@ -321,25 +385,62 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
   const itemOf = (id: string) => items.find((i) => i.id === id)
 
   const supplier = suppliers.find((s) => s.id === supplierId) ?? null
-  const subtotal = lines.reduce((a, l) => a + l.cost, 0)
-  const vat = Math.round(subtotal * 0.15)
-  const total = subtotal + vat + extraCost
+
+  // Currency: every amount on the form is entered in the invoice's own currency, and the
+  // rate defaults to the market rate but stays editable — a settled invoice is booked at the
+  // rate the bank actually applied, which is what keeps the payment and the books equal.
+  const cur = currencyOf(code)
+  const isSar = code === 'SAR'
+  const marketRate = fxRates[code] ?? cur.sarPerUnit
+  const rate = isSar ? 1 : parseDec(rateStr)
+  const toSar = (fxMinor: number) => Math.round(fxMinor * rate)
+  const fxMoney = (minor: number) => {
+    const n = money(minor, { withSymbol: false })
+    return locale === 'ar' ? `${n} ${cur.symbol}` : `${cur.symbol} ${n}`
+  }
+  const fmtRate = (r: number) => {
+    const s = r.toLocaleString('en-US', { maximumFractionDigits: 4 })
+    return locale === 'ar' ? toArabicDigits(s) : s
+  }
+
+  const lineFx = lines.map((l) => parseMoneyMinor(l.costStr))
+  const subtotalFx = lineFx.reduce((a, c) => a + c, 0)
+  const vatFx = Math.round(subtotalFx * 0.15)
+  const extraFx = parseMoneyMinor(extraStr)
+  const totalFx = subtotalFx + vatFx + extraFx
+  // The invoice total is converted as a whole, so what is booked equals what is actually paid.
+  // VAT and the extra cost are converted on their own — both have to stand up on their own as
+  // a tax figure and a classified cost — and the goods subtotal takes the rounding residual,
+  // so the three parts always add back to the converted total with nothing left over.
+  const vatSar = toSar(vatFx)
+  const extraSar = toSar(extraFx)
+  const subtotalSar = Math.max(0, toSar(totalFx) - vatSar - extraSar)
+  const totalSar = subtotalSar + vatSar + extraSar
+  // Split the converted subtotal back over the lines so their SAR costs re-add to it exactly,
+  // rather than converting each line on its own and letting the roundings drift apart.
+  const lineSar = allocate(subtotalSar, lineFx)
+  const extraShares = allocate(extraSar, lineFx)
+  const extraSharesFx = allocate(extraFx, lineFx)
+
   const isOtherExtra = extraTypeIdx === extraCostTypes.length
   const extraLabel: Bilingual | null = extraTypeIdx < 0 ? null : isOtherExtra ? (extraOther.trim() === '' ? null : { en: extraOther.trim(), ar: extraOther.trim() }) : extraCostTypes[extraTypeIdx]
-  const extraShares = allocateExtra(extraCost * 100, lines.map((l) => l.cost * 100))
-  const valid = !!supplier && lines.length > 0 && lines.every((l) => itemOf(l.itemId) && parseDec(l.qtyStr) > 0 && l.cost > 0) && (extraCost === 0 || extraLabel != null)
+  const valid = !!supplier && rate > 0 && lines.length > 0
+    && lines.every((l, i) => itemOf(l.itemId) && parseDec(l.qtyStr) > 0 && lineFx[i] > 0)
+    && (extraFx === 0 || extraLabel != null)
 
   const setLine = (i: number, patch: Partial<Line>) => setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
   const pickItem = (i: number, it: Item) => setLine(i, { itemId: it.id, q: '' })
   const addLine = () => setLines((prev) => [...prev, emptyLine])
   const removeLine = (i: number) => setLines((prev) => prev.filter((_, idx) => idx !== i))
+  const switchCurrency = (c: string) => { setCode(c); setRateStr(c === 'SAR' ? '' : String(fxRates[c] ?? currencyOf(c).sarPerUnit)) }
 
   const submit = () => {
     if (!supplier) return
     onSubmit({
-      supplier: supplier.name, po: supplier.id, totalMinor: total * 100,
-      lines: lines.map((l, i) => ({ itemId: l.itemId, qty: Math.round(parseDec(l.qtyStr)), costMinor: l.cost * 100 + extraShares[i] })),
-      extra: extraCost > 0 && extraLabel ? { label: extraLabel, amountMinor: extraCost * 100 } : undefined,
+      supplier: supplier.name, po: supplier.id, totalMinor: totalSar,
+      lines: lines.map((l, i) => ({ itemId: l.itemId, qty: Math.round(parseDec(l.qtyStr)), costMinor: lineSar[i] + extraShares[i] })),
+      extra: extraFx > 0 && extraLabel ? { label: extraLabel, amountMinor: extraSar } : undefined,
+      fx: isSar ? undefined : { code, rate, totalMinor: totalFx },
     })
     onClose()
   }
@@ -351,14 +452,40 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
         <button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}>{pick({ en: 'Enter invoice', ar: 'إدخال الفاتورة' })}</button>
       </>}>
       <div className="flex flex-col gap-md">
-        <div className="grid grid-cols-2 gap-md items-start">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-md items-start">
           <div className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Supplier', ar: 'المورّد' })}</span>
             <SupplierSearch supplierId={supplierId} onPick={setSupplierId} />
           </div>
           <div className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Supplier number', ar: 'رقم المورد' })}</span>
             <div className="input bg-surface-2 text-ink-muted tabular-nums cursor-default select-none inline-flex items-center gap-xs"><Lock size={12} /> {supplier ? supplier.id : '—'}</div>
           </div>
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Invoice currency', ar: 'عملة الفاتورة' })}</span>
+            <select value={code} onChange={(e) => switchCurrency(e.target.value)} className="input cursor-pointer">
+              {currencies.map((c) => <option key={c.code} value={c.code}>{c.code} · {pick(c.label)}</option>)}
+            </select>
+          </label>
         </div>
+
+        {/* exchange rate — shown only for a foreign-currency invoice */}
+        {!isSar && (
+          <div className="flex flex-wrap items-end gap-md rounded-lg bg-surface-2 border border-hairline p-md">
+            <label className="flex flex-col gap-xxs">
+              <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Exchange rate', ar: 'سعر الصرف' })}</span>
+              <span className="inline-flex items-center gap-xs">
+                <span dir="ltr" className="font-sans text-data text-ink-muted tabular-nums whitespace-nowrap">1 {cur.code} =</span>
+                <input value={rateStr} onChange={(e) => setRateStr(e.target.value)} className={cn('input py-1.5 tabular-nums w-24', !(rate > 0) && 'border-danger')} inputMode="decimal" placeholder="0.00" />
+                <span className="font-sans text-data text-ink-muted">﷼</span>
+              </span>
+            </label>
+            <div className="flex flex-col gap-xxs min-w-0 flex-1">
+              <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Market rate', ar: 'سعر السوق' })}</span>
+              <span className="font-sans text-caption text-ink-muted tabular-nums"><span dir="ltr">1 {cur.code} = {fmtRate(marketRate)} ﷼</span> · {pick(fxUpdatedAt)}</span>
+            </div>
+            {rate > 0 && rate !== marketRate && (
+              <button type="button" onClick={() => setRateStr(String(marketRate))} className="link-gold text-caption mb-1.5">{pick({ en: 'Use market rate', ar: 'استخدام سعر السوق' })}</button>
+            )}
+          </div>
+        )}
 
         {/* invoice lines — each assigned to a stock item */}
         <div className="flex flex-col gap-xs">
@@ -379,13 +506,16 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
                     <label className="flex flex-col gap-xxs w-28"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Qty', ar: 'الكمية' })}{it && ` (${pick(it.unit)})`}</span>
                       <input value={l.qtyStr} onChange={(e) => setLine(i, { qtyStr: e.target.value })} className="input py-1.5 tabular-nums" inputMode="decimal" placeholder="0" disabled={!it} />
                     </label>
-                    <label className="flex flex-col gap-xxs w-28"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Cost (﷼)', ar: 'التكلفة (﷼)' })}</span>
-                      <input value={l.cost || ''} onChange={(e) => setLine(i, { cost: parseNum(e.target.value) })} className="input py-1.5 tabular-nums" inputMode="numeric" placeholder="0" disabled={!it} />
+                    <label className="flex flex-col gap-xxs w-28"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Cost', ar: 'التكلفة' })} ({cur.symbol})</span>
+                      <input value={l.costStr} onChange={(e) => setLine(i, { costStr: e.target.value })} className="input py-1.5 tabular-nums" inputMode="decimal" placeholder="0" disabled={!it} />
                     </label>
                     <button type="button" onClick={() => removeLine(i)} disabled={lines.length === 1} className="grid place-items-center w-8 h-8 rounded-md text-ink-subtle hover:text-danger disabled:opacity-30 shrink-0 mb-0.5" aria-label={pick({ en: 'Remove line', ar: 'إزالة الصنف' })}><X size={15} /></button>
                   </div>
-                  {extraCost > 0 && l.cost > 0 && (
-                    <p className="font-sans text-caption text-ink-subtle tabular-nums">＋ {money(extraShares[i])} {pick({ en: 'share of the extra cost', ar: 'نصيب الصنف من التكلفة الإضافية' })}{extraLabel && ` (${pick(extraLabel)})`} · {pick({ en: 'enters its stock cost', ar: 'يدخل في تكلفة مخزونه' })}</p>
+                  {!isSar && rate > 0 && lineFx[i] > 0 && (
+                    <p className="font-sans text-caption text-ink-subtle tabular-nums">= {money(lineSar[i])} {pick({ en: 'converted', ar: 'بعد التحويل' })}</p>
+                  )}
+                  {extraFx > 0 && lineFx[i] > 0 && (
+                    <p className="font-sans text-caption text-ink-subtle tabular-nums">＋ {fxMoney(extraSharesFx[i])}{!isSar && rate > 0 && ` (${money(extraShares[i])})`} {pick({ en: 'share of the extra cost', ar: 'نصيب الصنف من التكلفة الإضافية' })}{extraLabel && ` (${pick(extraLabel)})`} · {pick({ en: 'enters its stock cost', ar: 'يدخل في تكلفة مخزونه' })}</p>
                   )}
                   {sugg.length > 0 && (
                     <div className="rounded-md border border-hairline bg-surface-1 shadow-soft max-h-40 overflow-y-auto divide-y divide-hairline">
@@ -411,26 +541,38 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
 
         {/* computed totals */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-md rounded-lg bg-surface-2 border border-hairline p-md">
-          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Subtotal', ar: 'المجموع الفرعي' })}</span><span className="font-sans text-data text-ink tabular-nums">{money(subtotal * 100)}</span></div>
-          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'VAT 15%', ar: 'الضريبة ١٥٪' })}</span><span className="font-sans text-data text-ink tabular-nums">{money(vat * 100)}</span></div>
-          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Extra cost (﷼)', ar: 'التكلفة الإضافية (﷼)' })}</span>
-            <input value={extraCost || ''} onChange={(e) => setExtraCost(parseNum(e.target.value))} className="input py-1.5 tabular-nums" inputMode="numeric" placeholder="0" />
-            {extraCost > 0 && (
+          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Subtotal', ar: 'المجموع الفرعي' })}</span>
+            <span className="font-sans text-data text-ink tabular-nums">{fxMoney(subtotalFx)}</span>
+            {!isSar && rate > 0 && <span className="font-sans text-caption text-ink-subtle tabular-nums">= {money(subtotalSar)}</span>}
+          </div>
+          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'VAT 15%', ar: 'الضريبة ١٥٪' })}</span>
+            <span className="font-sans text-data text-ink tabular-nums">{fxMoney(vatFx)}</span>
+            {!isSar && rate > 0 && <span className="font-sans text-caption text-ink-subtle tabular-nums">= {money(vatSar)}</span>}
+          </div>
+          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Extra cost', ar: 'التكلفة الإضافية' })} ({cur.symbol})</span>
+            <input value={extraStr} onChange={(e) => setExtraStr(e.target.value)} className="input py-1.5 tabular-nums" inputMode="decimal" placeholder="0" />
+            {extraFx > 0 && (
               <select value={extraTypeIdx} onChange={(e) => setExtraTypeIdx(Number(e.target.value))} className={cn('input py-1.5 cursor-pointer', extraTypeIdx < 0 && 'border-danger')}>
                 <option value={-1} disabled>{pick({ en: 'Cost line item…', ar: 'بند التكلفة…' })}</option>
                 {extraCostTypes.map((t, i) => <option key={i} value={i}>{pick(t)}</option>)}
                 <option value={extraCostTypes.length}>{pick({ en: 'Other…', ar: 'أخرى…' })}</option>
               </select>
             )}
-            {extraCost > 0 && isOtherExtra && (
+            {extraFx > 0 && isOtherExtra && (
               <input value={extraOther} onChange={(e) => setExtraOther(e.target.value)} className={cn('input py-1.5', extraOther.trim() === '' && 'border-danger')} placeholder={pick({ en: 'Name the cost line item…', ar: 'سمِّ بند التكلفة…' })} />
             )}
+            {extraFx > 0 && !isSar && rate > 0 && <span className="font-sans text-caption text-ink-subtle tabular-nums">= {money(extraSar)}</span>}
           </div>
-          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Total', ar: 'الإجمالي' })}</span><span className="font-serif text-card-title text-ink tabular-nums">{money(total * 100)}</span></div>
+          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Total', ar: 'الإجمالي' })}</span>
+            <span className="font-serif text-card-title text-ink tabular-nums">{fxMoney(totalFx)}</span>
+            {!isSar && rate > 0 && <span className="font-sans text-caption text-primary-hover tabular-nums">= {money(totalSar)}</span>}
+          </div>
         </div>
 
         <p className="font-sans text-caption rounded-lg bg-surface-2 border border-hairline p-md text-ink-subtle">
           {pick({ en: 'On entry: every line restocks its assigned stock product, the extra cost is recorded under its named line item and allocated across the lines into their landed cost, the invoice is linked to the supplier number and awaits 3-way match.', ar: 'عند الإدخال: يرتفع رصيد كل منتج مخزون مُسكَّن عليه صنف، وتُسجَّل التكلفة الإضافية تحت بندها وتُوزَّع على الأصناف لتدخل في تكلفتها الفعلية، وتُربط الفاتورة برقم المورد وتنتظر المطابقة الثلاثية.' })}
+          {!isSar && ' '}
+          {!isSar && pick({ en: 'The invoice is booked in SAR at the rate above, and that rate is frozen onto it — a later move in the market cannot restate it, so no variance appears against the payment.', ar: 'وتُقيَّد الفاتورة بالريال بسعر الصرف أعلاه، ويُثبَّت السعر عليها — فلا يعيد تغيّر السوق لاحقًا تقييمها، ولا يظهر أي فرق مقابل السداد.' })}
         </p>
       </div>
     </Modal>
