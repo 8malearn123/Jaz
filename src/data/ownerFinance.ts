@@ -1,4 +1,5 @@
 import type { Bilingual } from './types'
+import type { CountryCode } from './countries'
 
 // ── Owner finance & costs (isolated).
 
@@ -25,17 +26,18 @@ export interface ReceivableRow {
   id: string
   account: Bilingual
   channel: 'B2B' | 'MEGA'
-  outstandingMinor: number
+  outstandingMinor: number // stored in riyals like every other amount; billed in the account's selling currency
   dueDate: Bilingual
   daysLate: number // 0 = within terms
+  country?: CountryCode // where the account operates — decides whether it is billed in SAR or USD
 }
 export const receivables: ReceivableRow[] = [
-  { id: 'AR-01', account: { en: 'Al-Dana Markets', ar: 'أسواق الدانة' }, channel: 'MEGA', outstandingMinor: 26400000, dueDate: { en: '12 Jun', ar: '١٢ يونيو' }, daysLate: 27 },
-  { id: 'AR-02', account: { en: 'Najd Hospitality Group', ar: 'مجموعة نجد للضيافة' }, channel: 'B2B', outstandingMinor: 4820000, dueDate: { en: '28 Jun', ar: '٢٨ يونيو' }, daysLate: 11 },
-  { id: 'AR-03', account: { en: 'Hyper Panda', ar: 'هايبر بنده' }, channel: 'MEGA', outstandingMinor: 35200000, dueDate: { en: '02 Aug', ar: '٠٢ أغسطس' }, daysLate: 0 },
-  { id: 'AR-04', account: { en: 'Jeddah Grand Hotel', ar: 'فندق جدة الكبير' }, channel: 'B2B', outstandingMinor: 3180000, dueDate: { en: '25 Jul', ar: '٢٥ يوليو' }, daysLate: 0 },
-  { id: 'AR-05', account: { en: 'Al-Tazaj Restaurants', ar: 'مطاعم الطازج' }, channel: 'B2B', outstandingMinor: 1240000, dueDate: { en: '05 Jul', ar: '٠٥ يوليو' }, daysLate: 4 },
-  { id: 'AR-06', account: { en: 'Aseer Events LLC', ar: 'عسير للفعاليات' }, channel: 'B2B', outstandingMinor: 2760000, dueDate: { en: '30 Jul', ar: '٣٠ يوليو' }, daysLate: 0 },
+  { id: 'AR-01', account: { en: 'Al-Dana Markets', ar: 'أسواق الدانة' }, channel: 'MEGA', outstandingMinor: 26400000, dueDate: { en: '12 Jun', ar: '١٢ يونيو' }, daysLate: 27, country: 'ae' },
+  { id: 'AR-02', account: { en: 'Najd Hospitality Group', ar: 'مجموعة نجد للضيافة' }, channel: 'B2B', outstandingMinor: 4820000, dueDate: { en: '28 Jun', ar: '٢٨ يونيو' }, daysLate: 11, country: 'sa' },
+  { id: 'AR-03', account: { en: 'Hyper Panda', ar: 'هايبر بنده' }, channel: 'MEGA', outstandingMinor: 35200000, dueDate: { en: '02 Aug', ar: '٠٢ أغسطس' }, daysLate: 0, country: 'sa' },
+  { id: 'AR-04', account: { en: 'Jeddah Grand Hotel', ar: 'فندق جدة الكبير' }, channel: 'B2B', outstandingMinor: 3180000, dueDate: { en: '25 Jul', ar: '٢٥ يوليو' }, daysLate: 0, country: 'sa' },
+  { id: 'AR-05', account: { en: 'Al-Tazaj Restaurants', ar: 'مطاعم الطازج' }, channel: 'B2B', outstandingMinor: 1240000, dueDate: { en: '05 Jul', ar: '٠٥ يوليو' }, daysLate: 4, country: 'sa' },
+  { id: 'AR-06', account: { en: 'Aseer Events LLC', ar: 'عسير للفعاليات' }, channel: 'B2B', outstandingMinor: 2760000, dueDate: { en: '30 Jul', ar: '٣٠ يوليو' }, daysLate: 0, country: 'sa' },
 ]
 
 export interface WasteEntry {

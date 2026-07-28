@@ -12,6 +12,7 @@ import { useBilling } from '@/state/BillingContext'
 import { useForecast } from '@/state/ForecastContext'
 import { forecastMonths, FORECAST_NEAR_MONTHS } from '@/data/forecasts'
 import { countryOf } from '@/data/countries'
+import { useSellingMoney } from '@/lib/useSellingMoney'
 import { openPrintWindow } from '@/lib/printWindow'
 import { AreaTrend, UtilizationGauge } from '@/components/charts/Charts'
 import { Modal } from '@/components/ui/Modal'
@@ -29,6 +30,11 @@ import {
 
 const TABS = ['overview', 'catalog', 'orders', 'forecast', 'finance'] as const
 type Tab = (typeof TABS)[number]
+
+// This partner is an export account, so every figure it is quoted, invoiced and
+// credit-limited in is USD — not the local currency of the market it operates in.
+// Amounts stay stored in riyals; this only decides how they reach the partner.
+const useExportMoney = () => useSellingMoney(megaAccount.country)
 
 // this portal's client id in the shared forecast store
 const FORECAST_CLIENT_ID = 'MEGA-01'
@@ -95,7 +101,8 @@ function MegaContent() {
 
 /* ═══════════ Overview — export command center ═══════════ */
 function Overview({ onTab }: { onTab: (id: string) => void }) {
-  const { pick, money } = useLocale()
+  const { pick } = useLocale()
+  const { money, symbol } = useExportMoney()
   const { openShipments, palletsInTransit, availableMinor, cycleValueMinor, orders } = useMegaState()
   const trendTotal = megaExportTrend[megaExportTrend.length - 1].amountMinor
   const active = orders.find((o) => !o.cancelled && o.stage < SHIP_LAST) ?? null
@@ -105,8 +112,8 @@ function Overview({ onTab }: { onTab: (id: string) => void }) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-sm">
         <StatCard tone="dark" label={pick({ en: 'Open shipments', ar: 'شحنات مفتوحة' })} value={String(openShipments)} sub={pick({ en: 'Cold-chain', ar: 'سلسلة تبريد' })} />
         <StatCard label={pick({ en: 'Pallets in transit', ar: 'طبليات قيد النقل' })} value={String(palletsInTransit)} sub={pick({ en: `${trucksFor(palletsInTransit * 1.3)} reefer trucks`, ar: `${trucksFor(palletsInTransit * 1.3)} شاحنة مبرّدة` })} />
-        <StatCard tone="green" label={pick({ en: 'Credit available', ar: 'الائتمان المتاح' })} value={money(availableMinor, { withSymbol: false })} unit={pick({ en: '﷼', ar: '﷼' })} sub={pick(megaCredit.terms)} />
-        <StatCard tone="gold" label={pick({ en: 'Export this cycle', ar: 'تصدير هذه الدورة' })} value={money(cycleValueMinor, { withSymbol: false })} unit={pick({ en: '﷼', ar: '﷼' })} sub={pick({ en: 'All markets', ar: 'كل الأسواق' })} />
+        <StatCard tone="green" label={pick({ en: 'Credit available', ar: 'الائتمان المتاح' })} value={money(availableMinor, { withSymbol: false })} unit={symbol} sub={pick(megaCredit.terms)} />
+        <StatCard tone="gold" label={pick({ en: 'Export this cycle', ar: 'تصدير هذه الدورة' })} value={money(cycleValueMinor, { withSymbol: false })} unit={symbol} sub={pick({ en: 'All markets', ar: 'كل الأسواق' })} />
       </div>
 
       <div className="grid lg:grid-cols-[1fr_340px] gap-lg items-start">
@@ -149,7 +156,8 @@ function Overview({ onTab }: { onTab: (id: string) => void }) {
 }
 
 function ActiveShipmentCard({ order, onTab }: { order: MegaOrder; onTab: (id: string) => void }) {
-  const { pick, money } = useLocale()
+  const { pick } = useLocale()
+  const { money } = useExportMoney()
   const { advanceShipment } = useMegaState()
   const { flash } = useToast()
   return (
@@ -172,7 +180,8 @@ function ActiveShipmentCard({ order, onTab }: { order: MegaOrder; onTab: (id: st
 }
 
 function DraftCard({ onTab }: { onTab: (id: string) => void }) {
-  const { pick, money } = useLocale()
+  const { pick } = useLocale()
+  const { money } = useExportMoney()
   const { draft, draftPallets, draftCbm, draftValueMinor, placeOrder, clearDraft } = useMegaState()
   const { flash } = useToast()
   const lines = Object.entries(draft)
@@ -232,7 +241,8 @@ function ComplianceSnapshot() {
 
 /* ═══════════ Catalog — pallet catalog + volume pricing ═══════════ */
 function Catalog({ onTab }: { onTab: (id: string) => void }) {
-  const { pick, money } = useLocale()
+  const { pick } = useLocale()
+  const { money } = useExportMoney()
   const { draft, addPallets, setDraftPallets, lineValueMinor, draftPallets, draftValueMinor } = useMegaState()
   const { flash } = useToast()
   const [reviewOpen, setReviewOpen] = useState(false)
@@ -320,7 +330,8 @@ function Catalog({ onTab }: { onTab: (id: string) => void }) {
 /* Review-and-place popup — opened from the catalog draft bar so the buyer never
    has to leave to find the draft. */
 function ReviewOrderModal({ open, onClose, onTab }: { open: boolean; onClose: () => void; onTab: (id: string) => void }) {
-  const { pick, money } = useLocale()
+  const { pick } = useLocale()
+  const { money } = useExportMoney()
   const { draft, draftPallets, draftCbm, draftValueMinor, lineValueMinor, placeOrder } = useMegaState()
   const { flash } = useToast()
   const lines = Object.entries(draft)
@@ -372,7 +383,8 @@ function ReviewOrderModal({ open, onClose, onTab }: { open: boolean; onClose: ()
 
 /* ═══════════ Orders & shipments — one board: commercial ledger + cold-chain tracking ═══════════ */
 function Orders() {
-  const { pick, money } = useLocale()
+  const { pick } = useLocale()
+  const { money } = useExportMoney()
   const { orders, advanceShipment } = useMegaState()
   const { flash } = useToast()
   const [track, setTrack] = useState<string | null>(null)
@@ -422,7 +434,8 @@ function Orders() {
 
 /* ═══════════ Forecast — rolling 12-month order plan ═══════════ */
 function Forecast() {
-  const { pick, money } = useLocale()
+  const { pick } = useLocale()
+  const { money } = useExportMoney()
   const { flash } = useToast()
   const { forecasts, setQty, allowedRange, committedOf } = useForecast()
   const f = forecasts.find((x) => x.clientId === FORECAST_CLIENT_ID)
@@ -533,7 +546,8 @@ function Forecast() {
 
 /* ═══════════ Finance — credit, statements, invoices, compliance ═══════════ */
 function Finance() {
-  const { pick, money, locale } = useLocale()
+  const { pick, locale } = useLocale()
+  const { money, currency, toBuyer } = useExportMoney()
   const { flash } = useToast()
   const { availableMinor, reserveMinor } = useMegaState()
   const utilPct = Math.round(((megaCredit.outstandingMinor + reserveMinor) / megaCredit.limitMinor) * 100)
@@ -544,7 +558,8 @@ function Finance() {
       [pick({ en: 'Item', ar: 'البند' }), pick({ en: 'Value', ar: 'القيمة' })],
       [pick({ en: 'Account', ar: 'الحساب' }), pick(megaAccount.legalName)],
       [pick({ en: 'Period', ar: 'الفترة' }), pick(s.period)],
-      [pick({ en: 'Closing balance (SAR)', ar: 'الرصيد الختامي (ريال)' }), s.closingMinor / 100],
+      // Stated in the currency this account is billed in, so the figure matches its invoices.
+      [pick({ en: `Closing balance (${currency})`, ar: `الرصيد الختامي (${currency})` }), toBuyer(s.closingMinor) / 100],
     ])
     flash(pick({ en: 'Statement downloaded (Excel)', ar: 'نُزّل كشف الحساب (إكسل)' }))
   }
@@ -649,7 +664,8 @@ function ShipTimeline({ stage, compact }: { stage: ShipStage; compact?: boolean 
 }
 
 function TrackModal({ order, onClose }: { order: MegaOrder; onClose: () => void }) {
-  const { pick, money, locale } = useLocale()
+  const { pick, locale } = useLocale()
+  const { money } = useExportMoney()
   const { cancelOrder } = useMegaState()
   // Billing lives in the shared store, so receipts and the tax invoice are the
   // same trail the Jaz billing desk works with — exactly like the B2B account.

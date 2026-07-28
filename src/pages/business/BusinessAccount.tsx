@@ -9,7 +9,7 @@ import { WholesaleOrderProvider } from '@/state/WholesaleOrderContext'
 import { OrgOrdersPanel } from './OrderQuotePanels'
 import { CatalogPanel } from './CatalogPanel'
 import { DeliverySchedule } from './DeliveryPanel'
-import { AccountManagerCard, LastOrderCard, NextDeliveryCard } from './shared'
+import { AccountManagerCard, LastOrderCard, NextDeliveryCard, useOrgMoney } from './shared'
 import { organization, availableCreditMinor } from '@/data/organization'
 import type { CreditLedgerEntry, Bilingual } from '@/data/types'
 import {
@@ -111,9 +111,9 @@ function Overview({ onTab }: { onTab: (id: string) => void }) {
 
 /* Account-health KPI strip — credit headroom + this-cycle orders / spend / bulk savings. */
 function KpiStrip() {
-  const { t, pick, money } = useLocale()
+  const { t, pick } = useLocale()
+  const { money, symbol: sar } = useOrgMoney()
   const available = availableCreditMinor(org)
-  const sar = pick({ en: '﷼', ar: '﷼' })
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-sm">
       <StatCell tone="gold" label={pick({ en: 'Available credit', ar: 'الائتمان المتاح' })} value={money(available, { withSymbol: false })} unit={sar} sub={`${pick({ en: 'of', ar: 'من' })} ${money(org.credit.limitMinor)}`} />
@@ -142,7 +142,8 @@ function StatCell({ label, value, unit, sub, tone = 'plain' }: { label: string; 
 
 /* ═══════════════ Credit ═══════════════ */
 function Credit() {
-  const { t, pick, money, locale } = useLocale()
+  const { t, pick, locale } = useLocale()
+  const { money } = useOrgMoney()
   const { flash } = useToast()
   const available = availableCreditMinor(org)
   const spendSeries = spendByMonth.map((p) => p.amountMinor)
@@ -475,10 +476,12 @@ function AddAddressModal({ open, onClose, onAdd }: { open: boolean; onClose: () 
 }
 
 function RequestCreditModal({ open, onClose, onSubmit }: { open: boolean; onClose: () => void; onSubmit: () => void }) {
-  const { t, money } = useLocale()
+  const { t } = useLocale()
+  // The requested limit is entered in the currency this account is credit-limited in.
+  const { money, symbol, fromBuyer } = useOrgMoney()
   const [amount, setAmount] = useState('200000')
   const [reason, setReason] = useState('')
-  const valid = Number(amount) * 100 > org.credit.limitMinor && reason.trim().length > 4
+  const valid = fromBuyer(Number(amount) * 100) > org.credit.limitMinor && reason.trim().length > 4
   return (
     <Modal open={open} onClose={onClose} size="md" eyebrow={t('business.tab.credit')} title={t('oa.requestIncrease')}
       footer={<>
@@ -490,7 +493,7 @@ function RequestCreditModal({ open, onClose, onSubmit }: { open: boolean; onClos
           <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{t('oa.currentLimit')}</span>
           <span className="font-serif text-card-title text-ink tabular-nums">{money(org.credit.limitMinor)}</span>
         </div>
-        <Field label={`${t('oa.requestedLimit')} (﷼)`} value={amount} onChange={(v) => setAmount(v.replace(/\D/g, ''))} placeholder="200000" />
+        <Field label={`${t('oa.requestedLimit')} (${symbol})`} value={amount} onChange={(v) => setAmount(v.replace(/\D/g, ''))} placeholder="200000" />
         <label className="flex flex-col gap-xs">
           <span className="label">{t('oa.justification')}</span>
           <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} className="input resize-none" placeholder={t('oa.justificationHint')} />
@@ -532,7 +535,8 @@ function Field({ label, value, onChange, placeholder, type }: { label: string; v
 }
 
 function LedgerRow({ entry, showBalance }: { entry: CreditLedgerEntry; showBalance?: boolean }) {
-  const { pick, money, locale } = useLocale()
+  const { pick, locale } = useLocale()
+  const { money } = useOrgMoney()
   const typeLabel: Record<CreditLedgerEntry['type'], Bilingual> = {
     reservation: { en: 'Reservation', ar: 'حجز' }, release: { en: 'Release', ar: 'تحرير' }, charge: { en: 'Charge', ar: 'استحقاق' }, payment: { en: 'Payment', ar: 'سداد' }, adjustment: { en: 'Adjustment', ar: 'تسوية' },
   }

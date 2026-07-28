@@ -9,6 +9,8 @@ export const organization: Organization = {
   vatNumber: '300012345600003',
   tier: 'gold',
   salesRep: { en: 'Majed Al-Shehri', ar: 'ماجد الشهري' },
+  country: 'sa', // a HORECA account inside the Kingdom — quoted, invoiced and credit-limited in riyals
+
   credit: {
     limitMinor: 15000000, // SAR 150,000
     reservedMinor: 2840000, // SAR 28,400

@@ -11,9 +11,12 @@ interface LocaleContextValue {
   t: (key: keyof typeof dict | string) => string
   /** Pick the right value from a bilingual { en, ar } content pair. */
   pick: <T>(pair: { en: T; ar: T }) => T
-  /** Format a halala (minor-unit) integer as a localized SAR string. */
-  money: (minor: number, opts?: { withSymbol?: boolean }) => string
+  /** Format a minor-unit integer as a localized money string — SAR unless a selling currency is given. */
+  money: (minor: number, opts?: { withSymbol?: boolean; currency?: 'SAR' | 'USD' }) => string
 }
+
+// ﷼ (U+FDFC) renders as the official Saudi Riyal symbol via the SaudiRiyal font.
+const currencySymbol: Record<'SAR' | 'USD', string> = { SAR: '﷼', USD: '$' }
 
 const LocaleContext = createContext<LocaleContextValue | null>(null)
 
@@ -60,7 +63,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   const pick = useCallback(<T,>(pair: { en: T; ar: T }) => pair[locale], [locale])
 
   const money = useCallback(
-    (minor: number, opts?: { withSymbol?: boolean }) => {
+    (minor: number, opts?: { withSymbol?: boolean; currency?: 'SAR' | 'USD' }) => {
       const withSymbol = opts?.withSymbol ?? true
       const value = minor / 100
       const formatted = value.toLocaleString('en-US', {
@@ -69,8 +72,8 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
       })
       const num = locale === 'ar' ? toArabicDigits(formatted) : formatted
       if (!withSymbol) return num
-      // ﷼ (U+FDFC) renders as the official Saudi Riyal symbol via the SaudiRiyal font.
-      return locale === 'ar' ? `${num} ﷼` : `﷼ ${num}`
+      const symbol = currencySymbol[opts?.currency ?? 'SAR']
+      return locale === 'ar' ? `${num} ${symbol}` : `${symbol} ${num}`
     },
     [locale],
   )

@@ -12,6 +12,7 @@ import { useOwnerState } from '@/state/OwnerStateContext'
 import { useStatements } from '@/state/StatementsContext'
 import { statementMonths, type StatementStatus } from '@/data/vendorStatements'
 import { openStatementPdf } from '@/lib/statementPdf'
+import { makeSellingMoney, useSellingMoney } from '@/lib/useSellingMoney'
 import { cn } from '@/lib/cn'
 import { PanelHead, Pill, UtilBar, FilterChips } from './_shared'
 import { OwnerForecastPanel } from './OwnerForecast'
@@ -91,6 +92,8 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
               )}
               {shownVendors.map((v) => {
                 const lm = limits[v.id] ?? v.limitMinor
+                // Partners outside the Kingdom are billed and credit-limited in dollars.
+                const vm = makeSellingMoney(money, v.country)
                 const up = lm > 0 ? Math.round((v.outstandingMinor / lm) * 100) : 0
                 const col = utilColor(up)
                 const initials = pick(v.name).split(' ').map((w) => w[0]).slice(0, 2).join('')
@@ -99,7 +102,7 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
                     <span className="grid place-items-center w-10 h-10 rounded-pill shrink-0 font-serif text-card-title" style={{ backgroundColor: col + '22', color: col }}>{initials}</span>
                     <div className="flex-1 min-w-[180px]">
                       <p className="font-sans text-data text-ink truncate">{pick(v.name)} <span className="text-ink-subtle">· {pick(v.type)}</span>{v.country && countryOf(v.country) && <span className="text-ink-subtle text-caption"> · {countryOf(v.country)!.flag} {pick(countryOf(v.country)!.label)}</span>}</p>
-                      <p className="font-sans text-caption text-ink-subtle tabular-nums truncate">{v.id} · {pick({ en: 'Outstanding', ar: 'المستحق' })} {money(v.outstandingMinor)} · {pick({ en: 'Limit', ar: 'الحد' })} {money(lm)}</p>
+                      <p className="font-sans text-caption text-ink-subtle tabular-nums truncate">{v.id} · {pick({ en: 'Outstanding', ar: 'المستحق' })} {vm.money(v.outstandingMinor)} · {pick({ en: 'Limit', ar: 'الحد' })} {vm.money(lm)}</p>
                     </div>
                     <div className="hidden sm:flex flex-col gap-xxs w-28 shrink-0">
                       <span className="font-sans text-caption text-ink-subtle tabular-nums text-end">{up}%</span>
@@ -144,13 +147,18 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {[...receivables].sort((a, b) => b.daysLate - a.daysLate).map((r) => (
+                  {[...receivables].sort((a, b) => b.daysLate - a.daysLate).map((r) => {
+                    const rm = makeSellingMoney(money, r.country)
+                    return (
                     <tr key={r.id} className="border-b border-hairline last:border-0 hover:bg-surface-2/30 transition-colors">
                       <td className="px-lg py-md">
                         <p className="font-sans text-data text-ink truncate max-w-[240px]">{pick(r.account)}</p>
-                        <p className="font-sans text-caption text-ink-subtle">{r.channel === 'MEGA' ? 'B2B' : 'HoReCa'}</p>
+                        <p className="font-sans text-caption text-ink-subtle">{r.channel === 'MEGA' ? 'B2B' : 'HoReCa'}{rm.isExport && ` · ${pick({ en: 'billed in USD', ar: 'يُفوتر بالدولار' })}`}</p>
                       </td>
-                      <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums whitespace-nowrap">{money(r.outstandingMinor)}</td>
+                      <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums whitespace-nowrap">
+                        {rm.money(r.outstandingMinor)}
+                        {rm.isExport && <span className="block font-sans text-caption text-ink-subtle">= {money(r.outstandingMinor)}</span>}
+                      </td>
                       <td className="px-lg py-md font-sans text-data text-ink-muted">{pick(r.dueDate)}</td>
                       <td className="px-lg py-md">
                         {r.daysLate > 0
@@ -161,12 +169,14 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
                         <button onClick={() => setViewRec(r)} className="grid place-items-center w-8 h-8 rounded-md border border-hairline text-ink-muted hover:text-ink hover:border-ink/30 transition-colors ms-auto" aria-label={pick({ en: 'View details', ar: 'اطلاع' })}><Eye size={15} /></button>
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
+            {/* Totals stay in riyals: accounts are billed in their own currency, the books are the company's. */}
             <div className="px-lg py-sm bg-surface-2 border-t border-hairline flex flex-wrap items-center justify-between gap-sm">
-              <span className="font-sans text-caption text-ink-muted tabular-nums">{pick({ en: 'Total outstanding', ar: 'إجمالي المستحق' })}: {money(receivables.reduce((a, r) => a + r.outstandingMinor, 0))}</span>
+              <span className="font-sans text-caption text-ink-muted tabular-nums">{pick({ en: 'Total outstanding (books)', ar: 'إجمالي المستحق (بدفاتر الشركة)' })}: {money(receivables.reduce((a, r) => a + r.outstandingMinor, 0))}</span>
               <span className="font-sans text-caption text-danger tabular-nums">{pick({ en: 'Overdue', ar: 'المتأخر' })}: {money(receivables.filter((r) => r.daysLate > 0).reduce((a, r) => a + r.outstandingMinor, 0))} · {receivables.filter((r) => r.daysLate > 0).length} {pick({ en: 'accounts', ar: 'حسابات' })}</span>
             </div>
           </div>
@@ -198,26 +208,28 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
                 <tbody>
                   {statements.filter((s) => s.month === stMonth).map((s) => {
                     const m = stMeta[s.status]
+                    // A statement is stated in the currency its partner is billed in.
+                    const sm = makeSellingMoney(money, vendors.find((v) => v.id === s.vendorId)?.country)
                     return (
                       <tr key={s.id} className="border-b border-hairline last:border-0 align-middle">
                         <td className="px-lg py-md">
                           <p className="font-sans text-data text-ink truncate max-w-[200px]">{pick(s.vendor)}</p>
-                          <p className="font-sans text-caption text-ink-subtle tabular-nums">{s.id} · {pick({ en: 'Issued', ar: 'صدر' })} {pick(s.issuedOn)}</p>
+                          <p className="font-sans text-caption text-ink-subtle tabular-nums">{s.id} · {pick({ en: 'Issued', ar: 'صدر' })} {pick(s.issuedOn)}{sm.isExport && ` · ${sm.currency}`}</p>
                         </td>
                         <td className="px-lg py-md">
                           <p className="font-sans text-caption text-ink-muted max-w-[170px]">{pick(s.periodLabel)}</p>
                           <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Partner since', ar: 'بداية التعامل' })} {pick(s.sinceLabel)}</p>
                         </td>
-                        <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums whitespace-nowrap">{money(s.chargesMinor, { withSymbol: false })}</td>
-                        <td className="px-lg py-md text-end font-sans text-data text-success tabular-nums whitespace-nowrap">−{money(s.paymentsMinor, { withSymbol: false })}</td>
-                        <td className="px-lg py-md text-end font-serif text-card-title text-ink tabular-nums whitespace-nowrap">{money(s.closingMinor)}</td>
+                        <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums whitespace-nowrap">{sm.money(s.chargesMinor, { withSymbol: false })}</td>
+                        <td className="px-lg py-md text-end font-sans text-data text-success tabular-nums whitespace-nowrap">−{sm.money(s.paymentsMinor, { withSymbol: false })}</td>
+                        <td className="px-lg py-md text-end font-serif text-card-title text-ink tabular-nums whitespace-nowrap">{sm.money(s.closingMinor)}</td>
                         <td className="px-lg py-md">
                           <Pill color={m.color} bg={m.bg}>{pick(m.label)}</Pill>
                           {s.partnerAt && <p className="font-sans text-caption text-ink-subtle mt-xxs">{pick({ en: 'Partner approved', ar: 'اعتماد الشريك' })} · {pick(s.partnerAt)}</p>}
                         </td>
                         <td className="px-lg py-md">
                           <div className="flex items-center justify-end gap-xs">
-                            <button onClick={() => openStatementPdf(s, { locale, pick, money })} className={buttonClass('secondary', 'sm')}><Download size={14} /> PDF</button>
+                            <button onClick={() => openStatementPdf(s, { locale, pick, money: sm.money })} className={buttonClass('secondary', 'sm')}><Download size={14} /> PDF</button>
                             {s.status === 'review' && (
                               <button onClick={() => { accountantApprove(s.id); flash(`${pick({ en: 'Approved & sent to', ar: 'اعتُمد وأُرسل إلى' })} ${pick(s.vendor)}`) }} className={buttonClass('primary', 'sm')}>
                                 <Check size={14} /> {pick({ en: 'Approve & send', ar: 'اعتماد وإرسال' })}
@@ -364,7 +376,7 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
         <RecordPaymentModal
           vendor={payVendor}
           onClose={() => setPayId(null)}
-          onRecord={(minor) => { recordVendorPayment(payVendor.id, minor); flash(`${pick({ en: 'Payment recorded', ar: 'سُجّل سداد' })} ${money(minor)} · ${pick(payVendor.name)}`) }}
+          onRecord={(minor) => { recordVendorPayment(payVendor.id, minor); flash(`${pick({ en: 'Payment recorded', ar: 'سُجّل سداد' })} ${makeSellingMoney(money, payVendor.country).money(minor)} · ${pick(payVendor.name)}`) }}
         />
       )}
 
@@ -376,7 +388,8 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
             <div className="rounded-lg border border-hairline divide-y divide-hairline">
               {[
                 { k: pick({ en: 'Channel', ar: 'القناة' }), v: viewRec.channel === 'MEGA' ? 'B2B' : 'HoReCa' },
-                { k: pick({ en: 'Outstanding', ar: 'المبلغ المستحق' }), v: money(viewRec.outstandingMinor) },
+                { k: pick({ en: 'Billed in', ar: 'العملة' }), v: makeSellingMoney(money, viewRec.country).currency },
+                { k: pick({ en: 'Outstanding', ar: 'المبلغ المستحق' }), v: makeSellingMoney(money, viewRec.country).money(viewRec.outstandingMinor) },
                 { k: pick({ en: 'Due date', ar: 'تاريخ الاستحقاق' }), v: pick(viewRec.dueDate) },
               ].map((r, i) => (
                 <div key={i} className="flex items-center justify-between px-md py-2">
@@ -410,7 +423,9 @@ function VendorProfileModal({ vendor, limitMinor, docs, onClose, onSaveLimit, on
   onAttachDoc: (kind: VendorDocKind, doc: VendorDoc) => void
   onPay?: () => void
 }) {
-  const { pick, money } = useLocale()
+  const { pick, money: sarMoney } = useLocale()
+  // Everything on this profile is stated in what the partner is billed in.
+  const { money, symbol, currency, isExport, toBuyer, fromBuyer } = useSellingMoney(vendor.country)
   const [draft, setDraft] = useState<number | null>(null)
   const [preview, setPreview] = useState<VendorDocKind | null>(null)
   const active = vendor.status === 'active'
@@ -511,11 +526,15 @@ function VendorProfileModal({ vendor, limitMinor, docs, onClose, onSaveLimit, on
                 <div className="flex flex-col gap-xxs"><span className="label !mb-0">{pick({ en: 'Utilization', ar: 'الاستغلال' })}</span><span className="font-serif text-card-title text-ink tabular-nums">{utilPct}%</span></div>
               </div>
               <UtilBar pct={utilPct} color={col} />
+              {/* The limit is set in the partner's own currency and stored back in riyals. */}
               <div className="flex flex-wrap items-end gap-sm pt-sm border-t border-hairline">
-                <label className="flex flex-col gap-xs flex-1 min-w-[160px]"><span className="label">{pick({ en: 'Credit limit (﷼)', ar: 'الحد الائتماني (﷼)' })}</span>
-                  <input value={draft ?? Math.round(limitMinor / 100)} onChange={(e) => setDraft(parseInt(e.target.value.replace(/\D/g, ''), 10) || 0)} className="input tabular-nums" inputMode="numeric" /></label>
-                <button onClick={() => { if (draft != null) { onSaveLimit(draft * 100); setDraft(null) } }} disabled={draft == null || draft * 100 === limitMinor} className={buttonClass('primary', 'sm')}>{pick({ en: 'Save limit', ar: 'حفظ الحد' })}</button>
+                <label className="flex flex-col gap-xs flex-1 min-w-[160px]"><span className="label">{pick({ en: `Credit limit (${symbol})`, ar: `الحد الائتماني (${symbol})` })}</span>
+                  <input value={draft ?? Math.round(toBuyer(limitMinor) / 100)} onChange={(e) => setDraft(parseInt(e.target.value.replace(/\D/g, ''), 10) || 0)} className="input tabular-nums" inputMode="numeric" /></label>
+                <button onClick={() => { if (draft != null) { onSaveLimit(fromBuyer(draft * 100)); setDraft(null) } }} disabled={draft == null || fromBuyer(draft * 100) === limitMinor} className={buttonClass('primary', 'sm')}>{pick({ en: 'Save limit', ar: 'حفظ الحد' })}</button>
               </div>
+              {isExport && (
+                <p className="font-sans text-caption text-ink-subtle">{pick({ en: `Billed and credit-limited in ${currency} — this partner operates outside the Kingdom.`, ar: `يُفوتر ويُمنح الحد الائتماني بالـ${currency} — هذا الشريك يعمل خارج المملكة.` })} {pick({ en: 'In the books', ar: 'في دفاتر الشركة' })}: {sarMoney(limitMinor)}</p>
+              )}
             </div>
           </div>
         )}
@@ -599,10 +618,12 @@ function DocPreviewModal({ vendor, kind, doc, onClose }: { vendor: OwnerVendor; 
 /** Record a settlement against the vendor's outstanding balance — the receipt
  *  attachment is MANDATORY: no receipt, no recorded payment. */
 function RecordPaymentModal({ vendor, onClose, onRecord }: { vendor: OwnerVendor; onClose: () => void; onRecord: (amountMinor: number) => void }) {
-  const { pick, money } = useLocale()
+  const { pick } = useLocale()
+  // The settlement is entered in the currency this partner pays in, then stored as riyals.
+  const { money, symbol, isExport, currency, fromBuyer } = useSellingMoney(vendor.country)
   const [amount, setAmount] = useState('')
   const [receipt, setReceipt] = useState<string | null>(null)
-  const minor = (parseInt(amount.replace(/\D/g, ''), 10) || 0) * 100
+  const minor = fromBuyer((parseInt(amount.replace(/\D/g, ''), 10) || 0) * 100)
   const over = minor > vendor.outstandingMinor
   const valid = minor > 0 && !over && receipt != null
   const submit = () => {
@@ -618,9 +639,10 @@ function RecordPaymentModal({ vendor, onClose, onRecord }: { vendor: OwnerVendor
       </>}>
       <div className="flex flex-col gap-md">
         <label className="flex flex-col gap-xs">
-          <span className="label">{pick({ en: 'Amount (﷼)', ar: 'المبلغ (﷼)' })}</span>
+          <span className="label">{pick({ en: `Amount (${symbol})`, ar: `المبلغ (${symbol})` })}</span>
           <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))} className={cn('input tabular-nums', over && 'border-danger')} dir="ltr" inputMode="numeric" placeholder="0" autoFocus />
           <span className={cn('font-sans text-caption tabular-nums', over ? 'text-danger' : 'text-ink-subtle')}>{pick({ en: 'Outstanding', ar: 'المستحق حاليًا' })}: {money(vendor.outstandingMinor)}</span>
+          {isExport && <span className="font-sans text-caption text-ink-subtle">{pick({ en: `Settled in ${currency} — this partner operates outside the Kingdom.`, ar: `السداد بالـ${currency} — هذا الشريك يعمل خارج المملكة.` })}</span>}
         </label>
         <div className="flex flex-wrap items-center gap-sm">
           <label className={buttonClass('secondary', 'sm', 'cursor-pointer')}>
@@ -663,13 +685,18 @@ function InviteVendorModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
           <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Activity', ar: 'النشاط' })}</span><input value={type} onChange={(e) => setType(e.target.value)} className="input" placeholder={pick({ en: 'e.g. Retail chain', ar: 'مثال: سلسلة تجزئة' })} /></label>
           <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Email', ar: 'البريد الإلكتروني' })}</span><input value={email} onChange={(e) => setEmail(e.target.value)} className={cn('input', email.trim() !== '' && !emailOk && 'border-danger')} dir="ltr" inputMode="email" placeholder="orders@vendor.sa" /></label>
         </div>
-        {/* the partner's country is mandatory — it decides which catalog they see */}
+        {/* the partner's country is mandatory — it decides which catalog they see and what they are billed in */}
         <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Country', ar: 'الدولة' })}</span>
           <select value={country} onChange={(e) => setCountry(e.target.value as CountryCode | '')} className={cn('input cursor-pointer', country === '' && 'text-ink-subtle')}>
             <option value="" disabled>{pick({ en: 'Choose the partner’s country…', ar: 'اختر دولة الشريك…' })}</option>
             {countries.map((c) => <option key={c.code} value={c.code}>{c.flag} {pick(c.label)}</option>)}
           </select>
           <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Their catalog shows the products dedicated to this country.', ar: 'كتالوج الشريك يعرض المنتجات المخصصة لدولته.' })}</span>
+          {country !== '' && (
+            <span className="font-sans text-caption text-ink-muted">{country === 'sa'
+              ? pick({ en: 'Inside the Kingdom — quoted, invoiced and credit-limited in SAR (﷼).', ar: 'داخل المملكة — التسعير والفوترة والحد الائتماني بالريال السعودي (﷼).' })
+              : pick({ en: 'Outside the Kingdom — quoted, invoiced and credit-limited in USD ($), not the local currency.', ar: 'خارج المملكة — التسعير والفوترة والحد الائتماني بالدولار ($)، لا بعملة الدولة.' })}</span>
+          )}
         </label>
         <p className="font-sans text-caption text-ink-subtle rounded-lg bg-surface-2 border border-hairline p-md">{pick({ en: 'The vendor receives an invitation to open a credit account. Once they accept, the request appears here for your approval, then you set their credit limit.', ar: 'يستلم المورّد دعوة لفتح حساب ائتماني. عند قبوله تظهر لك هنا كطلب انضمام لاعتماده، ثم تحدد له الحد الائتماني.' })}</p>
       </div>

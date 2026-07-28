@@ -1,5 +1,7 @@
 // Domain types — a storefront-facing subset of the JAZ production data model.
 // Money is stored as integer minor units (halalas), currency SAR, per the architecture doc.
+// What a given buyer is quoted and billed in is a separate matter — see data/selling.ts.
+import type { CountryCode } from './countries'
 
 export type Bilingual = { en: string; ar: string }
 
@@ -110,6 +112,7 @@ export interface Organization {
   vatNumber: string
   tier: 'bronze' | 'silver' | 'gold' | 'platinum'
   salesRep: Bilingual
+  country?: CountryCode // where the account operates — decides its selling currency (see data/selling.ts)
   credit: {
     limitMinor: number
     reservedMinor: number
