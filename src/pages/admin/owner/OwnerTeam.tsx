@@ -13,6 +13,14 @@ import { cn } from '@/lib/cn'
 import { PanelHead, StatCard, Pill } from './_shared'
 
 const initials = (s: string) => s.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('')
+
+// Tree geometry, in pixels. A row is `py-1.5` around a 36px avatar, so its centre — where
+// an elbow meets a node and where a last child's spine stops — sits at 24. BRANCH is what
+// makes the lines actually connect: a child's spine has to fall under its parent's avatar
+// centre, which is the button's own 8px padding plus half that avatar.
+const RAIL = 30 // how far a node sits from the spine it hangs off
+const BRANCH = 26 // 8px button padding + 18px half-avatar
+const ROW_MID = 24
 const permOf = (k: TeamPermission) => teamPermissions.find((p) => p.key === k)!
 
 /** Team & staff: create accounts, give each one a job role and a place in the org chart,
@@ -176,34 +184,81 @@ export function OwnerTeam() {
   )
 }
 
-/** The org chart: everyone who reports to nobody sits at the top, with their people
- *  nested beneath — an accountant with a group of accountants under them reads as one branch. */
+/** The org chart, drawn as a tree: every person sits under whoever they report to,
+ *  with their own people branching beneath them. The owner is the root, so the whole
+ *  team reads as one structure rather than a list of names. */
 function OrgTree({ employees, onPick }: { employees: Employee[]; onPick: (id: string) => void }) {
   const { pick } = useLocale()
   const [open, setOpen] = useState(true)
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const ids = new Set(employees.map((e) => e.id))
-  // A person whose manager is missing (or unset) hangs directly off the owner.
+  // A person whose manager is unset (or was removed) branches directly off the owner.
   const roots = employees.filter((e) => !e.managerId || !ids.has(e.managerId))
+  const reportsOf = (id: string) => employees.filter((r) => r.managerId === id)
+  const toggle = (id: string) => setCollapsed((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
 
-  const branch = (e: Employee, depth: number, seen: Set<string>): React.ReactNode => {
+  // Everyone beneath a person, however deep — the number that makes a branch worth collapsing.
+  const teamSize = (id: string, seen = new Set<string>()): number => {
+    if (seen.has(id)) return 0
+    seen.add(id)
+    return reportsOf(id).reduce((a, r) => a + 1 + teamSize(r.id, seen), 0)
+  }
+
+  const node = (e: Employee, isLast: boolean, seen: Set<string>): React.ReactNode => {
     if (seen.has(e.id)) return null
     const next = new Set(seen).add(e.id)
-    const reports = employees.filter((r) => r.managerId === e.id)
+    const reports = reportsOf(e.id)
     const def = jobRoleOf(e.role)
+    const shut = collapsed.has(e.id)
+    const below = teamSize(e.id)
     return (
-      <div key={e.id} className="flex flex-col">
-        <button type="button" onClick={() => onPick(e.id)}
-          className="flex items-center gap-sm rounded-md px-2 py-1.5 text-start hover:bg-surface-2 transition-colors"
-          style={{ marginInlineStart: depth * 22 }}>
-          {depth > 0 && <span className="font-sans text-caption text-ink-subtle select-none">└</span>}
-          <span className={cn('grid place-items-center w-8 h-8 rounded-pill shrink-0 font-sans text-caption font-semibold', e.active ? 'bg-primary/10 text-primary-hover' : 'bg-surface-2 text-ink-subtle')}>{initials(pick(e.name))}</span>
-          <span className="min-w-0">
-            <span className="block font-sans text-data text-ink truncate">{pick(e.name)}{!e.active && <span className="text-ink-subtle"> · {pick({ en: 'suspended', ar: 'موقوف' })}</span>}</span>
-            <span className="block font-sans text-caption text-ink-subtle truncate">{def ? pick(def.label) : pick(e.title)}{reports.length > 0 && ` · ${reports.length} ${pick({ en: 'reporting', ar: 'تابع' })}`}</span>
-          </span>
-        </button>
-        {reports.map((r) => branch(r, depth + 1, next))}
-      </div>
+      <li key={e.id} className="relative" style={{ paddingInlineStart: RAIL }}>
+        {/* the spine this node hangs from — it stops at the elbow when nothing follows */}
+        <span aria-hidden className="absolute w-px bg-hairline-strong"
+          style={{ insetInlineStart: 0, top: 0, ...(isLast ? { height: ROW_MID } : { bottom: 0 }) }} />
+        {/* the elbow into the node itself */}
+        <span aria-hidden className="absolute h-px bg-hairline-strong"
+          style={{ insetInlineStart: 0, top: ROW_MID, width: RAIL - 6 }} />
+
+        {/* the row hugs its node so the branch keeps its shape — a full-width row would
+            stretch every level to the same edge and flatten the tree back into a list */}
+        <div className="inline-flex items-center gap-xxs max-w-full">
+          <button type="button" onClick={() => onPick(e.id)}
+            className="min-w-0 flex items-center gap-sm rounded-lg border border-transparent px-2 py-1.5 text-start hover:border-hairline hover:bg-surface-2 transition-colors">
+            <span className={cn('grid place-items-center w-9 h-9 rounded-pill shrink-0 font-sans text-caption font-semibold',
+              e.active ? 'bg-primary/10 text-primary-hover' : 'bg-surface-2 text-ink-subtle')}>{initials(pick(e.name))}</span>
+            <span className="min-w-0">
+              <span className="block font-sans text-data text-ink truncate">
+                {pick(e.name)}
+                {!e.active && <span className="text-ink-subtle"> · {pick({ en: 'suspended', ar: 'موقوف' })}</span>}
+              </span>
+              <span className="block font-sans text-caption text-ink-subtle truncate">{def ? pick(def.label) : pick(e.title)}</span>
+            </span>
+            {reports.length > 0 && (
+              <span className="shrink-0 rounded-pill border border-hairline-strong bg-surface-2 px-2 py-0.5 font-sans text-caption text-ink-muted tabular-nums">
+                {reports.length} {pick({ en: 'direct', ar: 'مباشر' })}{below > reports.length && ` · ${below} ${pick({ en: 'total', ar: 'الإجمالي' })}`}
+              </span>
+            )}
+          </button>
+          {reports.length > 0 && (
+            <button type="button" onClick={() => toggle(e.id)} aria-expanded={!shut}
+              aria-label={pick({ en: 'Collapse branch', ar: 'طيّ الفرع' })}
+              className="grid place-items-center w-7 h-7 rounded-md text-ink-subtle hover:text-ink hover:bg-surface-2 transition-colors shrink-0">
+              <ChevronDown size={15} className={cn('transition-transform', shut && '-rotate-90 rtl:rotate-90')} />
+            </button>
+          )}
+        </div>
+
+        {reports.length > 0 && !shut && (
+          <ul className="relative" style={{ marginInlineStart: BRANCH }}>
+            {reports.map((r, i) => node(r, i === reports.length - 1, next))}
+          </ul>
+        )}
+      </li>
     )
   }
 
@@ -217,17 +272,27 @@ function OrgTree({ employees, onPick }: { employees: Employee[]; onPick: (id: st
         <ChevronDown size={18} className={cn('shrink-0 text-ink-subtle transition-transform', !open && 'rotate-180')} />
       </button>
       {open && (
-        <div className="p-lg flex flex-col gap-xxs">
+        <div className="p-lg overflow-x-auto">
+          {/* the owner is the root — every branch ultimately hangs off it */}
           <div className="flex items-center gap-sm px-2 py-1.5">
-            <span className="grid place-items-center w-8 h-8 rounded-pill bg-ink text-ink-on-dark shrink-0 font-sans text-caption font-semibold">JZ</span>
+            <span className="grid place-items-center w-9 h-9 rounded-pill bg-ink text-ink-on-dark shrink-0 font-sans text-caption font-semibold">JZ</span>
             <span className="min-w-0">
               <span className="block font-sans text-data text-ink">{pick({ en: 'Owner', ar: 'المالك' })}</span>
               <span className="block font-sans text-caption text-ink-subtle">{pick({ en: 'Top of every escalation line', ar: 'أعلى كل خط تصعيد' })}</span>
             </span>
+            {employees.length > 0 && (
+              <span className="shrink-0 rounded-pill border border-hairline-strong bg-surface-2 px-2 py-0.5 font-sans text-caption text-ink-muted tabular-nums">
+                {employees.length} {pick({ en: 'in the team', ar: 'في الفريق' })}
+              </span>
+            )}
           </div>
           {roots.length === 0
-            ? <p className="px-2 font-sans text-caption text-ink-subtle">{pick({ en: 'No employees yet.', ar: 'لا موظفين بعد.' })}</p>
-            : roots.map((e) => branch(e, 1, new Set()))}
+            ? <p className="px-2 pt-sm font-sans text-caption text-ink-subtle">{pick({ en: 'No employees yet — add one and it appears on this chart.', ar: 'لا موظفين بعد — أضف موظفًا فيظهر في هذا الهيكل.' })}</p>
+            : (
+              <ul className="relative" style={{ marginInlineStart: BRANCH }}>
+                {roots.map((e, i) => node(e, i === roots.length - 1, new Set()))}
+              </ul>
+            )}
         </div>
       )}
     </div>
