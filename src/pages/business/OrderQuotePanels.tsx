@@ -13,7 +13,7 @@ import { StatusBadge } from '@/components/ui/Misc'
 import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/Confirm'
 import { cn } from '@/lib/cn'
-import { orderStatusVariant, OrderJourney, Row } from './shared'
+import { orderStatusVariant, OrderJourney, Row, useOrgMoney } from './shared'
 import { openPrintWindow } from '@/lib/printWindow'
 import { useBilling } from '@/state/BillingContext'
 
@@ -71,7 +71,8 @@ function MyOrders({ orders, onView }: { orders: AccountOrder[]; onView: (o: Acco
 /** Compact, scannable order card: id + date on one side, prominent total on the other,
  *  a minimalist progress bar instead of the wide stepper, and an inline soft alert. */
 function OrderCard({ order, onView }: { order: AccountOrder; onView: () => void }) {
-  const { t, pick, money, locale } = useLocale()
+  const { t, pick, locale } = useLocale()
+  const { money } = useOrgMoney()
   const journey = order.cancelled
     ? <p className="inline-flex items-center gap-xs font-sans text-caption text-danger"><X size={13} /> {pick({ en: 'This order was cancelled.', ar: 'أُلغي هذا الطلب.' })}</p>
     : <OrderJourney status={order.status} variant="mini" />
@@ -121,7 +122,8 @@ function OrderCard({ order, onView }: { order: AccountOrder; onView: () => void 
 
 /* ─────────── Order detail / invoice ─────────── */
 function OrderDetailModal({ order, open, onClose, onCancel }: { order: AccountOrder | null; open: boolean; onClose: () => void; onCancel: (orderNo: string) => void }) {
-  const { t, pick, money, locale } = useLocale()
+  const { t, pick, locale } = useLocale()
+  const { money } = useOrgMoney()
   const { flash } = useToast()
   // Billing lives in the shared store so the Jaz admin console sees receipts live
   // (and the tax invoice the admin attaches shows up here immediately).

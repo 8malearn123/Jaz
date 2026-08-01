@@ -60,12 +60,38 @@ export const bomBySku: Record<string, Partial<Record<RawKey, number>>> = {
   'PALLET-ASSORTED': { cacao: 22, milk: 8, sugar: 6, foil: 480 },
 }
 
-export interface FinishedBatch { code: string; product: Bilingual; systemQty: number; countedQty: number; expiryDays: number; unitMinor: number; color: string }
+// A batch is born in quarantine and only the chef's release makes it sellable —
+// a produced batch is stock, but it is not yet goods anyone may promise to a customer.
+export type BatchStatus = 'quarantine' | 'released' | 'rejected'
+/** The only three ways a rejected batch may leave the floor. */
+export type BatchDisposition = 'rework' | 'downgrade' | 'waste'
+export const batchDispositions: { key: BatchDisposition; label: Bilingual; desc: Bilingual }[] = [
+  { key: 'rework', label: { en: 'Rework', ar: 'إعادة تشغيل' }, desc: { en: 'Back to quarantine to be run again', ar: 'تعود إلى الحجر لإعادة تشغيلها' } },
+  { key: 'downgrade', label: { en: 'Downgrade', ar: 'تنزيل درجة' }, desc: { en: 'Released as a second, carried at half value', ar: 'تُطلق كدرجة ثانية بنصف القيمة' } },
+  { key: 'waste', label: { en: 'Write off', ar: 'هدر' }, desc: { en: 'Written off in full to the waste ledger', ar: 'تُخرج بالكامل إلى سجل الهدر' } },
+]
+/** A formulation as it stood before a change, kept so a batch can be traced to its recipe. */
+export interface RecipeVersion {
+  at: Bilingual
+  by: Bilingual
+  before: Partial<Record<RawKey, number>>
+  after: Partial<Record<RawKey, number>>
+}
+export interface FinishedBatch {
+  code: string; product: Bilingual; systemQty: number; countedQty: number; expiryDays: number; unitMinor: number; color: string
+  status: BatchStatus
+  sku?: string // the product it was produced from — carries the recipe and shelf life
+  releasedBy?: Bilingual
+  releasedAt?: Bilingual
+  rejectedReason?: string
+  /** Set once the batch is closed and its actual raw draw confirmed against the recipe. */
+  yieldConfirmed?: boolean
+}
 export const finishedBatches: FinishedBatch[] = [
-  { code: 'BATCH-FG-018', product: { en: 'Dark 70% bar', ar: 'لوح داكن ٧٠٪' }, systemQty: 1240, countedQty: 1240, expiryDays: 92, unitMinor: 4400, color: '#2e1a10' },
-  { code: 'BATCH-FG-044', product: { en: 'Milk & jasmine bar', ar: 'لوح حليب بالفُل' }, systemQty: 860, countedQty: 852, expiryDays: 61, unitMinor: 3800, color: '#6b4a2e' },
-  { code: 'BATCH-FG-091', product: { en: 'Rose gift box', ar: 'بوكس الورد' }, systemQty: 210, countedQty: 198, expiryDays: 14, unitMinor: 31000, color: '#9c5566' },
-  { code: 'BATCH-FG-063', product: { en: 'Jasmine luxury box', ar: 'بوكس الفُل الفاخر' }, systemQty: 540, countedQty: 545, expiryDays: 47, unitMinor: 16800, color: '#b08a57' },
+  { code: 'BATCH-FG-018', product: { en: 'Dark 70% bar', ar: 'لوح داكن ٧٠٪' }, systemQty: 1240, countedQty: 1240, expiryDays: 92, unitMinor: 4400, color: '#2e1a10', status: 'released', releasedBy: { en: 'Hind Al-Asiri — quality', ar: 'هند العسيري — الجودة' }, releasedAt: { en: '02 Jul', ar: '٠٢ يوليو' }, yieldConfirmed: true },
+  { code: 'BATCH-FG-044', product: { en: 'Milk & jasmine bar', ar: 'لوح حليب بالفُل' }, systemQty: 860, countedQty: 852, expiryDays: 61, unitMinor: 3800, color: '#6b4a2e', status: 'released', releasedBy: { en: 'Hind Al-Asiri — quality', ar: 'هند العسيري — الجودة' }, releasedAt: { en: '28 Jun', ar: '٢٨ يونيو' }, yieldConfirmed: true },
+  { code: 'BATCH-FG-091', product: { en: 'Rose gift box', ar: 'بوكس الورد' }, systemQty: 210, countedQty: 198, expiryDays: 14, unitMinor: 31000, color: '#9c5566', status: 'released', releasedBy: { en: 'Hind Al-Asiri — quality', ar: 'هند العسيري — الجودة' }, releasedAt: { en: '21 Jun', ar: '٢١ يونيو' }, yieldConfirmed: true },
+  { code: 'BATCH-FG-063', product: { en: 'Jasmine luxury box', ar: 'بوكس الفُل الفاخر' }, systemQty: 540, countedQty: 545, expiryDays: 47, unitMinor: 16800, color: '#b08a57', status: 'quarantine' },
 ]
 
 // Per-item stock movement audit trail (who moved what, when and why).
@@ -92,6 +118,28 @@ export interface StockTakeReport {
   netValueMinor: number
 }
 
+// ── Invoice currencies ──────────────────────────────────────────────────────
+// Suppliers bill in their own currency, but stock cost, finance and reports are all SAR.
+// An invoice is therefore converted on entry at the market rate, and that rate is frozen
+// onto the invoice: a later rate move can never restate an invoice that is already booked,
+// so its value stays equal to what was received and no variance can appear afterwards.
+export interface CurrencyDef {
+  code: string
+  label: Bilingual
+  symbol: string
+  sarPerUnit: number // market rate — how many SAR one unit of this currency buys
+}
+export const currencies: CurrencyDef[] = [
+  { code: 'SAR', label: { en: 'Saudi riyal', ar: 'ريال سعودي' }, symbol: '﷼', sarPerUnit: 1 },
+  { code: 'USD', label: { en: 'US dollar', ar: 'دولار أمريكي' }, symbol: '$', sarPerUnit: 3.75 }, // pegged by SAMA
+  { code: 'EUR', label: { en: 'Euro', ar: 'يورو' }, symbol: '€', sarPerUnit: 4.08 },
+  { code: 'GBP', label: { en: 'Pound sterling', ar: 'جنيه إسترليني' }, symbol: '£', sarPerUnit: 4.87 },
+  { code: 'CHF', label: { en: 'Swiss franc', ar: 'فرنك سويسري' }, symbol: 'CHF', sarPerUnit: 4.22 },
+  { code: 'AED', label: { en: 'UAE dirham', ar: 'درهم إماراتي' }, symbol: 'د.إ', sarPerUnit: 1.021 },
+  { code: 'TRY', label: { en: 'Turkish lira', ar: 'ليرة تركية' }, symbol: '₺', sarPerUnit: 0.094 },
+]
+export const currencyOf = (code: string): CurrencyDef => currencies.find((c) => c.code === code) ?? currencies[0]
+
 export type PurchaseMatch = 'matched' | 'pending' | 'flagged'
 export interface PurchaseInvoice {
   id: string
@@ -103,7 +151,17 @@ export interface PurchaseInvoice {
   po?: string // linked purchase order (absent → no PO, so it can't 3-way match → flagged)
   rawKey?: RawKey // raw stock this invoice restocks (drives the automatic stock/cost update)
   qty?: number // received quantity in the raw's unit
+  extra?: { label: Bilingual; amountMinor: number } // classified extra cost (shipping, packaging…) allocated into the lines' landed cost
+  fx?: { code: string; rate: number; totalMinor: number } // billed currency, rate frozen at entry, and the total in that currency
 }
+
+// Classified line items an invoice's extra cost can be recorded under (plus a free-text "other").
+export const extraCostTypes: Bilingual[] = [
+  { en: 'Shipping & freight', ar: 'شحن ونقل' },
+  { en: 'Packaging', ar: 'تغليف' },
+  { en: 'Customs & clearance', ar: 'جمارك وتخليص' },
+  { en: 'Loading & handling', ar: 'تحميل ومناولة' },
+]
 export const purchaseInvoices: PurchaseInvoice[] = [
   { id: 'PINV-3312', supplier: { en: 'Barry Callebaut', ar: 'باري كاليبو' }, material: { en: 'Cocoa mass', ar: 'كتلة كاكاو' }, date: { en: '04 Jul', ar: '٠٤ يوليو' }, totalMinor: 26450000, match: 'matched', po: 'PO-2041', rawKey: 'cacao', qty: 5000 },
   { id: 'PINV-3310', supplier: { en: 'Almarai', ar: 'المراعي' }, material: { en: 'Milk powder', ar: 'حليب مجفف' }, date: { en: '03 Jul', ar: '٠٣ يوليو' }, totalMinor: 6831000, match: 'pending', po: 'PO-2044', rawKey: 'milk', qty: 3000 },

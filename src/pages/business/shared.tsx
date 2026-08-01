@@ -5,7 +5,13 @@ import { scheduledDeliveries, accountOrders, accountOrderItems, orgAddressById, 
 import { useToast } from '@/components/account/Toast'
 import { StatusBadge } from '@/components/ui/Misc'
 import { cn } from '@/lib/cn'
+import { useSellingMoney } from '@/lib/useSellingMoney'
 import type { WholesaleStock } from '@/data/wholesale'
+
+/** Money for this B2B/HORECA account, in the currency it is actually billed in.
+ *  Accounts inside the Kingdom are in riyals; an account operating outside it is
+ *  quoted, invoiced and credit-limited in dollars (see data/selling.ts). */
+export const useOrgMoney = () => useSellingMoney(organization.country)
 
 /** Interpolate `{name}` placeholders in a dictionary string. */
 export function fill(s: string, vars: Record<string, string | number>): string {

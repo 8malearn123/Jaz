@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Bilingual } from '@/data/types'
 import { ownerOrdersSeed, ownerOrderStatuses, type OwnerOrder, type OwnerChannel, type OwnerOrderStage } from '@/data/ownerOrders'
-import { rawMaterials, finishedBatches, bomBySku, purchaseInvoices, suppliers as suppliersSeed, stockMovementsSeed, stockUnits, unitFactor, type RawKey, type FinishedBatch, type PurchaseInvoice, type ExtraRaw, type Supplier, type SupplierContact, type StockMovement, type StockTakeReport } from '@/data/ownerSupply'
+import { rawMaterials, finishedBatches, bomBySku, purchaseInvoices, suppliers as suppliersSeed, stockMovementsSeed, stockUnits, unitFactor, currencies, type RawKey, type FinishedBatch, type PurchaseInvoice, type ExtraRaw, type Supplier, type SupplierContact, type StockMovement, type StockTakeReport, type BatchDisposition, type RecipeVersion } from '@/data/ownerSupply'
 import { ownerProductsByChannel, type OwnerProduct, type ProdChannel } from '@/data/ownerProducts'
 import { ownerCustomers, ownerTiers, loyaltyLedgerSeed, type OwnerCustomer, type OwnerTier, type LoyaltyLedgerEntry } from '@/data/ownerCustomers'
 
@@ -19,9 +19,28 @@ import { contracts as contractsSeed, b2cCatalog, stdCatalog, catTree, storeProdu
 import type { CountryCode } from '@/data/countries'
 import { ownerVendors as ownerVendorsSeed, onboardingStages, vendorDocsSeed, type OwnerVendor, type VendorDoc, type VendorDocKind } from '@/data/ownerVendors'
 import type { Employee, TeamPermission } from '@/data/ownerTeam'
+import type { DecisionKind, JobRole } from '@/data/governance'
 import { useTeam } from '@/state/TeamContext'
 
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
+
+/** What a held decision carries until it is signed — one loose shape covering every kind,
+ *  since the applier switches on the kind and reads only the fields that kind uses. */
+export interface ApprovalPayload {
+  vendorId?: string; limitMinor?: number; amountMinor?: number
+  invoiceId?: string; orderId?: string
+  itemId?: string; priceMinor?: number
+  code?: string; rate?: number
+  employeeId?: string; perm?: TeamPermission
+  loyalty?: Partial<LoyaltyConfig>
+  scope?: 'raw' | 'finished'
+  counts?: Record<string, number>
+  rawCounts?: Partial<Record<RawKey, number>>
+  qty?: number; reason?: Bilingual
+  disposition?: BatchDisposition
+  sku?: string; chan?: ProdChannel; rawKey?: RawKey; per?: number; days?: number
+  extra?: Partial<Record<RawKey, number>>
+}
 const LAST = (ownerOrderStatuses.length - 1) as OwnerOrderStage
 
 // capacity so a live % can be derived and reorders/production move the bar.
@@ -91,8 +110,13 @@ interface OwnerStateValue {
   invoices: PurchaseInvoice[]
   reconcileInvoice: (id: string) => void
   addPurchaseInvoice: (inv: { supplier: Bilingual; material: Bilingual; date: Bilingual; totalMinor: number; po?: string; rawKey?: RawKey; qty?: number }) => void
-  // multi-line purchase: each line is assigned to a stock item (seed raw or owner-added) and restocks it
-  receivePurchase: (inv: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[] }) => void
+  // multi-line purchase: each line is assigned to a stock item (seed raw or owner-added) and restocks it.
+  // Amounts arrive already converted to SAR — the invoice's own currency and rate ride along in `fx`.
+  receivePurchase: (inv: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extra?: { label: Bilingual; amountMinor: number }; fx?: { code: string; rate: number; totalMinor: number } }) => void
+  // market exchange rates (SAR per unit) the owner keeps current — they seed each invoice's rate
+  fxRates: Record<string, number>
+  fxUpdatedAt: Bilingual
+  setFxRate: (code: string, sarPerUnit: number) => void
   // waste → finance
   wasteLog: WasteEntry[]
   logWaste: (e: { item: Bilingual; reason: Bilingual; lossMinor: number }) => void
@@ -112,12 +136,23 @@ interface OwnerStateValue {
   loyaltyLedgers: Record<string, LoyaltyLedgerEntry[]>
   loyalty: LoyaltyConfig
   setLoyalty: (patch: Partial<LoyaltyConfig>) => void
-  // team & staff — add/remove employees and grant/revoke per-section permissions
+  // team & staff — add/remove employees, set their job role and reporting line, grant permissions
   employees: Employee[]
   addEmployee: (e: Omit<Employee, 'id' | 'since'>) => string
   removeEmployee: (id: string) => void
   toggleEmployeePerm: (id: string, perm: TeamPermission) => void
   toggleEmployeeActive: (id: string) => void
+  setEmployeeRole: (id: string, role: JobRole) => void
+  setEmployeeManager: (id: string, managerId: string | null) => boolean
+  reportsOf: (id: string) => Employee[]
+  managersOf: (id: string) => Employee[]
+  // production control — every one of these is reachable only through an approved decision
+  releaseBatch: (code: string, by: Bilingual) => void
+  rejectBatch: (code: string, reason: string) => void
+  shelfLife: Record<string, number>
+  bomHistory: Record<string, RecipeVersion[]>
+  /** Execute a decision that has collected its signatures. */
+  applyApproved: (kind: DecisionKind, payload: unknown, by: Bilingual) => void
   // credit limits (overlay)
   creditLimits: Record<string, number>
   setCreditLimit: (id: string, limitMinor: number) => void
@@ -163,7 +198,14 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   const [orders, setOrders] = useState<OwnerOrder[]>(() => clone(ownerOrdersSeed))
   const [seq, setSeq] = useState(2619)
   const [rawQty, setRawQty] = useState<Record<RawKey, number>>(() => rawMaterials.reduce((a, m) => { a[m.key] = m.systemQty; return a }, {} as Record<RawKey, number>))
+  // Balances as they stand right now — an approved decision posts against today's stock,
+  // not against the stock as it was when the request was raised.
+  const rawQtyRef = useRef(rawQty)
+  rawQtyRef.current = rawQty
   const [finished, setFinished] = useState<FinishedBatch[]>(() => clone(finishedBatches))
+  // Read-through ref: a disposition needs the batch's own figures while it is being removed.
+  const finishedRef = useRef(finished)
+  finishedRef.current = finished
   const [batchSeq, setBatchSeq] = useState(100)
   const [finishedStockTakeDate, setFinishedStockTakeDate] = useState<Bilingual>({ en: '03 Jul 2026', ar: '٢٠٢٦-٠٧-٠٣' })
   const [suppliers, setSuppliers] = useState<Supplier[]>(() => clone(suppliersSeed))
@@ -171,7 +213,14 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<Record<ProdChannel, OwnerProduct[]>>(() => clone(ownerProductsByChannel))
   const [prodSeq, setProdSeq] = useState(1)
   const [bomOverride, setBomOverride] = useState<Record<string, BOM>>({})
+  // Recipe versions: every approved formulation change keeps the shape it replaced, so
+  // you can still say which recipe a given batch was produced under.
+  const [bomHistory, setBomHistory] = useState<Record<string, RecipeVersion[]>>({})
+  // Shelf life is a property of the product, set once and inherited by every batch.
+  const [shelfLife, setShelfLife] = useState<Record<string, number>>({})
   const [invoices, setInvoices] = useState<PurchaseInvoice[]>(() => clone(purchaseInvoices))
+  const [fxRates, setFxRates] = useState<Record<string, number>>(() => Object.fromEntries(currencies.map((c) => [c.code, c.sarPerUnit])))
+  const [fxUpdatedAt, setFxUpdatedAt] = useState<Bilingual>({ en: 'Seeded rates', ar: 'أسعار افتراضية' })
   const [invSeq, setInvSeq] = useState(3313)
   const [extraRaws, setExtraRaws] = useState<ExtraRaw[]>([])
   const [extraCats, setExtraCats] = useState<Bilingual[]>([])
@@ -238,13 +287,16 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     setRawQty((prev) => ({ ...prev, [key]: Math.max(prev[key], rawCapacity[key]) }))
     if (added > 0) logMovement({ itemId: key, kind: 'in', qty: added, note: { en: 'Reorder received', ar: 'إعادة طلب وتوريد' } })
   }, [rawQty, logMovement])
-  const finalizeStockTake = useCallback((counts: Partial<Record<RawKey, number>>) => {
+  // The effect half of a raw stock-take, shared by the direct path (small variance) and
+  // by the approval path (large one) so both post identically, only at different times.
+  const applyRawCounts = useCallback((counts: Partial<Record<RawKey, number>>, by?: Bilingual) => {
     for (const k of Object.keys(counts) as RawKey[]) {
-      const diff = (counts[k] ?? 0) - rawQty[k]
-      if (diff !== 0) logMovement({ itemId: k, kind: 'adjust', qty: diff, note: { en: 'Stock-take adjustment', ar: 'تسوية جرد' } })
+      const diff = (counts[k] ?? 0) - rawQtyRef.current[k]
+      if (diff !== 0) logMovement({ itemId: k, kind: 'adjust', qty: diff, by, note: { en: 'Stock-take adjustment', ar: 'تسوية جرد' } })
     }
     setRawQty((prev) => ({ ...prev, ...counts }))
-  }, [rawQty, logMovement])
+  }, [logMovement])
+  const finalizeStockTake = useCallback((counts: Partial<Record<RawKey, number>>) => applyRawCounts(counts), [applyRawCounts])
   const addRawMaterial = useCallback((m: Omit<ExtraRaw, 'id'>) => {
     const id = `xr-${extraSeq}`
     setExtraSeq((s) => s + 1)
@@ -298,18 +350,21 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     const code = `BATCH-FG-${batchSeq}`
     setBatchSeq((s) => s + 1)
     const meta = productMetaBySku[sku]
-    setFinished((prev) => [{ code, product: meta?.name ?? { en: sku, ar: sku }, systemQty: qty, countedQty: qty, expiryDays, unitMinor: meta?.priceMinor ?? 0, color: meta?.color ?? '#8a6b3f' }, ...prev])
+    // Produced, not yet releasable: the raw materials are spent and the batch exists, but it
+    // sits in quarantine until the chef signs it off. Its shelf life comes from the product.
+    setFinished((prev) => [{ code, product: meta?.name ?? { en: sku, ar: sku }, systemQty: qty, countedQty: qty, expiryDays: shelfLife[sku] ?? expiryDays, unitMinor: meta?.priceMinor ?? 0, color: meta?.color ?? '#8a6b3f', status: 'quarantine', sku }, ...prev])
     for (const k of Object.keys(bom) as RawKey[]) {
       const drawn = Math.round(bom[k]! * qty * 100) / 100
       if (drawn > 0) logMovement({ itemId: k, kind: 'out', qty: drawn, note: { en: `Production draw — ${meta?.name.en ?? sku} (${code})`, ar: `خصم إنتاج — ${meta?.name.ar ?? sku} (${code})` } })
     }
     return true
-  }, [rawQty, batchSeq, bomOf, productMetaBySku, logMovement])
+  }, [rawQty, batchSeq, bomOf, productMetaBySku, logMovement, shelfLife])
   // Record a production batch straight into finished goods (matched: counted = system on entry).
   const addFinishedBatch = useCallback((b: { product: Bilingual; systemQty: number; unitMinor: number; color: string; expiryDays: number }) => {
     const code = `BATCH-FG-${batchSeq}`
     setBatchSeq((s) => s + 1)
-    setFinished((prev) => [{ code, product: b.product, systemQty: b.systemQty, countedQty: b.systemQty, expiryDays: b.expiryDays, unitMinor: b.unitMinor, color: b.color }, ...prev])
+    // Even a hand-entered batch lands in quarantine — stock never becomes sellable unreleased.
+    setFinished((prev) => [{ code, product: b.product, systemQty: b.systemQty, countedQty: b.systemQty, expiryDays: b.expiryDays, unitMinor: b.unitMinor, color: b.color, status: 'quarantine' }, ...prev])
   }, [batchSeq])
   // Stock-take: record the physical count per batch (updates countedQty → variance) and stamp the date.
   const recordFinishedCount = useCallback((counts: Record<string, number>) => {
@@ -339,6 +394,13 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   }, [])
 
   /* ── purchase invoices ── */
+  // The market rate is what new invoices convert at; invoices already booked keep the rate
+  // frozen on them, so updating a rate here never restates a past invoice's value.
+  const setFxRate = useCallback((code: string, sarPerUnit: number) => {
+    if (code === 'SAR' || !(sarPerUnit > 0)) return
+    setFxRates((prev) => ({ ...prev, [code]: sarPerUnit }))
+    setFxUpdatedAt({ en: 'Updated now', ar: 'حُدّثت الآن' })
+  }, [])
   const reconcileInvoice = useCallback((id: string) => setInvoices((prev) => prev.map((iv) => (iv.id === id ? { ...iv, match: 'matched' } : iv))), [])
   // Entering a supplier invoice restocks its raw material automatically (rawQty) and records the imported cost.
   const addPurchaseInvoice = useCallback((inv: { supplier: Bilingual; material: Bilingual; date: Bilingual; totalMinor: number; po?: string; rawKey?: RawKey; qty?: number }) => {
@@ -353,13 +415,14 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   }, [invSeq, logMovement])
 
   // Multi-line purchase entry: one invoice, every line assigned to a stock item.
-  // Seed raws restock rawQty; owner-added items restock qty and refresh their unit cost from the line.
-  const receivePurchase = useCallback((inv: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[] }) => {
+  // Seed raws restock rawQty; owner-added items restock qty and refresh their unit cost from the line
+  // (line costs arrive with the classified extra cost already allocated in, so unit costs are landed).
+  const receivePurchase = useCallback((inv: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extra?: { label: Bilingual; amountMinor: number }; fx?: { code: string; rate: number; totalMinor: number } }) => {
     const id = `PINV-${invSeq}`
     setInvSeq((s) => s + 1)
     const names: Bilingual[] = inv.lines.map((l) => rawMaterials.find((r) => r.key === l.itemId)?.name ?? extraRaws.find((x) => x.id === l.itemId)?.name ?? { en: l.itemId, ar: l.itemId })
     const material: Bilingual = names.length === 1 ? names[0] : { en: `${names[0].en} +${names.length - 1}`, ar: `${names[0].ar} +${names.length - 1}` }
-    setInvoices((prev) => [{ id, supplier: inv.supplier, material, date: { en: 'Today', ar: 'اليوم' }, totalMinor: inv.totalMinor, match: inv.po ? 'pending' : 'flagged', po: inv.po }, ...prev])
+    setInvoices((prev) => [{ id, supplier: inv.supplier, material, date: { en: 'Today', ar: 'اليوم' }, totalMinor: inv.totalMinor, match: inv.po ? 'pending' : 'flagged', po: inv.po, extra: inv.extra, fx: inv.fx }, ...prev])
     for (const l of inv.lines) {
       if (rawMaterials.some((r) => r.key === l.itemId)) {
         const k = l.itemId as RawKey
@@ -379,12 +442,12 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   }, [wasteSeq])
   // Waste a stock item: deduct the stock, value the loss from purchase-derived unit cost,
   // log an 'out' movement and record the waste entry under the acting account.
-  const recordWaste = useCallback((w: { scope: 'raw' | 'finished'; itemId: string; qty: number; reason: Bilingual }): boolean => {
+  const applyWaste = useCallback((w: { scope: 'raw' | 'finished'; itemId: string; qty: number; reason: Bilingual }, by?: Bilingual): boolean => {
     if (w.qty <= 0) return false
     const id = `w-${wasteSeq}`
     const push = (item: Bilingual, lossMinor: number, unit?: Bilingual) => {
       setWasteSeq((s) => s + 1)
-      setWasteLog((prev) => [{ id, item, reason: w.reason, lossMinor, at: { en: 'Now', ar: 'الآن' }, by: OWNER_BY, qty: w.qty, unit, scope: w.scope }, ...prev])
+      setWasteLog((prev) => [{ id, item, reason: w.reason, lossMinor, at: { en: 'Now', ar: 'الآن' }, by: by ?? OWNER_BY, qty: w.qty, unit, scope: w.scope }, ...prev])
     }
     if (w.scope === 'finished') {
       const b = finished.find((x) => x.code === w.itemId)
@@ -411,6 +474,7 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     push(x.name, Math.round(w.qty * x.costMinor), x.unit)
     return true
   }, [wasteSeq, finished, rawQty, extraRaws, logMovement]) // eslint-disable-line react-hooks/exhaustive-deps
+  const recordWaste = useCallback((w: { scope: 'raw' | 'finished'; itemId: string; qty: number; reason: Bilingual }) => applyWaste(w), [applyWaste])
 
   const wasteTotalMinor = wasteLog.reduce((a, w) => a + w.lossMinor, 0)
 
@@ -457,10 +521,103 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
 
   /* ── team & staff — lives in the root TeamProvider (shared with the role picker);
         re-exposed here so owner panels keep a single state entry point ── */
-  const { employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive } = useTeam()
+  const { employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive, setEmployeeRole, setEmployeeManager, reportsOf, managersOf } = useTeam()
+
+  /* ── production: release, recipe control, shelf life ── */
+  const releaseBatch = useCallback((code: string, by: Bilingual) => setFinished((prev) => prev.map((b) =>
+    (b.code === code ? { ...b, status: 'released' as const, releasedBy: by, releasedAt: { en: 'Today', ar: 'اليوم' } } : b))), [])
+  const rejectBatch = useCallback((code: string, reason: string) => setFinished((prev) => prev.map((b) =>
+    (b.code === code ? { ...b, status: 'rejected' as const, rejectedReason: reason } : b))), [])
+  // A rejected batch has exactly three ways out, and each one moves real stock.
+  const disposeBatch = useCallback((code: string, action: BatchDisposition, by: Bilingual) => {
+    const batch = finishedRef.current.find((b) => b.code === code)
+    if (!batch) return
+    if (action === 'waste') {
+      setFinished((prev) => prev.filter((b) => b.code !== code))
+      const id = `w-${wasteSeq}`
+      setWasteSeq((s) => s + 1)
+      setWasteLog((prev) => [{
+        id, item: { en: `${batch.product.en} · ${batch.code}`, ar: `${batch.product.ar} · ${batch.code}` },
+        reason: { en: 'Rejected batch — written off', ar: 'دفعة مرفوضة — أُهدرت' }, lossMinor: batch.systemQty * batch.unitMinor,
+        at: { en: 'Now', ar: 'الآن' }, by, qty: batch.systemQty, unit: { en: 'unit', ar: 'وحدة' }, scope: 'finished',
+      }, ...prev])
+      return
+    }
+    if (action === 'rework') {
+      // Back to quarantine to be run again — it leaves the rejected state, not the floor.
+      setFinished((prev) => prev.map((b) => (b.code === code ? { ...b, status: 'quarantine' as const, rejectedReason: undefined } : b)))
+      return
+    }
+    // Downgrade: released to sell as a second — carried at half its unit value.
+    setFinished((prev) => prev.map((b) => (b.code === code
+      ? { ...b, status: 'released' as const, unitMinor: Math.round(b.unitMinor / 2), releasedBy: by, releasedAt: { en: 'Today', ar: 'اليوم' },
+        product: { en: `${b.product.en} · second`, ar: `${b.product.ar} · درجة ثانية` } }
+      : b)))
+  }, [wasteSeq])
+  // Closing a batch: the recipe drew the theoretical quantity, the floor drew what it drew.
+  // Booking the difference against the batch is what stops it surfacing later as an orphan
+  // stock-take variance nobody can explain.
+  const confirmYield = useCallback((code: string, extra: Partial<Record<RawKey, number>>, by: Bilingual) => {
+    for (const k of Object.keys(extra) as RawKey[]) {
+      const over = extra[k] ?? 0
+      if (over === 0) continue
+      setRawQty((prev) => ({ ...prev, [k]: Math.max(0, Math.round((prev[k] - over) * 100) / 100) }))
+      logMovement({ itemId: k, kind: 'adjust', qty: -over, by, note: { en: `Yield variance — batch ${code}`, ar: `فرق عائد — دفعة ${code}` } })
+    }
+    setFinished((prev) => prev.map((b) => (b.code === code ? { ...b, yieldConfirmed: true } : b)))
+  }, [logMovement])
+  const setShelfLifeDays = useCallback((sku: string, days: number) => setShelfLife((prev) => ({ ...prev, [sku]: days })), [])
+  const setBatchExpiry = useCallback((code: string, days: number) => setFinished((prev) => prev.map((b) =>
+    (b.code === code ? { ...b, expiryDays: days } : b))), [])
+  const applyRecipeChange = useCallback((sku: string, key: RawKey, per: number, by: Bilingual) => {
+    setBomOverride((prev) => {
+      const before = prev[sku] ?? bomBySku[sku] ?? {}
+      const after = { ...before, [key]: per }
+      setBomHistory((h) => ({ ...h, [sku]: [{ at: { en: 'Now', ar: 'الآن' }, by, before, after }, ...(h[sku] ?? [])] }))
+      return { ...prev, [sku]: after }
+    })
+  }, [])
 
   /* ── credit ── */
   const setCreditLimit = useCallback((id: string, limitMinor: number) => setCreditLimits((prev) => ({ ...prev, [id]: limitMinor })), [])
+
+  /* ── the effect side of governance ───────────────────────────────────────────
+     A held decision changes nothing until it is signed. When it is, the console
+     hands the request back here and this is the one place that acts on it — so the
+     approval queue never needs to know what a batch or a credit limit is. */
+  const applyApproved = useCallback((kind: DecisionKind, payload: unknown, by: Bilingual) => {
+    const p = payload as ApprovalPayload
+    switch (kind) {
+      case 'credit_limit': setCreditLimit(p.vendorId!, p.limitMinor!); break
+      case 'vendor_payment': setVendors((prev) => prev.map((v) => (v.id === p.vendorId ? { ...v, outstandingMinor: Math.max(0, v.outstandingMinor - p.amountMinor!) } : v))); break
+      case 'invoice_match': setInvoices((prev) => prev.map((iv) => (iv.id === p.invoiceId ? { ...iv, match: 'matched' } : iv))); break
+      case 'price_change':
+        if (p.sku && p.chan) setProducts((prev) => ({ ...prev, [p.chan!]: prev[p.chan!].map((x) => (x.sku === p.sku ? { ...x, priceMinor: p.priceMinor! } : x)) }))
+        else setCatalog((c) => ({ ...c, price: { ...c.price, [p.itemId!]: p.priceMinor! } }))
+        break
+      case 'fx_rate': setFxRates((prev) => ({ ...prev, [p.code!]: p.rate! })); setFxUpdatedAt({ en: 'Updated now', ar: 'حُدّثت الآن' }); break
+      case 'perm_grant': toggleEmployeePerm(p.employeeId!, p.perm!); break
+      case 'order_cancel': setOrders((prev) => prev.map((o) => (o.id === p.orderId ? { ...o, cancelled: true } : o))); break
+      case 'loyalty': setLoyaltyState((prev) => ({ ...prev, ...p.loyalty, thresholds: { ...prev.thresholds, ...(p.loyalty?.thresholds ?? {}) } })); break
+      case 'stock_take':
+        if (p.scope === 'finished') {
+          setFinished((prev) => prev.map((b) => (p.counts?.[b.code] != null ? { ...b, countedQty: p.counts[b.code] } : b)))
+          setFinishedStockTakeDate({ en: 'Today', ar: 'اليوم' })
+        } else {
+          applyRawCounts(p.rawCounts ?? {}, by)
+        }
+        break
+      case 'waste': applyWaste({ scope: p.scope as 'raw' | 'finished', itemId: p.itemId!, qty: p.qty!, reason: p.reason! }, by); break
+      case 'batch_release': releaseBatch(p.code!, by); break
+      case 'batch_disposition': disposeBatch(p.code!, p.disposition!, by); break
+      case 'recipe_change': applyRecipeChange(p.sku!, p.rawKey!, p.per!, by); break
+      case 'shelf_life':
+        if (p.code) setBatchExpiry(p.code, p.days!)
+        else setShelfLifeDays(p.sku!, p.days!)
+        break
+      case 'yield_variance': confirmYield(p.code!, p.extra ?? {}, by); break
+    }
+  }, [setCreditLimit, toggleEmployeePerm, releaseBatch, disposeBatch, applyRecipeChange, setBatchExpiry, setShelfLifeDays, confirmYield]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── contracts ── */
   const renewContract = useCallback((id: string) => setContracts((prev) => prev.map((c) => (c.id === id ? { ...c, status: 'active' } : c))), [])
@@ -537,11 +694,13 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate,
     stockTakeReports, addStockTakeReport, movements,
     suppliers, addSupplier,
-    invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase,
+    invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, fxRates, fxUpdatedAt, setFxRate,
     wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor,
     expenses, recordExpense, opexTotalMinor,
     customers, rewardCustomer, loyaltyLedgers, loyalty, setLoyalty,
     employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive,
+    setEmployeeRole, setEmployeeManager, reportsOf, managersOf,
+    releaseBatch, rejectBatch, shelfLife, bomHistory, applyApproved,
     creditLimits, setCreditLimit,
     contracts, renewContract,
     vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment,
@@ -550,7 +709,7 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible,
     dismissedExpiry, dismissExpiry,
     cocoaDelta, setCocoa,
-  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, stockTakeReports, addStockTakeReport, movements, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor, expenses, recordExpense, opexTotalMinor, customers, rewardCustomer, loyaltyLedgers, loyalty, setLoyalty, employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive, creditLimits, setCreditLimit, contracts, renewContract, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment, vendorDocs, attachVendorDoc, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, dismissedExpiry, dismissExpiry, cocoaDelta])
+  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, stockTakeReports, addStockTakeReport, movements, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, fxRates, fxUpdatedAt, setFxRate, wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor, expenses, recordExpense, opexTotalMinor, customers, rewardCustomer, loyaltyLedgers, loyalty, setLoyalty, employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive, setEmployeeRole, setEmployeeManager, reportsOf, managersOf, releaseBatch, rejectBatch, shelfLife, bomHistory, applyApproved, creditLimits, setCreditLimit, contracts, renewContract, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment, vendorDocs, attachVendorDoc, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, dismissedExpiry, dismissExpiry, cocoaDelta])
 
   return <OwnerStateContext.Provider value={value}>{children}</OwnerStateContext.Provider>
 }

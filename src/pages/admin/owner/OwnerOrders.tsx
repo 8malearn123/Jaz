@@ -11,6 +11,7 @@ import {
 } from '@/data/ownerOrders'
 import type { OwnerProduct, ProdChannel } from '@/data/ownerProducts'
 import { useOwnerState } from '@/state/OwnerStateContext'
+import { useGovernance } from '@/state/GovernanceContext'
 import { useBilling } from '@/state/BillingContext'
 import { cn } from '@/lib/cn'
 import { PanelHead, StatCard, FilterChips, Pill } from './_shared'
@@ -22,6 +23,7 @@ export function OwnerOrders() {
   const { pick, money } = useLocale()
   const { flash } = useToast()
   const { orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pipelineValueMinor } = useOwnerState()
+  const { submit } = useGovernance()
   const { billingFor, attachTaxInvoice } = useBilling()
   const [chan, setChan] = useState<OwnerChannel | 'all'>('all')
   const [status, setStatus] = useState<string>('all')
@@ -36,7 +38,23 @@ export function OwnerOrders() {
     flash(`${id} → ${pick(ownerOrderStatuses[o.stage + 1].label)}`)
   }
   const setStage = (id: string, s: OwnerOrderStage) => { setOrderStage(id, s); flash(`${id} → ${pick(ownerOrderStatuses[s].label)}`) }
-  const cancel = (id: string) => { cancelOrder(id); setSel(null); flash(`${pick({ en: 'Cancelled', ar: 'أُلغي' })} ${id}`) }
+  // Cancelling before production is routine housekeeping; after it, stock and revenue have
+  // already moved, so the reversal is a decision someone signs for.
+  const cancel = (id: string) => {
+    const o = orders.find((x) => x.id === id)
+    if (o && o.stage >= 2) {
+      submit({
+        kind: 'order_cancel',
+        subject: { en: `${o.id} · ${o.customer.en}`, ar: `${o.id} · ${o.customer.ar}` },
+        detail: { en: `Cancel an order already in ${ownerOrderStatuses[o.stage].label.en.toLowerCase()}`, ar: `إلغاء طلب في مرحلة ${ownerOrderStatuses[o.stage].label.ar}` },
+        amountMinor: o.amountMinor, reason: '', payload: { orderId: id },
+      })
+      setSel(null)
+      flash(pick({ en: 'Sent for approval — the order is untouched', ar: 'رُفع للاعتماد — لم يتغير الطلب' }))
+      return
+    }
+    cancelOrder(id); setSel(null); flash(`${pick({ en: 'Cancelled', ar: 'أُلغي' })} ${id}`)
+  }
 
   const cnt = (k: string) => orders.filter((o) => !o.cancelled && ownerOrderStatuses[o.stage].key === k).length
   const stats: { label: { en: string; ar: string }; value: string; sub: { en: string; ar: string }; tone: 'dark' | 'plain' | 'green' | 'gold' }[] = [

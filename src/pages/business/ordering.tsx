@@ -11,7 +11,7 @@ import {
 import { buttonClass } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/cn'
-import { fill, StockBadge, QtyStepper, Row } from './shared'
+import { fill, StockBadge, QtyStepper, Row, useOrgMoney } from './shared'
 
 export const thumbBg = (accent: string, step = 9): React.CSSProperties => ({
   backgroundColor: accent,
@@ -69,7 +69,8 @@ export function CatalogBrowser({ onOpen }: { onOpen: (sku: string) => void }) {
 }
 
 function WholesaleCard({ product: p, onOpen }: { product: WholesaleProduct; onOpen: () => void }) {
-  const { t, pick, money } = useLocale()
+  const { t, pick } = useLocale()
+  const { money } = useOrgMoney()
   const { qty, setQty, inc, dec } = useWholesaleOrder()
   const q = qty[p.sku] || 0
   const tierUp = q >= p.breakQty
@@ -141,7 +142,8 @@ export function WholesaleDetailModal({ sku, onClose }: { sku: string | null; onC
 
 /* ─────────── Quantity-discount tier ladder (one component; scopes to a product) ─────────── */
 export function TierLadder({ product, title }: { product?: WholesaleProduct; title?: string }) {
-  const { t, money } = useLocale()
+  const { t } = useLocale()
+  const { money } = useOrgMoney()
   const p = product ?? wholesaleBySku('CHV70')!
   const activeQty = useWholesaleOrder().qty[p.sku] || 0
   const tierUp = activeQty >= p.breakQty
@@ -170,7 +172,8 @@ export function TierLadder({ product, title }: { product?: WholesaleProduct; tit
 
 /* ─────────── Order-summary rail: full (overview) + compact bar (catalog) ─────────── */
 export function OrderRail({ variant = 'full', onReview }: { variant?: 'full' | 'compact'; onReview?: () => void }) {
-  const { t, money } = useLocale()
+  const { t } = useLocale()
+  const { money } = useOrgMoney()
   const { subtotalMinor, savingsMinor, vatMinor, totalMinor, moqMet, moqRemainingMinor, lineCount, commitToCart } = useWholesaleOrder()
   const { flash } = useToast()
   const navigate = useNavigate()
@@ -229,7 +232,8 @@ export function OrderRail({ variant = 'full', onReview }: { variant?: 'full' | '
 
 /* ─────────── Review-order popup (opened from the catalog rail) ─────────── */
 export function WholesaleReviewModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { t, pick, money } = useLocale()
+  const { t, pick } = useLocale()
+  const { money } = useOrgMoney()
   const { qty, setQty, inc, dec, lineCount, subtotalMinor, savingsMinor, vatMinor, totalMinor, moqMet, moqRemainingMinor, commitToCart } = useWholesaleOrder()
   const { flash } = useToast()
   const navigate = useNavigate()

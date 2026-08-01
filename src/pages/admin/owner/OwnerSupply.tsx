@@ -1,20 +1,30 @@
 import { Fragment, useState } from 'react'
-import { Lock, ClipboardCheck, Check, Plus, Eye, FileText, X, Printer, Trash2 } from 'lucide-react'
-import { useLocale, toAsciiDigits } from '@/i18n/LocaleContext'
+import { Lock, ClipboardCheck, Check, Plus, Eye, FileText, X, Printer, Trash2, Coins } from 'lucide-react'
+import { useLocale, toAsciiDigits, toArabicDigits } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import type { Bilingual } from '@/data/types'
 import {
-  rawMaterials, stockUnits, unitFactor, type PurchaseMatch, type RawKey, type ExtraRaw, type Supplier, type StockTakeReport,
+  rawMaterials, stockUnits, unitFactor, extraCostTypes, currencies, currencyOf, batchDispositions,
+  type PurchaseMatch, type RawKey, type ExtraRaw, type Supplier, type StockTakeReport,
+  type FinishedBatch, type BatchDisposition,
 } from '@/data/ownerSupply'
 import { wasteReasons } from '@/data/ownerFinance'
 import { useOwnerState } from '@/state/OwnerStateContext'
+import { useGovernance } from '@/state/GovernanceContext'
+import { FX_MOVE_TOLERANCE } from '@/data/governance'
 import { cn } from '@/lib/cn'
 import { PanelHead, Pill, UtilBar } from './_shared'
 
 // Whole-number parser: normalize Arabic digits, take the integer part (so a stray "1500.50" can't concatenate to 150050).
 const parseNum = (s: string) => Math.max(0, parseInt(toAsciiDigits(s).replace(/[^\d.]/g, '').split('.')[0] || '0', 10) || 0)
+// Money parser → minor units, keeping at most two decimals ("1500.5" → 150050). Invoice amounts
+// are captured to the cent so a foreign-currency invoice converts without losing its fractions.
+const parseMoneyMinor = (s: string) => {
+  const [whole, frac = ''] = toAsciiDigits(s).replace(/[^\d.]/g, '').split('.')
+  return Math.max(0, (parseInt(whole || '0', 10) || 0) * 100 + (parseInt((frac + '00').slice(0, 2), 10) || 0))
+}
 
 const matchMeta: Record<PurchaseMatch, { label: { en: string; ar: string }; color: string; bg: string }> = {
   matched: { label: { en: 'Matched', ar: 'مطابقة تامة' }, color: '#355c4b', bg: '#e8f0ec' },
@@ -26,8 +36,10 @@ const matchMeta: Record<PurchaseMatch, { label: { en: string; ar: string }; colo
 export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' | 'suppliers' | 'waste' }) {
   const { pick, money } = useLocale()
   const { flash } = useToast()
-  const { invoices, reconcileInvoice, receivePurchase } = useOwnerState()
+  const { invoices, receivePurchase } = useOwnerState()
+  const { submit } = useGovernance()
   const [invoiceOpen, setInvoiceOpen] = useState(false)
+  const [ratesOpen, setRatesOpen] = useState(false)
 
   const matched = invoices.filter((iv) => iv.match === 'matched').length
   const pending = invoices.filter((iv) => iv.match === 'pending').length
@@ -45,7 +57,10 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
               <h3 className="font-serif text-card-title text-ink">{pick({ en: 'Purchase invoices', ar: 'فواتير المشتريات' })}</h3>
               <p className="font-sans text-caption text-ink-subtle mt-xxs max-w-xl">{pick({ en: 'Enter supplier invoices against raw-material lines · imported cost and stock balance update automatically', ar: 'إدخال فواتير الموردين على بنود المواد الخام · تُحدّث التكلفة المستوردة ورصيد المخزون آليًا' })}</p>
             </div>
-            <button onClick={() => setInvoiceOpen(true)} className={buttonClass('primary', 'sm')}><Plus size={15} /> {pick({ en: 'Enter purchase invoice', ar: 'إدخال فاتورة مشتريات' })}</button>
+            <div className="flex flex-wrap items-center gap-sm">
+              <button onClick={() => setRatesOpen(true)} className={buttonClass('secondary', 'sm')}><Coins size={15} /> {pick({ en: 'Exchange rates', ar: 'أسعار الصرف' })}</button>
+              <button onClick={() => setInvoiceOpen(true)} className={buttonClass('primary', 'sm')}><Plus size={15} /> {pick({ en: 'Enter purchase invoice', ar: 'إدخال فاتورة مشتريات' })}</button>
+            </div>
           </div>
 
           {/* match summary */}
@@ -74,15 +89,28 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
                         <td className="px-lg py-md font-sans text-data text-ink tabular-nums whitespace-nowrap align-top">{iv.id}</td>
                         <td className="px-lg py-md align-top">
                           <p className="font-sans text-data text-ink">{pick(iv.supplier)}</p>
-                          <p className="font-sans text-caption text-ink-subtle">{iv.po ?? pick({ en: 'No PO', ar: 'بدون أمر شراء' })} · {pick(iv.material)}</p>
+                          <p className="font-sans text-caption text-ink-subtle">{iv.po ?? pick({ en: 'No PO', ar: 'بدون أمر شراء' })} · {pick(iv.material)}{iv.extra && <span className="tabular-nums"> · {pick(iv.extra.label)} {money(iv.extra.amountMinor)}</span>}</p>
                         </td>
                         <td className="px-lg py-md text-end font-sans text-data text-ink-muted tabular-nums whitespace-nowrap align-top">{pick(iv.date)}</td>
-                        <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums whitespace-nowrap align-top">{money(iv.totalMinor)}</td>
+                        <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums whitespace-nowrap align-top">
+                          {money(iv.totalMinor)}
+                          {iv.fx && <span dir="ltr" className="block font-sans text-caption text-ink-subtle">{currencyOf(iv.fx.code).symbol} {money(iv.fx.totalMinor, { withSymbol: false })} · 1 {iv.fx.code} = {iv.fx.rate}</span>}
+                        </td>
                         <td className="px-lg py-md align-top">
                           <div className="flex items-center gap-sm">
                             <Pill color={m.color} bg={m.bg}>{pick(m.label)}</Pill>
                             {iv.match !== 'matched' && (
-                              <button onClick={() => { reconcileInvoice(iv.id); flash(`${pick({ en: 'Reconciled', ar: 'طوبقت' })} · ${iv.id}`) }} className="inline-flex items-center gap-xxs rounded-md px-2.5 py-1 font-sans text-caption bg-success/10 text-success hover:bg-success/15 transition-colors"><Check size={12} /> {pick({ en: 'Reconcile', ar: 'مطابقة' })}</button>
+                              <button onClick={() => {
+                                // Whoever entered an invoice may never be the one who closes its
+                                // match — that pair of actions in one hand is the classic hole.
+                                submit({
+                                  kind: 'invoice_match',
+                                  subject: { en: `${iv.id} · ${iv.supplier.en}`, ar: `${iv.id} · ${iv.supplier.ar}` },
+                                  detail: { en: `Close the three-way match on ${iv.id}`, ar: `إغلاق المطابقة الثلاثية للفاتورة ${iv.id}` },
+                                  amountMinor: iv.totalMinor, payload: { invoiceId: iv.id },
+                                })
+                                flash(pick({ en: 'Sent for matching by a second person', ar: 'أُرسلت ليطابقها شخص ثانٍ' }))
+                              }} className="inline-flex items-center gap-xxs rounded-md px-2.5 py-1 font-sans text-caption bg-success/10 text-success hover:bg-success/15 transition-colors"><Check size={12} /> {pick({ en: 'Reconcile', ar: 'مطابقة' })}</button>
                             )}
                           </div>
                         </td>
@@ -98,6 +126,8 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
             <EnterInvoiceModal onClose={() => setInvoiceOpen(false)}
               onSubmit={(payload) => { receivePurchase(payload); flash(`${pick({ en: 'Invoice entered · stock updated', ar: 'أُدخلت الفاتورة · حُدّث المخزون' })}`) }} />
           )}
+
+          {ratesOpen && <ExchangeRatesModal onClose={() => setRatesOpen(false)} flash={flash} />}
         </div>
       )}
 
@@ -175,6 +205,7 @@ function WastePanel({ flash }: { flash: (m: string) => void }) {
 export function RecordWasteModal({ flash, onClose }: { flash: (m: string) => void; onClose: () => void }) {
   const { pick, money } = useLocale()
   const { rawQty, extraRaws, finished, recordWaste } = useOwnerState()
+  const { submit } = useGovernance()
   const [scope, setScope] = useState<'raw' | 'finished'>('raw')
   const [itemId, setItemId] = useState('')
   const [q, setQ] = useState('')
@@ -203,8 +234,20 @@ export function RecordWasteModal({ flash, onClose }: { flash: (m: string) => voi
   const valid = !!sel && qty > 0 && !over && (!isOther || otherReason.trim() !== '')
 
   const switchScope = (s: 'raw' | 'finished') => { setScope(s); setItemId(''); setQ(''); setQty(0) }
-  const submit = () => {
+  const send = () => {
     if (!sel) return
+    // Small losses are ordinary and pass; a large one — or a run of them from the same
+    // hand — is held, so nothing leaves stock on a single signature.
+    const out = submit({
+      kind: 'waste',
+      subject: { en: sel.name.en, ar: sel.name.ar },
+      detail: { en: `Write off ${qty.toLocaleString()} ${sel.unit.en} — ${reason.en}`, ar: `إخراج ${qty.toLocaleString()} ${sel.unit.ar} — ${reason.ar}` },
+      amountMinor: lossMinor, reason: pick(reason),
+      payload: { scope, itemId: sel.id, qty, reason },
+    })
+    if (out.outcome === 'pending') {
+      flash(pick({ en: 'Sent for approval — stock is unchanged', ar: 'رُفع للاعتماد — لم يتغير المخزون' })); onClose(); return
+    }
     if (recordWaste({ scope, itemId: sel.id, qty, reason })) {
       flash(`${pick({ en: 'Waste recorded', ar: 'سُجّل الهدر' })} · ${pick(sel.name)} − ${qty.toLocaleString()}`)
       onClose()
@@ -212,7 +255,7 @@ export function RecordWasteModal({ flash, onClose }: { flash: (m: string) => voi
   }
   return (
     <Modal open onClose={onClose} size="md" eyebrow={pick({ en: 'Supply', ar: 'الإمداد' })} title={pick({ en: 'Record waste', ar: 'تسجيل هدر' })}
-      footer={<><button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button><button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}><Trash2 size={15} /> {pick({ en: 'Record waste', ar: 'تسجيل الهدر' })}</button></>}>
+      footer={<><button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button><button onClick={send} disabled={!valid} className={buttonClass('primary', 'sm')}><Trash2 size={15} /> {pick({ en: 'Record waste', ar: 'تسجيل الهدر' })}</button></>}>
       <div className="flex flex-col gap-md">
         <div className="flex flex-col gap-xs">
           <span className="label">{pick({ en: 'Stock type', ar: 'نوع المخزون' })}</span>
@@ -261,6 +304,70 @@ export function RecordWasteModal({ flash, onClose }: { flash: (m: string) => voi
   )
 }
 
+/** Market exchange rates the owner keeps current — they seed the rate on every new
+ *  foreign-currency invoice. Invoices already booked keep the rate frozen on them, so
+ *  updating a rate here re-prices future purchases only and never restates the past. */
+function ExchangeRatesModal({ onClose, flash }: { onClose: () => void; flash: (m: string) => void }) {
+  const { pick } = useLocale()
+  const { fxRates, fxUpdatedAt, setFxRate } = useOwnerState()
+  const { submit: request } = useGovernance()
+  const foreign = currencies.filter((c) => c.code !== 'SAR')
+  const [draft, setDraft] = useState<Record<string, string>>(() => Object.fromEntries(foreign.map((c) => [c.code, String(fxRates[c.code] ?? c.sarPerUnit)])))
+  const rateOf = (code: string) => parseDec(draft[code] ?? '')
+  const valid = foreign.every((c) => rateOf(c.code) > 0)
+  const save = () => {
+    let held = 0
+    for (const c of foreign) {
+      const next = rateOf(c.code)
+      const current = fxRates[c.code] ?? c.sarPerUnit
+      if (next === current) continue
+      // A rate that jumps beyond tolerance is either a typo or a decision — both want a second look.
+      const move = Math.abs(next - current) / Math.max(current, 0.0001)
+      if (move > FX_MOVE_TOLERANCE) {
+        request({
+          kind: 'fx_rate',
+          subject: { en: `${c.code} · ${c.label.en}`, ar: `${c.code} · ${c.label.ar}` },
+          detail: { en: `Move the market rate from ${current} to ${next} (${Math.round(move * 100)}%)`, ar: `تحريك سعر السوق من ${current} إلى ${next} (${Math.round(move * 100)}٪)` },
+          reason: '', payload: { code: c.code, rate: next },
+        })
+        held++
+        continue
+      }
+      setFxRate(c.code, next)
+    }
+    flash(held > 0
+      ? pick({ en: `${held} rate change(s) sent for approval`, ar: `رُفع ${held} تغيير سعر للاعتماد` })
+      : pick({ en: 'Exchange rates updated', ar: 'حُدّثت أسعار الصرف' }))
+    onClose()
+  }
+  return (
+    <Modal open onClose={onClose} size="md" eyebrow={pick({ en: 'Supply', ar: 'الإمداد' })} title={pick({ en: 'Market exchange rates', ar: 'أسعار الصرف في السوق' })}
+      footer={<><button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button><button onClick={save} disabled={!valid} className={buttonClass('primary', 'sm')}>{pick({ en: 'Save rates', ar: 'حفظ الأسعار' })}</button></>}>
+      <div className="flex flex-col gap-md">
+        <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'How many riyals one unit buys. These seed the rate on every new foreign-currency purchase invoice.', ar: 'كم ريالًا تساوي وحدة واحدة من كل عملة. تُستخدم كسعر افتراضي عند إدخال أي فاتورة مشتريات بعملة أجنبية.' })}</p>
+        <div className="rounded-md border border-hairline-strong divide-y divide-hairline">
+          {foreign.map((c) => (
+            <div key={c.code} className="flex items-center justify-between gap-sm px-3 py-2">
+              <span className="min-w-0">
+                <span className="block font-sans text-data text-ink">{c.code} · {pick(c.label)}</span>
+                <span className="block font-sans text-caption text-ink-subtle">{c.symbol}</span>
+              </span>
+              <span className="inline-flex items-center gap-xs shrink-0">
+                <span dir="ltr" className="font-sans text-caption text-ink-subtle tabular-nums whitespace-nowrap">1 {c.code} =</span>
+                <input value={draft[c.code] ?? ''} onChange={(e) => setDraft((p) => ({ ...p, [c.code]: e.target.value }))} className={cn('input py-1.5 tabular-nums w-24', !(rateOf(c.code) > 0) && 'border-danger')} inputMode="decimal" placeholder="0.00" />
+                <span className="font-sans text-data text-ink-muted">﷼</span>
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="font-sans text-caption rounded-lg bg-surface-2 border border-hairline p-md text-ink-subtle">
+          {pick({ en: 'Last update', ar: 'آخر تحديث' })}: {pick(fxUpdatedAt)} · {pick({ en: 'invoices already entered keep the rate they were booked at, so updating rates here never changes a past invoice or its stock cost.', ar: 'الفواتير المُدخلة تحتفظ بسعر الصرف الذي قُيّدت به، فتحديث الأسعار هنا لا يغيّر أي فاتورة سابقة ولا تكلفة مخزونها.' })}
+        </p>
+      </div>
+    </Modal>
+  )
+}
+
 /** Shared supplier search-as-you-type: type part of a name, pick from matches. */
 function SupplierSearch({ supplierId, onPick }: { supplierId: string; onPick: (id: string) => void }) {
   const { pick } = useLocale()
@@ -286,16 +393,36 @@ function SupplierSearch({ supplierId, onPick }: { supplierId: string; onPick: (i
   )
 }
 
+// Split an amount (minor units) across lines in proportion to their weights, exactly — floor
+// every share, then hand the rounding remainder to the largest line. The shares always add
+// back up to the amount, so nothing is created or lost by the split.
+const allocate = (amountMinor: number, weightsMinor: number[]): number[] => {
+  const total = weightsMinor.reduce((a, w) => a + w, 0)
+  if (amountMinor <= 0 || total <= 0) return weightsMinor.map(() => 0)
+  const shares = weightsMinor.map((w) => Math.floor((amountMinor * w) / total))
+  const biggest = weightsMinor.indexOf(Math.max(...weightsMinor))
+  shares[biggest] += amountMinor - shares.reduce((a, s) => a + s, 0)
+  return shares
+}
+
 /** Enter a supplier invoice with line items — each line is assigned to a stock product
  *  (search-as-you-type), bought in a chosen unit with automatic conversion to the
- *  product's stock unit; totals (subtotal, VAT, extra cost) are computed live. */
-function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[] }) => void }) {
-  const { pick, money } = useLocale()
-  const { suppliers, extraRaws, rawQty } = useOwnerState()
-  type Line = { itemId: string; q: string; qtyStr: string; cost: number }
-  const emptyLine: Line = { itemId: '', q: '', qtyStr: '', cost: 0 }
+ *  product's stock unit; totals (subtotal, VAT, extra cost) are computed live.
+ *  The invoice is entered in the supplier's own currency and converted to SAR at the
+ *  market rate, which is frozen onto the invoice on entry. The extra cost is classified
+ *  under a named line item (shipping, packaging…) and allocated across the lines so it
+ *  enters the stock products' landed cost. */
+function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extra?: { label: Bilingual; amountMinor: number }; fx?: { code: string; rate: number; totalMinor: number } }) => void }) {
+  const { pick, money, locale } = useLocale()
+  const { suppliers, extraRaws, rawQty, fxRates, fxUpdatedAt } = useOwnerState()
+  type Line = { itemId: string; q: string; qtyStr: string; costStr: string }
+  const emptyLine: Line = { itemId: '', q: '', qtyStr: '', costStr: '' }
   const [supplierId, setSupplierId] = useState('')
-  const [extraCost, setExtraCost] = useState(0)
+  const [code, setCode] = useState('SAR')
+  const [rateStr, setRateStr] = useState('')
+  const [extraStr, setExtraStr] = useState('')
+  const [extraTypeIdx, setExtraTypeIdx] = useState(-1)
+  const [extraOther, setExtraOther] = useState('')
   const [lines, setLines] = useState<Line[]>([emptyLine])
 
   const items = [
@@ -306,19 +433,63 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
   const itemOf = (id: string) => items.find((i) => i.id === id)
 
   const supplier = suppliers.find((s) => s.id === supplierId) ?? null
-  const subtotal = lines.reduce((a, l) => a + l.cost, 0)
-  const vat = Math.round(subtotal * 0.15)
-  const total = subtotal + vat + extraCost
-  const valid = !!supplier && lines.length > 0 && lines.every((l) => itemOf(l.itemId) && parseDec(l.qtyStr) > 0 && l.cost > 0)
+
+  // Currency: every amount on the form is entered in the invoice's own currency, and the
+  // rate defaults to the market rate but stays editable — a settled invoice is booked at the
+  // rate the bank actually applied, which is what keeps the payment and the books equal.
+  const cur = currencyOf(code)
+  const isSar = code === 'SAR'
+  const marketRate = fxRates[code] ?? cur.sarPerUnit
+  const rate = isSar ? 1 : parseDec(rateStr)
+  const toSar = (fxMinor: number) => Math.round(fxMinor * rate)
+  const fxMoney = (minor: number) => {
+    const n = money(minor, { withSymbol: false })
+    return locale === 'ar' ? `${n} ${cur.symbol}` : `${cur.symbol} ${n}`
+  }
+  const fmtRate = (r: number) => {
+    const s = r.toLocaleString('en-US', { maximumFractionDigits: 4 })
+    return locale === 'ar' ? toArabicDigits(s) : s
+  }
+
+  const lineFx = lines.map((l) => parseMoneyMinor(l.costStr))
+  const subtotalFx = lineFx.reduce((a, c) => a + c, 0)
+  const vatFx = Math.round(subtotalFx * 0.15)
+  const extraFx = parseMoneyMinor(extraStr)
+  const totalFx = subtotalFx + vatFx + extraFx
+  // The invoice total is converted as a whole, so what is booked equals what is actually paid.
+  // VAT and the extra cost are converted on their own — both have to stand up on their own as
+  // a tax figure and a classified cost — and the goods subtotal takes the rounding residual,
+  // so the three parts always add back to the converted total with nothing left over.
+  const vatSar = toSar(vatFx)
+  const extraSar = toSar(extraFx)
+  const subtotalSar = Math.max(0, toSar(totalFx) - vatSar - extraSar)
+  const totalSar = subtotalSar + vatSar + extraSar
+  // Split the converted subtotal back over the lines so their SAR costs re-add to it exactly,
+  // rather than converting each line on its own and letting the roundings drift apart.
+  const lineSar = allocate(subtotalSar, lineFx)
+  const extraShares = allocate(extraSar, lineFx)
+  const extraSharesFx = allocate(extraFx, lineFx)
+
+  const isOtherExtra = extraTypeIdx === extraCostTypes.length
+  const extraLabel: Bilingual | null = extraTypeIdx < 0 ? null : isOtherExtra ? (extraOther.trim() === '' ? null : { en: extraOther.trim(), ar: extraOther.trim() }) : extraCostTypes[extraTypeIdx]
+  const valid = !!supplier && rate > 0 && lines.length > 0
+    && lines.every((l, i) => itemOf(l.itemId) && parseDec(l.qtyStr) > 0 && lineFx[i] > 0)
+    && (extraFx === 0 || extraLabel != null)
 
   const setLine = (i: number, patch: Partial<Line>) => setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
   const pickItem = (i: number, it: Item) => setLine(i, { itemId: it.id, q: '' })
   const addLine = () => setLines((prev) => [...prev, emptyLine])
   const removeLine = (i: number) => setLines((prev) => prev.filter((_, idx) => idx !== i))
+  const switchCurrency = (c: string) => { setCode(c); setRateStr(c === 'SAR' ? '' : String(fxRates[c] ?? currencyOf(c).sarPerUnit)) }
 
   const submit = () => {
     if (!supplier) return
-    onSubmit({ supplier: supplier.name, po: supplier.id, totalMinor: total * 100, lines: lines.map((l) => ({ itemId: l.itemId, qty: Math.round(parseDec(l.qtyStr)), costMinor: l.cost * 100 })) })
+    onSubmit({
+      supplier: supplier.name, po: supplier.id, totalMinor: totalSar,
+      lines: lines.map((l, i) => ({ itemId: l.itemId, qty: Math.round(parseDec(l.qtyStr)), costMinor: lineSar[i] + extraShares[i] })),
+      extra: extraFx > 0 && extraLabel ? { label: extraLabel, amountMinor: extraSar } : undefined,
+      fx: isSar ? undefined : { code, rate, totalMinor: totalFx },
+    })
     onClose()
   }
 
@@ -329,14 +500,40 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
         <button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}>{pick({ en: 'Enter invoice', ar: 'إدخال الفاتورة' })}</button>
       </>}>
       <div className="flex flex-col gap-md">
-        <div className="grid grid-cols-2 gap-md items-start">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-md items-start">
           <div className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Supplier', ar: 'المورّد' })}</span>
             <SupplierSearch supplierId={supplierId} onPick={setSupplierId} />
           </div>
           <div className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Supplier number', ar: 'رقم المورد' })}</span>
             <div className="input bg-surface-2 text-ink-muted tabular-nums cursor-default select-none inline-flex items-center gap-xs"><Lock size={12} /> {supplier ? supplier.id : '—'}</div>
           </div>
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Invoice currency', ar: 'عملة الفاتورة' })}</span>
+            <select value={code} onChange={(e) => switchCurrency(e.target.value)} className="input cursor-pointer">
+              {currencies.map((c) => <option key={c.code} value={c.code}>{c.code} · {pick(c.label)}</option>)}
+            </select>
+          </label>
         </div>
+
+        {/* exchange rate — shown only for a foreign-currency invoice */}
+        {!isSar && (
+          <div className="flex flex-wrap items-end gap-md rounded-lg bg-surface-2 border border-hairline p-md">
+            <label className="flex flex-col gap-xxs">
+              <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Exchange rate', ar: 'سعر الصرف' })}</span>
+              <span className="inline-flex items-center gap-xs">
+                <span dir="ltr" className="font-sans text-data text-ink-muted tabular-nums whitespace-nowrap">1 {cur.code} =</span>
+                <input value={rateStr} onChange={(e) => setRateStr(e.target.value)} className={cn('input py-1.5 tabular-nums w-24', !(rate > 0) && 'border-danger')} inputMode="decimal" placeholder="0.00" />
+                <span className="font-sans text-data text-ink-muted">﷼</span>
+              </span>
+            </label>
+            <div className="flex flex-col gap-xxs min-w-0 flex-1">
+              <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Market rate', ar: 'سعر السوق' })}</span>
+              <span className="font-sans text-caption text-ink-muted tabular-nums"><span dir="ltr">1 {cur.code} = {fmtRate(marketRate)} ﷼</span> · {pick(fxUpdatedAt)}</span>
+            </div>
+            {rate > 0 && rate !== marketRate && (
+              <button type="button" onClick={() => setRateStr(String(marketRate))} className="link-gold text-caption mb-1.5">{pick({ en: 'Use market rate', ar: 'استخدام سعر السوق' })}</button>
+            )}
+          </div>
+        )}
 
         {/* invoice lines — each assigned to a stock item */}
         <div className="flex flex-col gap-xs">
@@ -357,11 +554,17 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
                     <label className="flex flex-col gap-xxs w-28"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Qty', ar: 'الكمية' })}{it && ` (${pick(it.unit)})`}</span>
                       <input value={l.qtyStr} onChange={(e) => setLine(i, { qtyStr: e.target.value })} className="input py-1.5 tabular-nums" inputMode="decimal" placeholder="0" disabled={!it} />
                     </label>
-                    <label className="flex flex-col gap-xxs w-28"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Cost (﷼)', ar: 'التكلفة (﷼)' })}</span>
-                      <input value={l.cost || ''} onChange={(e) => setLine(i, { cost: parseNum(e.target.value) })} className="input py-1.5 tabular-nums" inputMode="numeric" placeholder="0" disabled={!it} />
+                    <label className="flex flex-col gap-xxs w-28"><span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Cost', ar: 'التكلفة' })} ({cur.symbol})</span>
+                      <input value={l.costStr} onChange={(e) => setLine(i, { costStr: e.target.value })} className="input py-1.5 tabular-nums" inputMode="decimal" placeholder="0" disabled={!it} />
                     </label>
                     <button type="button" onClick={() => removeLine(i)} disabled={lines.length === 1} className="grid place-items-center w-8 h-8 rounded-md text-ink-subtle hover:text-danger disabled:opacity-30 shrink-0 mb-0.5" aria-label={pick({ en: 'Remove line', ar: 'إزالة الصنف' })}><X size={15} /></button>
                   </div>
+                  {!isSar && rate > 0 && lineFx[i] > 0 && (
+                    <p className="font-sans text-caption text-ink-subtle tabular-nums">= {money(lineSar[i])} {pick({ en: 'converted', ar: 'بعد التحويل' })}</p>
+                  )}
+                  {extraFx > 0 && lineFx[i] > 0 && (
+                    <p className="font-sans text-caption text-ink-subtle tabular-nums">＋ {fxMoney(extraSharesFx[i])}{!isSar && rate > 0 && ` (${money(extraShares[i])})`} {pick({ en: 'share of the extra cost', ar: 'نصيب الصنف من التكلفة الإضافية' })}{extraLabel && ` (${pick(extraLabel)})`} · {pick({ en: 'enters its stock cost', ar: 'يدخل في تكلفة مخزونه' })}</p>
+                  )}
                   {sugg.length > 0 && (
                     <div className="rounded-md border border-hairline bg-surface-1 shadow-soft max-h-40 overflow-y-auto divide-y divide-hairline">
                       {sugg.map((x) => (
@@ -386,14 +589,38 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
 
         {/* computed totals */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-md rounded-lg bg-surface-2 border border-hairline p-md">
-          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Subtotal', ar: 'المجموع الفرعي' })}</span><span className="font-sans text-data text-ink tabular-nums">{money(subtotal * 100)}</span></div>
-          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'VAT 15%', ar: 'الضريبة ١٥٪' })}</span><span className="font-sans text-data text-ink tabular-nums">{money(vat * 100)}</span></div>
-          <label className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Extra cost (﷼)', ar: 'التكلفة الإضافية (﷼)' })}</span><input value={extraCost || ''} onChange={(e) => setExtraCost(parseNum(e.target.value))} className="input py-1.5 tabular-nums" inputMode="numeric" placeholder="0" /></label>
-          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Total', ar: 'الإجمالي' })}</span><span className="font-serif text-card-title text-ink tabular-nums">{money(total * 100)}</span></div>
+          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Subtotal', ar: 'المجموع الفرعي' })}</span>
+            <span className="font-sans text-data text-ink tabular-nums">{fxMoney(subtotalFx)}</span>
+            {!isSar && rate > 0 && <span className="font-sans text-caption text-ink-subtle tabular-nums">= {money(subtotalSar)}</span>}
+          </div>
+          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'VAT 15%', ar: 'الضريبة ١٥٪' })}</span>
+            <span className="font-sans text-data text-ink tabular-nums">{fxMoney(vatFx)}</span>
+            {!isSar && rate > 0 && <span className="font-sans text-caption text-ink-subtle tabular-nums">= {money(vatSar)}</span>}
+          </div>
+          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Extra cost', ar: 'التكلفة الإضافية' })} ({cur.symbol})</span>
+            <input value={extraStr} onChange={(e) => setExtraStr(e.target.value)} className="input py-1.5 tabular-nums" inputMode="decimal" placeholder="0" />
+            {extraFx > 0 && (
+              <select value={extraTypeIdx} onChange={(e) => setExtraTypeIdx(Number(e.target.value))} className={cn('input py-1.5 cursor-pointer', extraTypeIdx < 0 && 'border-danger')}>
+                <option value={-1} disabled>{pick({ en: 'Cost line item…', ar: 'بند التكلفة…' })}</option>
+                {extraCostTypes.map((t, i) => <option key={i} value={i}>{pick(t)}</option>)}
+                <option value={extraCostTypes.length}>{pick({ en: 'Other…', ar: 'أخرى…' })}</option>
+              </select>
+            )}
+            {extraFx > 0 && isOtherExtra && (
+              <input value={extraOther} onChange={(e) => setExtraOther(e.target.value)} className={cn('input py-1.5', extraOther.trim() === '' && 'border-danger')} placeholder={pick({ en: 'Name the cost line item…', ar: 'سمِّ بند التكلفة…' })} />
+            )}
+            {extraFx > 0 && !isSar && rate > 0 && <span className="font-sans text-caption text-ink-subtle tabular-nums">= {money(extraSar)}</span>}
+          </div>
+          <div className="flex flex-col gap-xxs"><span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Total', ar: 'الإجمالي' })}</span>
+            <span className="font-serif text-card-title text-ink tabular-nums">{fxMoney(totalFx)}</span>
+            {!isSar && rate > 0 && <span className="font-sans text-caption text-primary-hover tabular-nums">= {money(totalSar)}</span>}
+          </div>
         </div>
 
         <p className="font-sans text-caption rounded-lg bg-surface-2 border border-hairline p-md text-ink-subtle">
-          {pick({ en: 'On entry: every line restocks its assigned stock product, the invoice is linked to the supplier number and awaits 3-way match.', ar: 'عند الإدخال: يرتفع رصيد كل منتج مخزون مُسكَّن عليه صنف، وتُربط الفاتورة برقم المورد وتنتظر المطابقة الثلاثية.' })}
+          {pick({ en: 'On entry: every line restocks its assigned stock product, the extra cost is recorded under its named line item and allocated across the lines into their landed cost, the invoice is linked to the supplier number and awaits 3-way match.', ar: 'عند الإدخال: يرتفع رصيد كل منتج مخزون مُسكَّن عليه صنف، وتُسجَّل التكلفة الإضافية تحت بندها وتُوزَّع على الأصناف لتدخل في تكلفتها الفعلية، وتُربط الفاتورة برقم المورد وتنتظر المطابقة الثلاثية.' })}
+          {!isSar && ' '}
+          {!isSar && pick({ en: 'The invoice is booked in SAR at the rate above, and that rate is frozen onto it — a later move in the market cannot restate it, so no variance appears against the payment.', ar: 'وتُقيَّد الفاتورة بالريال بسعر الصرف أعلاه، ويُثبَّت السعر عليها — فلا يعيد تغيّر السوق لاحقًا تقييمها، ولا يظهر أي فرق مقابل السداد.' })}
         </p>
       </div>
     </Modal>
@@ -403,14 +630,36 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
 /** Finished-goods stock: batches aggregated with system vs counted variance and its cost impact. */
 function FinishedGoods({ flash }: { flash: (m: string) => void }) {
   const { pick, money } = useLocale()
-  const { finished, recordFinishedCount, finishedStockTakeDate } = useOwnerState()
+  const { finished, recordFinishedCount, finishedStockTakeDate, rejectBatch } = useOwnerState()
+  const { submit } = useGovernance()
   const [batchOpen, setBatchOpen] = useState(false)
   const [countOpen, setCountOpen] = useState(false)
   const [reportsOpen, setReportsOpen] = useState(false)
+  const [releaseCode, setReleaseCode] = useState<string | null>(null)
+  const [disposeCode, setDisposeCode] = useState<string | null>(null)
+  const [yieldCode, setYieldCode] = useState<string | null>(null)
 
   const rows = finished.map((b) => { const variance = b.countedQty - b.systemQty; return { ...b, variance, valueMinor: variance * b.unitMinor } })
   const varianceCount = rows.filter((r) => r.variance !== 0).length
   const netValueMinor = rows.reduce((a, r) => a + r.valueMinor, 0)
+  // Quarantined stock exists on the floor but is not goods anyone may promise to a customer.
+  const held = finished.filter((b) => b.status === 'quarantine')
+  const rejected = finished.filter((b) => b.status === 'rejected')
+  const sellableMinor = finished.filter((b) => b.status === 'released').reduce((a, b) => a + b.systemQty * b.unitMinor, 0)
+  const heldMinor = held.reduce((a, b) => a + b.systemQty * b.unitMinor, 0)
+
+  const askRelease = (code: string, note: string) => {
+    const b = finished.find((x) => x.code === code)
+    if (!b) return
+    submit({
+      kind: 'batch_release',
+      subject: { en: `${b.code} · ${b.product.en}`, ar: `${b.code} · ${b.product.ar}` },
+      detail: { en: `Release ${b.systemQty.toLocaleString()} units from quarantine to sellable`, ar: `إطلاق ${b.systemQty.toLocaleString()} وحدة من الحجر لتصبح قابلة للبيع` },
+      amountMinor: b.systemQty * b.unitMinor, reason: note, payload: { code },
+    })
+    flash(pick({ en: 'Sent to the chef — the batch stays in quarantine', ar: 'أُرسلت للشيف — تبقى الدفعة في الحجر' }))
+    setReleaseCode(null)
+  }
 
   const exportReport = () => {
     const header = ['Batch', 'Product', 'System', 'Counted', 'Variance', 'Variance value (SAR)', 'Expiry (days)']
@@ -427,7 +676,7 @@ function FinishedGoods({ flash }: { flash: (m: string) => void }) {
       <div className="flex flex-wrap items-start justify-between gap-md">
         <div className="min-w-0">
           <h3 className="font-serif text-card-title text-ink">{pick({ en: 'Finished stock management', ar: 'إدارة المخزون المصنّع' })}</h3>
-          <p className="font-sans text-caption text-ink-subtle mt-xxs">{pick({ en: 'Aggregated by batch · FIFO issuance · variance stock-take', ar: 'مجمّع حسب الدفعة · صرف FIFO · جرد الفروقات' })}</p>
+          <p className="font-sans text-caption text-ink-subtle mt-xxs">{pick({ en: 'Aggregated by batch · released stock only is sellable · variance stock-take', ar: 'مجمّع حسب الدفعة · المُطلق فقط قابل للبيع · جرد الفروقات' })}</p>
         </div>
         <div className="flex flex-wrap items-center gap-sm">
           <button onClick={() => setBatchOpen(true)} className={buttonClass('primary', 'sm')}><Plus size={15} /> {pick({ en: 'Production batch', ar: 'دفعة إنتاج' })}</button>
@@ -437,13 +686,32 @@ function FinishedGoods({ flash }: { flash: (m: string) => void }) {
         </div>
       </div>
 
+      {/* what is sellable versus what is merely produced */}
+      <div className="grid sm:grid-cols-3 gap-sm">
+        <div className="card p-md flex flex-col gap-xxs">
+          <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Sellable', ar: 'قابل للبيع' })}</span>
+          <span className="font-serif text-card-title text-success tabular-nums">{money(sellableMinor)}</span>
+          <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Released batches', ar: 'دفعات مُطلقة' })}</span>
+        </div>
+        <div className="card p-md flex flex-col gap-xxs">
+          <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'In quarantine', ar: 'في الحجر' })}</span>
+          <span className="font-serif text-card-title text-primary-hover tabular-nums">{money(heldMinor)}</span>
+          <span className="font-sans text-caption text-ink-subtle">{held.length} {pick({ en: 'batches awaiting release', ar: 'دفعة بانتظار الإطلاق' })}</span>
+        </div>
+        <div className="card p-md flex flex-col gap-xxs">
+          <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Rejected', ar: 'مرفوضة' })}</span>
+          <span className="font-serif text-card-title text-danger tabular-nums">{rejected.length}</span>
+          <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Awaiting a disposition', ar: 'بانتظار قرار المصير' })}</span>
+        </div>
+      </div>
+
       {/* batches table */}
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse min-w-[720px]">
+          <table className="w-full border-collapse min-w-[860px]">
             <thead>
               <tr className="bg-surface-2 border-b border-hairline">
-                {[{ h: { en: 'Batch · product', ar: 'رمز الدفعة · المنتج' }, a: 'text-start' }, { h: { en: 'System', ar: 'رصيد النظام' }, a: 'text-end' }, { h: { en: 'Counted', ar: 'الجرد الفعلي' }, a: 'text-end' }, { h: { en: 'Variance', ar: 'الفرق' }, a: 'text-center' }, { h: { en: 'Variance value', ar: 'قيمة الفرق' }, a: 'text-end' }].map((c, i) => (
+                {[{ h: { en: 'Batch · product', ar: 'رمز الدفعة · المنتج' }, a: 'text-start' }, { h: { en: 'Release', ar: 'الإطلاق' }, a: 'text-start' }, { h: { en: 'System', ar: 'رصيد النظام' }, a: 'text-end' }, { h: { en: 'Counted', ar: 'الجرد الفعلي' }, a: 'text-end' }, { h: { en: 'Variance', ar: 'الفرق' }, a: 'text-center' }, { h: { en: 'Variance value', ar: 'قيمة الفرق' }, a: 'text-end' }].map((c, i) => (
                   <th key={i} className={cn('font-sans text-caption uppercase tracking-wide text-ink-subtle px-lg py-2.5', c.a)}>{pick(c.h)}</th>
                 ))}
               </tr>
@@ -459,6 +727,9 @@ function FinishedGoods({ flash }: { flash: (m: string) => void }) {
                         <p className="font-sans text-caption text-ink-subtle">{pick(r.product)}{r.expiryDays <= 14 && <span className="text-danger"> · {r.expiryDays} {pick({ en: 'd left', ar: 'يوم متبقٍ' })}</span>}</p>
                       </div>
                     </div>
+                  </td>
+                  <td className="px-lg py-md align-top">
+                    <BatchStatusCell batch={r} onRelease={() => setReleaseCode(r.code)} onReject={() => rejectBatch(r.code, '')} onDispose={() => setDisposeCode(r.code)} onYield={() => setYieldCode(r.code)} />
                   </td>
                   <td className="px-lg py-md text-end align-top font-sans text-data text-ink-muted tabular-nums">{r.systemQty.toLocaleString()}</td>
                   <td className="px-lg py-md text-end align-top font-sans text-data text-ink tabular-nums">{r.countedQty.toLocaleString()}</td>
@@ -480,9 +751,200 @@ function FinishedGoods({ flash }: { flash: (m: string) => void }) {
       </div>
 
       {batchOpen && <AddBatchModal onClose={() => setBatchOpen(false)} flash={flash} />}
-      {countOpen && <FinishedStockTakeModal onClose={() => setCountOpen(false)} onSubmit={(counts) => { recordFinishedCount(counts); flash(pick({ en: 'Stock-take recorded', ar: 'سُجّل الجرد' })) }} />}
+      {countOpen && <FinishedStockTakeModal onClose={() => setCountOpen(false)} onSubmit={(counts, netValueMinor) => {
+        const out = submit({
+          kind: 'stock_take',
+          subject: { en: 'Finished-goods stock-take', ar: 'جرد المخزون المصنّع' },
+          detail: { en: `Post counts for ${Object.keys(counts).length} batch(es)`, ar: `ترحيل جرد ${Object.keys(counts).length} دفعة` },
+          amountMinor: netValueMinor, reason: '',
+          payload: { scope: 'finished', counts },
+        })
+        if (out.outcome === 'pending') { flash(pick({ en: 'Count filed — the variance waits for approval', ar: 'سُجّل الجرد — وينتظر الفرق الاعتماد' })); return }
+        recordFinishedCount(counts); flash(pick({ en: 'Stock-take recorded', ar: 'سُجّل الجرد' }))
+      }} />}
       {reportsOpen && <StockTakeReportsModal onClose={() => setReportsOpen(false)} />}
+      {releaseCode && <ReleaseBatchModal code={releaseCode} onClose={() => setReleaseCode(null)} onSubmit={askRelease} />}
+      {disposeCode && <DisposeBatchModal code={disposeCode} onClose={() => setDisposeCode(null)} flash={flash} />}
+      {yieldCode && <YieldModal code={yieldCode} onClose={() => setYieldCode(null)} flash={flash} />}
     </div>
+  )
+}
+
+/** Where a batch stands in the release chain, plus the action that moves it on. */
+function BatchStatusCell({ batch, onRelease, onReject, onDispose, onYield }: {
+  batch: FinishedBatch; onRelease: () => void; onReject: () => void; onDispose: () => void; onYield: () => void
+}) {
+  const { pick } = useLocale()
+  if (batch.status === 'released') {
+    return (
+      <div className="flex flex-col gap-xxs">
+        <Pill color="#2f7d5b" bg="#e6f2ea">{pick({ en: 'Released', ar: 'مُطلقة' })}</Pill>
+        {batch.releasedBy && <span className="font-sans text-caption text-ink-subtle truncate max-w-[150px]">{pick(batch.releasedBy)}</span>}
+        {!batch.yieldConfirmed && (
+          <button onClick={onYield} className="link-gold text-caption text-start">{pick({ en: 'Confirm actual draw', ar: 'تأكيد المستهلك الفعلي' })}</button>
+        )}
+      </div>
+    )
+  }
+  if (batch.status === 'rejected') {
+    return (
+      <div className="flex flex-col gap-xxs">
+        <Pill color="#b5403b" bg="#faeceb">{pick({ en: 'Rejected', ar: 'مرفوضة' })}</Pill>
+        <button onClick={onDispose} className="link-gold text-caption text-start">{pick({ en: 'Decide its fate', ar: 'تحديد مصيرها' })}</button>
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-xxs">
+      <Pill color="#8a6b3f" bg="#f6edde">{pick({ en: 'Quarantine', ar: 'قيد الحجر' })}</Pill>
+      <div className="flex items-center gap-xs">
+        <button onClick={onRelease} className="link-gold text-caption">{pick({ en: 'Request release', ar: 'طلب الإطلاق' })}</button>
+        <button onClick={onReject} className="font-sans text-caption text-danger hover:underline">{pick({ en: 'Fail', ar: 'رفض' })}</button>
+      </div>
+    </div>
+  )
+}
+
+/** Raise a release request: the batch does not become sellable here, the chef's signature does that. */
+function ReleaseBatchModal({ code, onClose, onSubmit }: { code: string; onClose: () => void; onSubmit: (code: string, note: string) => void }) {
+  const { pick, money } = useLocale()
+  const { finished } = useOwnerState()
+  const [note, setNote] = useState('')
+  const b = finished.find((x) => x.code === code)
+  if (!b) return null
+  return (
+    <Modal open onClose={onClose} size="sm" eyebrow={b.code} title={pick({ en: 'Request batch release', ar: 'طلب إطلاق دفعة' })}
+      footer={<><button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button><button onClick={() => onSubmit(code, note.trim())} className={buttonClass('primary', 'sm')}><Check size={15} /> {pick({ en: 'Send to the chef', ar: 'إرسال للشيف' })}</button></>}>
+      <div className="flex flex-col gap-md">
+        <div className="rounded-lg bg-surface-2 border border-hairline p-md flex flex-col gap-xxs">
+          <span className="font-sans text-data text-ink">{pick(b.product)}</span>
+          <span className="font-sans text-caption text-ink-subtle tabular-nums">{b.systemQty.toLocaleString()} {pick({ en: 'units', ar: 'وحدة' })} · {money(b.systemQty * b.unitMinor)} · {b.expiryDays} {pick({ en: 'days shelf life', ar: 'يوم صلاحية' })}</span>
+        </div>
+        <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Quality note (optional)', ar: 'ملاحظة الجودة (اختيارية)' })}</span>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} className="input resize-none" placeholder={pick({ en: 'Taste, temper, appearance…', ar: 'الطعم، التلميع، المظهر…' })} />
+        </label>
+        <p className="font-sans text-caption text-ink-subtle rounded-lg bg-surface-2 border border-hairline p-md">{pick({ en: 'The batch stays in quarantine until the chef signs. Until then it is stock, not sellable goods.', ar: 'تبقى الدفعة في الحجر حتى يوقّع الشيف. وحتى ذلك الحين هي مخزون لا بضاعة قابلة للبيع.' })}</p>
+      </div>
+    </Modal>
+  )
+}
+
+/** A rejected batch leaves the floor one of exactly three ways — and the choice is a decision. */
+function DisposeBatchModal({ code, onClose, flash }: { code: string; onClose: () => void; flash: (m: string) => void }) {
+  const { pick, money } = useLocale()
+  const { finished } = useOwnerState()
+  const { submit } = useGovernance()
+  const [choice, setChoice] = useState<BatchDisposition | ''>('')
+  const [reason, setReason] = useState('')
+  const b = finished.find((x) => x.code === code)
+  if (!b) return null
+  const valueMinor = b.systemQty * b.unitMinor
+  const valid = choice !== '' && reason.trim().length > 3
+  const send = () => {
+    if (choice === '') return
+    const d = batchDispositions.find((x) => x.key === choice)!
+    submit({
+      kind: 'batch_disposition',
+      subject: { en: `${b.code} · ${b.product.en}`, ar: `${b.code} · ${b.product.ar}` },
+      detail: { en: `${d.label.en} — ${d.desc.en}`, ar: `${d.label.ar} — ${d.desc.ar}` },
+      amountMinor: valueMinor, reason: reason.trim(), payload: { code, disposition: choice },
+    })
+    flash(pick({ en: 'Sent for approval — the batch stays as it is', ar: 'رُفعت للاعتماد — تبقى الدفعة كما هي' }))
+    onClose()
+  }
+  return (
+    <Modal open onClose={onClose} size="md" eyebrow={b.code} title={pick({ en: 'Rejected batch — decide its fate', ar: 'دفعة مرفوضة — تحديد المصير' })}
+      footer={<><button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button><button onClick={send} disabled={!valid} className={buttonClass('primary', 'sm')}>{pick({ en: 'Send for approval', ar: 'رفع للاعتماد' })}</button></>}>
+      <div className="flex flex-col gap-md">
+        <div className="rounded-lg bg-surface-2 border border-hairline p-md flex items-center justify-between gap-sm">
+          <span className="font-sans text-data text-ink">{pick(b.product)}</span>
+          <span className="font-sans text-data text-ink tabular-nums">{b.systemQty.toLocaleString()} · {money(valueMinor)}</span>
+        </div>
+        <div className="flex flex-col gap-xs">
+          <span className="label">{pick({ en: 'Disposition', ar: 'المصير' })}</span>
+          {batchDispositions.map((d) => (
+            <button key={d.key} type="button" onClick={() => setChoice(d.key)} className={cn('flex items-center gap-sm rounded-lg border px-md py-sm text-start transition-colors', choice === d.key ? 'border-primary bg-primary/[0.06]' : 'border-hairline hover:border-ink/30')}>
+              <span className={cn('grid place-items-center w-5 h-5 rounded-pill border shrink-0', choice === d.key ? 'bg-primary border-primary text-on-primary' : 'border-hairline-strong')}>{choice === d.key && <Check size={12} />}</span>
+              <span className="min-w-0"><span className="block font-sans text-data text-ink">{pick(d.label)}</span><span className="block font-sans text-caption text-ink-subtle">{pick(d.desc)}</span></span>
+            </button>
+          ))}
+        </div>
+        <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Why (required)', ar: 'المبرر (إلزامي)' })}</span>
+          <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} className="input resize-none" placeholder={pick({ en: 'What failed, and why this route?', ar: 'ما الذي أخفق، ولماذا هذا المسار؟' })} />
+        </label>
+      </div>
+    </Modal>
+  )
+}
+
+/** Close the batch: the recipe drew the theoretical quantity, the floor drew what it drew.
+ *  Booking the difference here is what stops it surfacing later as an unexplained stock-take gap. */
+function YieldModal({ code, onClose, flash }: { code: string; onClose: () => void; flash: (m: string) => void }) {
+  const { pick, money } = useLocale()
+  const { finished, bomOf } = useOwnerState()
+  const { submit } = useGovernance()
+  const [extra, setExtra] = useState<Partial<Record<RawKey, string>>>({})
+  const b = finished.find((x) => x.code === code)
+  if (!b) return null
+  const bom = b.sku ? bomOf(b.sku) : {}
+  const keys = Object.keys(bom) as RawKey[]
+  const unitCost = (k: RawKey) => {
+    const m = rawMaterials.find((r) => r.key === k)
+    if (!m) return 0
+    const cu = stockUnits.find((u) => u.label.en === m.costUnit.en)
+    const su = stockUnits.find((u) => u.label.en === m.unit.en)
+    return Math.round(m.landedMinor / Math.max(1, cu && su ? unitFactor(cu.key, su.key) : 1))
+  }
+  const parsed = keys.reduce((acc, k) => { const v = parseDec(extra[k] ?? ''); if (v > 0) acc[k] = v; return acc }, {} as Partial<Record<RawKey, number>>)
+  const costMinor = (Object.keys(parsed) as RawKey[]).reduce((a, k) => a + Math.round((parsed[k] ?? 0) * unitCost(k)), 0)
+  const any = Object.keys(parsed).length > 0
+
+  const send = () => {
+    submit({
+      kind: 'yield_variance',
+      subject: { en: `${b.code} · ${b.product.en}`, ar: `${b.code} · ${b.product.ar}` },
+      detail: { en: `Extra raw draw beyond the recipe on ${b.code}`, ar: `سحب خام زائد عن الوصفة في ${b.code}` },
+      amountMinor: costMinor,
+      reason: pick({ en: 'Processing loss confirmed at batch close', ar: 'فاقد تصنيع مؤكَّد عند إغلاق الدفعة' }),
+      payload: { code, extra: parsed },
+    })
+    flash(costMinor > 0 ? pick({ en: 'Yield variance recorded', ar: 'سُجّل فرق العائد' }) : pick({ en: 'Batch closed with no variance', ar: 'أُغلقت الدفعة بلا فرق' }))
+    onClose()
+  }
+
+  return (
+    <Modal open onClose={onClose} size="md" eyebrow={b.code} title={pick({ en: 'Close batch — actual vs recipe', ar: 'إغلاق الدفعة — الفعلي مقابل الوصفة' })}
+      footer={<><button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button><button onClick={send} className={buttonClass('primary', 'sm')}>{pick({ en: 'Confirm draw', ar: 'تأكيد المستهلك' })}</button></>}>
+      <div className="flex flex-col gap-md">
+        <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'The recipe’s quantity was already deducted when the batch ran. Enter only what was drawn on top of it — leave a line blank if it ran to recipe.', ar: 'كمية الوصفة خُصمت وقت تشغيل الدفعة. أدخل ما سُحب زيادة عليها فقط — واترك السطر فارغًا إن جرى وفق الوصفة.' })}</p>
+        <div className="rounded-md border border-hairline-strong divide-y divide-hairline">
+          {keys.length === 0 && <p className="px-3 py-2 font-sans text-caption text-ink-subtle">{pick({ en: 'This batch has no recipe to compare against.', ar: 'لا وصفة لهذه الدفعة تُقارن بها.' })}</p>}
+          {keys.map((k) => {
+            const m = rawMaterials.find((r) => r.key === k)
+            if (!m) return null
+            return (
+              <div key={k} className="flex items-center justify-between gap-sm px-3 py-2">
+                <span className="min-w-0">
+                  <span className="block font-sans text-data text-ink truncate">{pick(m.name)}</span>
+                  <span className="block font-sans text-caption text-ink-subtle tabular-nums">{pick({ en: 'recipe drew', ar: 'سحبت الوصفة' })} {(bom[k]! * b.systemQty).toLocaleString(undefined, { maximumFractionDigits: 2 })} {pick(m.unit)}</span>
+                </span>
+                <span className="inline-flex items-center gap-xs shrink-0">
+                  <span className="font-sans text-caption text-ink-subtle">+</span>
+                  <input value={extra[k] ?? ''} onChange={(e) => setExtra((p) => ({ ...p, [k]: e.target.value }))} className="input py-1.5 tabular-nums w-24" inputMode="decimal" placeholder="0" />
+                  <span className="font-sans text-caption text-ink-subtle w-10">{pick(m.unit)}</span>
+                </span>
+              </div>
+            )
+          })}
+        </div>
+        {any && (
+          <div className="flex items-center justify-between gap-sm rounded-lg bg-surface-2 border border-hairline p-md">
+            <span className="font-sans text-caption text-ink-muted">{pick({ en: 'Extra draw valued at', ar: 'قيمة السحب الزائد' })}</span>
+            <span className="font-sans text-data text-danger tabular-nums">−{money(costMinor)}</span>
+          </div>
+        )}
+      </div>
+    </Modal>
   )
 }
 
@@ -588,7 +1050,7 @@ function AddBatchModal({ onClose, flash }: { onClose: () => void; flash: (m: str
 }
 
 /** Stock-take: enter the physical count per batch → records the count and its value impact. */
-function FinishedStockTakeModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (counts: Record<string, number>) => void }) {
+function FinishedStockTakeModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (counts: Record<string, number>, netValueMinor: number) => void }) {
   const { pick, money } = useLocale()
   const { finished, addStockTakeReport } = useOwnerState()
   const [counts, setCounts] = useState<Record<string, number>>({})
@@ -603,7 +1065,7 @@ function FinishedStockTakeModal({ onClose, onSubmit }: { onClose: () => void; on
       scope: 'finished', startedAt, endedAt: Date.now(), lines, netValueMinor: netValue,
       method: { en: 'Manual count — physical quantities recorded per production batch against system balances; variances valued at unit value.', ar: 'جرد يدوي — سُجّلت الكميات الفعلية لكل دفعة إنتاج مقابل رصيد النظام، وقُيّمت الفروقات بقيمة الوحدة.' },
     })
-    onSubmit(counts); onClose()
+    onSubmit(counts, netValue); onClose()
   }
   return (
     <Modal open onClose={onClose} size="lg" eyebrow={pick({ en: 'Production', ar: 'الإنتاج' })} title={pick({ en: 'Finished-goods stock-take', ar: 'جرد المخزون المصنّع' })}
@@ -1017,6 +1479,7 @@ function RawInventory({ flash }: { flash: (m: string) => void }) {
 function StockTakeModal({ flash, onClose }: { flash: (m: string) => void; onClose: () => void }) {
   const { pick, money } = useLocale()
   const { rawQty, finalizeStockTake, addStockTakeReport } = useOwnerState()
+  const { submit } = useGovernance()
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [startedAt] = useState(() => Date.now())
   const netLoss = rawMaterials.reduce((a, r) => { const c = counts[r.key]; if (c == null) return a; const variance = c - rawQty[r.key]; return a + Math.round((variance / (r.systemQty || 1)) * r.landedMinor) }, 0)
@@ -1029,6 +1492,18 @@ function StockTakeModal({ flash, onClose }: { flash: (m: string) => void; onClos
       scope: 'raw', startedAt, endedAt: Date.now(), lines, netValueMinor: netLoss,
       method: { en: 'Manual count — counted quantities entered against locked system balances; variances valued at landed cost and posted to inventory on finalize.', ar: 'جرد يدوي — أُدخلت الكميات المجرودة مقابل رصيد النظام المقفول، وقُيّمت الفروقات بالتكلفة المستوردة ورُحّلت للمخزون عند الإنهاء.' },
     })
+    // The count is always filed; whether it *posts* to stock depends on what it is worth.
+    // Whoever counted does not sign their own variance.
+    const out = submit({
+      kind: 'stock_take',
+      subject: { en: 'Raw materials stock-take', ar: 'جرد المواد الخام' },
+      detail: { en: `Post ${lines.length} counted line(s) to raw stock`, ar: `ترحيل ${lines.length} سطر جرد إلى المخزون الخام` },
+      amountMinor: netLoss, reason: '',
+      payload: { scope: 'raw', rawCounts: counts as Partial<Record<RawKey, number>> },
+    })
+    if (out.outcome === 'pending') {
+      flash(pick({ en: 'Count filed — the variance waits for approval before it posts', ar: 'سُجّل الجرد — وينتظر الفرق الاعتماد قبل ترحيله' })); onClose(); return
+    }
     finalizeStockTake(counts); flash(pick({ en: 'Stock-take finalized — inventory updated', ar: 'أُنهي الجرد — حُدّث المخزون' })); onClose()
   }
   return (

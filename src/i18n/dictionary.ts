@@ -825,6 +825,7 @@ export const dict: Dict = {
   'owner.section.products': { en: 'Production', ar: 'الإنتاج' },
   'owner.section.customers': { en: 'Customers & loyalty', ar: 'العملاء والولاء' },
   'owner.section.team': { en: 'Team & staff', ar: 'الفريق والموظفون' },
+  'owner.section.approvals': { en: 'Approvals & audit', ar: 'الاعتمادات والتدقيق' },
   'owner.section.catalog': { en: 'Products', ar: 'المنتجات' },
   'owner.section.vendors': { en: 'Vendors', ar: 'الموردين' },
   'owner.section.export': { en: 'Export clients', ar: 'عملاء التصدير' },

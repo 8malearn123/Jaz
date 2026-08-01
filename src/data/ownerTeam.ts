@@ -1,4 +1,5 @@
 import type { Bilingual } from './types'
+import type { JobRole } from './governance'
 
 // ── Owner team & staff (isolated). Employees with per-section permissions the
 // owner grants/revokes — mirrors the operational areas of the admin console.
@@ -29,6 +30,10 @@ export interface Employee {
   perms: TeamPermission[]
   active: boolean
   since: Bilingual
+  /** Job role — what this person is, and therefore what they may approve (see data/governance.ts). */
+  role?: JobRole
+  /** Who they report to. Undefined → reports to the owner. Requests escalate up this line. */
+  managerId?: string
 }
 
 // No pre-seeded accounts — the owner creates every staff account from the
