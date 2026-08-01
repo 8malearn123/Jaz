@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import type { Bilingual } from '@/data/types'
 import {
-  megaOrdersSeed, megaCatalog, megaCredit, volumeDiscount, SHIP_LAST, megaPickup,
+  megaOrdersSeed, megaCatalog, megaCredit, SHIP_LAST, megaPickup,
   type MegaOrder, type ShipStage,
 } from '@/data/mega'
 
@@ -47,8 +47,8 @@ export function MegaStateProvider({ children }: { children: ReactNode }) {
   const lineValueMinor = useCallback((sku: string, pallets: number) => {
     const p = megaCatalog.find((x) => x.sku === sku)
     if (!p || pallets <= 0) return 0
-    const disc = volumeDiscount(pallets)
-    return Math.round(p.pricePerPalletMinor * pallets * (1 - disc / 100))
+    // List price times quantity — the price does not move with the size of the order.
+    return p.pricePerPalletMinor * pallets
   }, [])
 
   // The MOQ is a hard floor: a draft line either doesn't exist or holds at

@@ -1,7 +1,8 @@
 import { Minus, Plus, Phone, MessageCircle, ClipboardCheck, Cog, Truck, PackageCheck, Check, AlertTriangle, CalendarClock, ArrowRight, MapPin, Clock } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { organization } from '@/data/organization'
-import { scheduledDeliveries, accountOrders, accountOrderItems, orgAddressById, type AccountOrderStatus } from '@/data/business'
+import { scheduledPickups, accountOrders, accountOrderItems, type AccountOrderStatus } from '@/data/business'
+import { plantSite } from '@/data/fulfilment'
 import { useToast } from '@/components/account/Toast'
 import { StatusBadge } from '@/components/ui/Misc'
 import { cn } from '@/lib/cn'
@@ -130,19 +131,18 @@ export function OrderJourney({ status, variant = 'full' }: { status: AccountOrde
   )
 }
 
-/** Compact "next delivery" pointer for the overview — links into the Delivery tab (not a duplicate schedule). */
+/** Compact "next collection" pointer for the overview — links into the Orders tab. */
 export function NextDeliveryStrip({ onTab }: { onTab: (id: string) => void }) {
   const { t, pick } = useLocale()
-  const next = scheduledDeliveries.find((d) => d.status !== 'delivered') ?? scheduledDeliveries[0]
+  const next = scheduledPickups.find((d) => d.status !== 'collected') ?? scheduledPickups[0]
   if (!next) return null
-  const dest = orgAddressById(next.branchId)
   const order = accountOrders.find((o) => o.orderNo === next.orderNo)
   return (
     <button onClick={() => onTab('orders')} className="card p-lg flex items-center gap-md text-start hover:border-primary/40 transition-colors">
       <span className="grid place-items-center w-10 h-10 rounded-md bg-primary text-on-primary shrink-0"><CalendarClock size={20} /></span>
       <div className="flex-1 min-w-0">
-        <p className="font-sans text-caption uppercase tracking-[0.1em] text-ink-subtle">{t('delivery.nextTitle')}</p>
-        <p className="font-sans text-data text-ink truncate">{dest ? pick(dest.label) : ''} — {pick(next.dow)} · {pick(next.window)}</p>
+        <p className="font-sans text-caption uppercase tracking-[0.1em] text-ink-subtle">{t('pickup.nextTitle')}</p>
+        <p className="font-sans text-data text-ink truncate">{pick(plantSite.label)} — {pick(next.dow)} · {pick(next.window)}</p>
         {order && <p className="font-sans text-caption text-ink-subtle truncate">{next.orderNo} · {pick(order.summary)}</p>}
       </div>
       <ArrowRight size={16} className="text-primary-hover rtl:rotate-180 shrink-0" />
@@ -181,7 +181,7 @@ export function AccountManagerCard() {
 /** Overview "last order journey" card — status, PO, delivery window, journey bar, items → deep-links to Orders. */
 export function LastOrderCard({ onTab }: { onTab: (id: string) => void }) {
   const { t, pick } = useLocale()
-  const next = scheduledDeliveries.find((d) => d.status !== 'delivered')
+  const next = scheduledPickups.find((d) => d.status !== 'collected')
   const order = (next && accountOrders.find((o) => o.orderNo === next.orderNo))
     ?? accountOrders.find((o) => o.status === 'processing' || o.status === 'shipped')
     ?? accountOrders[0]
@@ -205,24 +205,23 @@ export function LastOrderCard({ onTab }: { onTab: (id: string) => void }) {
   )
 }
 
-/** Overview "next delivery" card — branch, arrival window, address → deep-links to the Delivery schedule. */
+/** Overview "next collection" card — the plant, the slot, the terms → deep-links to the schedule. */
 export function NextDeliveryCard({ onTab }: { onTab: (id: string) => void }) {
   const { t, pick } = useLocale()
-  const next = scheduledDeliveries.find((d) => d.status !== 'delivered') ?? scheduledDeliveries[0]
+  const next = scheduledPickups.find((d) => d.status !== 'collected') ?? scheduledPickups[0]
   if (!next) return null
-  const dest = orgAddressById(next.branchId)
   return (
     <div className="card p-lg flex flex-col gap-md">
       <div className="flex items-start justify-between gap-sm">
         <div className="min-w-0">
-          <p className="font-sans text-caption uppercase tracking-[0.12em] text-ink-subtle">{t('delivery.nextTitle')}</p>
-          <h3 className="font-serif text-card-title text-ink mt-xs">{dest ? pick(dest.label) : ''} — {pick(next.dow)} {pick(next.window)}</h3>
-          {dest && <p className="font-sans text-caption text-ink-subtle mt-xxs">{pick(dest.district)}، {pick(dest.city)} · {dest.shortAddress}</p>}
+          <p className="font-sans text-caption uppercase tracking-[0.12em] text-ink-subtle">{t('pickup.nextTitle')}</p>
+          <h3 className="font-serif text-card-title text-ink mt-xs">{pick(plantSite.label)} — {pick(next.dow)} {pick(next.window)}</h3>
+          <p className="font-sans text-caption text-ink-subtle mt-xxs">{pick(plantSite.region)} · {plantSite.incoterm} · {pick(plantSite.hours)}</p>
         </div>
         <span className="grid place-items-center w-10 h-10 rounded-md bg-primary text-on-primary shrink-0"><MapPin size={20} /></span>
       </div>
       <button onClick={() => onTab('orders')} className="mt-auto w-full inline-flex items-center justify-center gap-xs rounded-md bg-primary/10 text-primary-hover hover:bg-primary/15 px-4 py-2.5 font-sans text-button uppercase tracking-[0.06em] transition-colors">
-        {t('delivery.schedule')} <ArrowRight size={15} className="rtl:rotate-180" />
+        {t('pickup.schedule')} <ArrowRight size={15} className="rtl:rotate-180" />
       </button>
     </div>
   )

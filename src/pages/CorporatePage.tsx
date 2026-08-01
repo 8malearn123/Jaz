@@ -121,7 +121,7 @@ export function CorporatePage() {
             <div className="mt-xl card p-xl flex flex-col gap-md">
               <div className="flex items-center justify-between flex-wrap gap-sm">
                 <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Price-list tiers', ar: 'فئات قوائم الأسعار' })}</h4>
-                <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'with quantity volume breaks', ar: 'مع كسور سعرية حسب الكمية' })}</span>
+                <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'a fixed price per tier — quantity does not move it', ar: 'سعر ثابت لكل فئة — لا تغيّره الكمية' })}</span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-sm">
                 {['bronze', 'silver', 'gold', 'platinum'].map((tier, i) => (

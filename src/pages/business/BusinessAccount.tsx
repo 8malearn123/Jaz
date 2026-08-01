@@ -119,7 +119,8 @@ function KpiStrip() {
       <StatCell tone="gold" label={pick({ en: 'Available credit', ar: 'الائتمان المتاح' })} value={money(available, { withSymbol: false })} unit={sar} sub={`${pick({ en: 'of', ar: 'من' })} ${money(org.credit.limitMinor)}`} />
       <StatCell label={t('bmonth.orders')} value={String(b2bMonthSummary.orders)} sub={pick({ en: 'this cycle', ar: 'هذه الدورة' })} />
       <StatCell label={t('bmonth.purchases')} value={money(b2bMonthSummary.purchasesMinor, { withSymbol: false })} unit={sar} sub={pick({ en: 'this cycle', ar: 'هذه الدورة' })} />
-      <StatCell tone="success" label={t('bmonth.saved')} value={money(b2bMonthSummary.savedMinor, { withSymbol: false })} unit={sar} sub={pick({ en: 'via volume pricing', ar: 'بأسعار الكمية' })} />
+      {/* Pricing is fixed, so there is no volume saving to report — the contract price is the figure that matters. */}
+      <StatCell label={pick({ en: 'Price basis', ar: 'أساس التسعير' })} value={pick({ en: 'Fixed', ar: 'ثابت' })} sub={pick({ en: 'Contract price list', ar: 'قائمة الأسعار التعاقدية' })} />
     </div>
   )
 }
@@ -308,7 +309,7 @@ function Credit() {
           <ul className="divide-y divide-hairline">
             <li className="flex items-center justify-between px-lg py-md"><span className="font-sans text-data text-ink-muted">{t('bmonth.orders')}</span><span className="font-serif text-card-title text-ink tabular-nums">{b2bMonthSummary.orders}</span></li>
             <li className="flex items-center justify-between px-lg py-md"><span className="font-sans text-data text-ink-muted">{t('bmonth.purchases')}</span><span className="font-serif text-card-title text-ink tabular-nums">{money(b2bMonthSummary.purchasesMinor)}</span></li>
-            <li className="flex items-center justify-between px-lg py-md"><span className="font-sans text-data text-ink-muted">{t('bmonth.saved')}</span><span className="font-serif text-card-title text-success tabular-nums">{money(b2bMonthSummary.savedMinor)}</span></li>
+
           </ul>
         </div>
       </div>
@@ -442,7 +443,7 @@ function AddAddressModal({ open, onClose, onAdd }: { open: boolean; onClose: () 
       label: { en: form.label, ar: form.label }, city: { en: form.city, ar: form.city }, district: { en: form.district, ar: form.district },
       shortAddress: form.shortAddress.toUpperCase(), isDefault: form.isDefault, phone: form.phone.trim(),
     })
-    setForm({ type: 'shipping', label: '', city: '', district: '', shortAddress: '', phone: '', isDefault: false })
+    setForm({ type: 'site', label: '', city: '', district: '', shortAddress: '', phone: '', isDefault: false })
     onClose()
   }
   return (
