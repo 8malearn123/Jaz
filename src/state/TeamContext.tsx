@@ -23,6 +23,8 @@ interface TeamCtx {
   reportsOf: (id: string) => Employee[]
   /** The reporting line upward, nearest manager first. */
   managersOf: (id: string) => Employee[]
+  /** Everyone beneath this person, however deep — their whole branch of the chart. */
+  descendantsOf: (id: string) => Employee[]
   /** Would making `managerId` the manager of `id` close a loop? */
   wouldCycle: (id: string, managerId: string) => boolean
   /** Employee currently signed in through the role picker (null → owner/persona session). */
@@ -100,6 +102,20 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     }
     return line
   }, [employees])
+  const descendantsOf = useCallback((id: string) => {
+    const out: Employee[] = []
+    const seen = new Set<string>([id])
+    const walk = (parent: string) => {
+      for (const e of employees) {
+        if (e.managerId !== parent || seen.has(e.id)) continue
+        seen.add(e.id)
+        out.push(e)
+        walk(e.id)
+      }
+    }
+    walk(id)
+    return out
+  }, [employees])
   const wouldCycle = useCallback((id: string, managerId: string) => wouldCycleIn(employees, id, managerId), [employees])
 
   const signInEmployee = useCallback((id: string) => setActiveId(id), [])
@@ -110,10 +126,10 @@ export function TeamProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<TeamCtx>(() => ({
     employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive,
-    setEmployeeRole, setEmployeeManager, reportsOf, managersOf, wouldCycle,
+    setEmployeeRole, setEmployeeManager, reportsOf, managersOf, descendantsOf, wouldCycle,
     activeEmployee, signInEmployee, clearEmployee,
   }), [employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive,
-    setEmployeeRole, setEmployeeManager, reportsOf, managersOf, wouldCycle,
+    setEmployeeRole, setEmployeeManager, reportsOf, managersOf, descendantsOf, wouldCycle,
     activeEmployee, signInEmployee, clearEmployee])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

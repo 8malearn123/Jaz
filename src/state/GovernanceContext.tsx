@@ -49,6 +49,9 @@ export interface ApprovalRequest {
 export interface AuditEntry {
   id: string
   actor: Bilingual
+  /** Which account acted. null → the owner, who sits above every branch. */
+  actorId: string | null
+  actorRole: JobRole | null
   action: Bilingual
   resource: string
   at: Bilingual
@@ -90,6 +93,10 @@ interface GovernanceCtx {
   mine: ApprovalRequest[]
   log: (e: { action: Bilingual; resource: string; sensitive?: boolean; emergency?: boolean }) => void
   actor: Bilingual
+  /** The trail as the signed-in account may see it — see `auditScope`. */
+  scopedAudit: AuditEntry[]
+  /** Whose actions that trail covers, said plainly. */
+  auditScope: Bilingual
 }
 
 const Ctx = createContext<GovernanceCtx | null>(null)
@@ -98,7 +105,7 @@ const OWNER_ACTOR: Bilingual = { en: 'Owner — admin console', ar: 'المال�
 const NOW: Bilingual = { en: 'Just now', ar: 'الآن' }
 
 export function GovernanceProvider({ children }: { children: ReactNode }) {
-  const { activeEmployee, managersOf } = useTeam()
+  const { activeEmployee, managersOf, descendantsOf } = useTeam()
   const [requests, setRequests] = useState<ApprovalRequest[]>([])
   const [audit, setAudit] = useState<AuditEntry[]>([])
   const seqRef = useRef(1)
@@ -114,10 +121,10 @@ export function GovernanceProvider({ children }: { children: ReactNode }) {
   const log = useCallback((e: { action: Bilingual; resource: string; sensitive?: boolean; emergency?: boolean }) => {
     const seq = auditSeqRef.current++
     setAudit((prev) => [{
-      id: `AU-${seq}`, seq, actor, action: e.action, resource: e.resource,
+      id: `AU-${seq}`, seq, actor, actorId, actorRole, action: e.action, resource: e.resource,
       at: NOW, sensitive: e.sensitive ?? false, emergency: e.emergency,
     }, ...prev])
-  }, [actor])
+  }, [actor, actorId, actorRole])
 
   const submit = useCallback((r: {
     kind: DecisionKind; subject: Bilingual; detail: Bilingual
@@ -216,6 +223,24 @@ export function GovernanceProvider({ children }: { children: ReactNode }) {
     return done
   }, [isOwner, actor, requests, log])
 
+  // You see what you did, plus what everyone in your branch did. The owner sits above every
+  // branch and sees all of it; the auditor sees all of it too, which is the point of the role.
+  const scopedAudit = useMemo(() => {
+    if (isOwner || actorRole === 'auditor') return audit
+    if (!actorId) return []
+    const mineAndBelow = new Set<string>([actorId, ...descendantsOf(actorId).map((e) => e.id)])
+    return audit.filter((e) => e.actorId != null && mineAndBelow.has(e.actorId))
+  }, [audit, isOwner, actorRole, actorId, descendantsOf])
+
+  const auditScope = useMemo<Bilingual>(() => {
+    if (isOwner) return { en: 'Every action on the platform', ar: 'كل ما يجري في المنصة' }
+    if (actorRole === 'auditor') return { en: 'Every action — auditor access', ar: 'كل ما يجري — صلاحية التدقيق' }
+    const below = actorId ? descendantsOf(actorId).length : 0
+    return below > 0
+      ? { en: `Your own actions and those of the ${below} people in your branch`, ar: `أعمالك وأعمال ${below} من يتبعونك` }
+      : { en: 'Your own actions', ar: 'أعمالك أنت' }
+  }, [isOwner, actorRole, actorId, descendantsOf])
+
   const pending = useMemo(() => requests.filter((r) => r.status === 'pending'), [requests])
   const mine = useMemo(() => (isOwner ? requests : requests.filter((r) => r.requestedById === actorId)), [requests, isOwner, actorId])
 
@@ -225,7 +250,9 @@ export function GovernanceProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<GovernanceCtx>(() => ({
     requests, pending, audit, submit, approve, reject, breakGlass, canSign, blockReason, mine, log, actor,
-  }), [requests, pending, audit, submit, approve, reject, breakGlass, canSign, blockReason, mine, log, actor])
+    scopedAudit, auditScope,
+  }), [requests, pending, audit, submit, approve, reject, breakGlass, canSign, blockReason, mine, log, actor,
+    scopedAudit, auditScope])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
