@@ -17,7 +17,8 @@ import { orderStatusVariant, OrderJourney, Row, useOrgMoney } from './shared'
 import { openPrintWindow } from '@/lib/printWindow'
 import { useBilling } from '@/state/BillingContext'
 
-// An order may be cancelled only while still early-stage (before it ships or is delivered).
+// An order may be cancelled only while still early-stage — once it is on the bay waiting
+// to be collected, it has already been made.
 const CANCELLABLE: ReadonlySet<AccountOrderStatus> = new Set(['awaiting_approval', 'confirmed', 'processing'])
 
 /* ─────────── Org orders (unified B2B account — all orders, not just mine) ─────────── */
@@ -40,8 +41,8 @@ export function OrgOrdersPanel() {
 /* ─────────── My orders ─────────── */
 function MyOrders({ orders, onView }: { orders: AccountOrder[]; onView: (o: AccountOrder) => void }) {
   const { t } = useLocale()
-  const [filter, setFilter] = useState<'all' | 'awaiting_approval' | 'processing' | 'delivered'>('all')
-  const filters: typeof filter[] = ['all', 'awaiting_approval', 'processing', 'delivered']
+  const [filter, setFilter] = useState<'all' | 'awaiting_approval' | 'processing' | 'ready' | 'collected'>('all')
+  const filters: typeof filter[] = ['all', 'awaiting_approval', 'processing', 'ready', 'collected']
   const shown = filter === 'all' ? orders : orders.filter((o) => o.status === filter)
 
   return (

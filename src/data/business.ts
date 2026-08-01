@@ -21,7 +21,9 @@ export interface Quote {
   note: Bilingual
 }
 
-export type AccountOrderStatus = 'awaiting_approval' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'rejected'
+// The journey ends at the plant: an order is prepared, put on the bay, and handed over.
+// Nothing is shipped and nothing is delivered — see data/fulfilment.ts.
+export type AccountOrderStatus = 'awaiting_approval' | 'confirmed' | 'processing' | 'ready' | 'collected' | 'rejected'
 
 // An order may be cancelled within this window while still early-stage (before it ships).
 export const CANCEL_WINDOW_MS = 30 * 60 * 1000 // 30 minutes
@@ -44,6 +46,8 @@ export interface AccountOrder {
   taxInvoiceFile?: string // tax invoice attached by Jaz (absent → awaiting issue)
 }
 
+// Gifting is dispatched to each recipient, not collected by the buyer — so unlike an
+// order, a gift batch still ships and is delivered.
 export interface GiftBatch {
   id: string
   occasion: Bilingual
@@ -174,7 +178,7 @@ export const accountOrders: AccountOrder[] = [
   {
     orderNo: 'JAZ-2026-001065',
     placedAt: '2026-06-02',
-    status: 'delivered',
+    status: 'collected',
     totalMinor: 720000,
     buyer: { en: 'Faisal Al-Harbi', ar: 'فيصل الحربي' },
     buyerId: 'm-3',
@@ -187,7 +191,7 @@ export const accountOrders: AccountOrder[] = [
   {
     orderNo: 'JAZ-2026-000981',
     placedAt: '2026-05-22',
-    status: 'delivered',
+    status: 'collected',
     totalMinor: 4200000,
     buyer: { en: 'Khalid Al-Otaibi', ar: 'خالد العتيبي' },
     buyerId: 'm-1',

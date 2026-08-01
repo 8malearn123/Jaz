@@ -1,4 +1,4 @@
-import { Minus, Plus, Phone, MessageCircle, ClipboardCheck, Cog, Truck, PackageCheck, Check, AlertTriangle, CalendarClock, ArrowRight, MapPin, Clock } from 'lucide-react'
+import { Minus, Plus, Phone, MessageCircle, ClipboardCheck, Cog, PackageCheck, Handshake, Check, AlertTriangle, CalendarClock, ArrowRight, MapPin, Clock } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { organization } from '@/data/organization'
 import { scheduledPickups, accountOrders, accountOrderItems, type AccountOrderStatus } from '@/data/business'
@@ -21,7 +21,7 @@ export function fill(s: string, vars: Record<string, string | number>): string {
 
 /** Single account-order status → StatusBadge variant (Orders, Delivery, Overview all use this). */
 export const orderStatusVariant: Record<AccountOrderStatus, 'gold' | 'success' | 'danger' | 'neutral'> = {
-  awaiting_approval: 'danger', confirmed: 'gold', processing: 'gold', shipped: 'gold', delivered: 'success', rejected: 'neutral',
+  awaiting_approval: 'danger', confirmed: 'gold', processing: 'gold', ready: 'gold', collected: 'success', rejected: 'neutral',
 }
 
 /** The one reorder path — copy a placed order's real line items into the shared cart. */
@@ -73,17 +73,18 @@ export function QtyStepper({ qty, onDec, onInc, onSet, size = 'md' }: { qty: num
 }
 
 /* ── The single order-journey tracker (mini + full), replacing OrderTimeline ── */
-const STEP_ICONS = [ClipboardCheck, Cog, Truck, PackageCheck]
+// The last leg is a handover at the bay, not a truck leaving for somewhere.
+const STEP_ICONS = [ClipboardCheck, Cog, PackageCheck, Handshake]
 
 function journeyState(status: AccountOrderStatus) {
-  // 4 fulfillment stages; awaiting_approval sits at stage 0 (pending), rejected is a dead-end.
-  const current = status === 'awaiting_approval' ? 0 : status === 'shipped' ? 2 : status === 'delivered' ? 3 : 1
-  return { current, delivered: status === 'delivered', pendingApproval: status === 'awaiting_approval' }
+  // 4 stages, ending at the handover; awaiting_approval sits at stage 0, rejected is a dead-end.
+  const current = status === 'awaiting_approval' ? 0 : status === 'ready' ? 2 : status === 'collected' ? 3 : 1
+  return { current, delivered: status === 'collected', pendingApproval: status === 'awaiting_approval' }
 }
 
 export function OrderJourney({ status, variant = 'full' }: { status: AccountOrderStatus; variant?: 'full' | 'mini' }) {
   const { t } = useLocale()
-  const labels = [t('buyer.step.approval'), t('buyer.step.processing'), t('buyer.step.shipped'), t('buyer.step.delivered')]
+  const labels = [t('buyer.step.approval'), t('buyer.step.processing'), t('buyer.step.ready'), t('buyer.step.collected')]
 
   if (status === 'rejected') {
     return (
@@ -183,7 +184,7 @@ export function LastOrderCard({ onTab }: { onTab: (id: string) => void }) {
   const { t, pick } = useLocale()
   const next = scheduledPickups.find((d) => d.status !== 'collected')
   const order = (next && accountOrders.find((o) => o.orderNo === next.orderNo))
-    ?? accountOrders.find((o) => o.status === 'processing' || o.status === 'shipped')
+    ?? accountOrders.find((o) => o.status === 'processing' || o.status === 'ready')
     ?? accountOrders[0]
   if (!order) return null
   return (
