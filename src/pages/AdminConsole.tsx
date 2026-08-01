@@ -91,8 +91,14 @@ const VENDOR_VIEWS: SubView[] = [
   { id: 'forecast', label: { en: 'Order forecasts', ar: 'تنبؤات الطلبات' } },
   { id: 'credit', label: { en: 'Join requests', ar: 'طلبات الانضمام' } },
 ]
+// Approvals nests the live queue and the chains that fill it.
+const APPROVAL_VIEWS: SubView[] = [
+  { id: 'inbox', label: { en: 'Awaiting signature', ar: 'بانتظار التوقيع' } },
+  { id: 'policies', label: { en: 'Approval chains', ar: 'سلاسل الاعتماد' } },
+]
 const SUB_NAVS: Partial<Record<Section, SubView[]>> = {
   owner_supply: SUPPLY_VIEWS,
+  owner_approvals: APPROVAL_VIEWS,
   owner_catalog: CHANNEL_VIEWS,
   owner_vendors: VENDOR_VIEWS,
 }
@@ -205,7 +211,7 @@ export function AdminConsole() {
         {active === 'owner_exec' && <OwnerExec />}
         {active === 'owner_orders' && <OwnerOrders />}
         {active === 'owner_supply' && <OwnerSupply view={(sub ?? 'po') as SupplyView} />}
-        {active === 'owner_approvals' && <OwnerApprovals />}
+        {active === 'owner_approvals' && <OwnerApprovals view={(sub ?? 'inbox') as 'inbox' | 'policies'} />}
         {active === 'owner_audit' && <OwnerAudit />}
         {active === 'owner_customers' && <OwnerCustomers />}
         {active === 'owner_team' && <OwnerTeam />}
