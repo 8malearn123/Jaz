@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { UserPlus, Trash2, ShieldCheck, Check, Network, ChevronDown, Lock } from 'lucide-react'
+import { Fragment, useState } from 'react'
+import { UserPlus, Trash2, ShieldCheck, Check, Network, ChevronDown, Lock, Users, User, Settings2 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
@@ -14,13 +14,6 @@ import { PanelHead, StatCard, Pill } from './_shared'
 
 const initials = (s: string) => s.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('')
 
-// Tree geometry, in pixels. A row is `py-1.5` around a 36px avatar, so its centre — where
-// an elbow meets a node and where a last child's spine stops — sits at 24. BRANCH is what
-// makes the lines actually connect: a child's spine has to fall under its parent's avatar
-// centre, which is the button's own 8px padding plus half that avatar.
-const RAIL = 30 // how far a node sits from the spine it hangs off
-const BRANCH = 26 // 8px button padding + 18px half-avatar
-const ROW_MID = 24
 const permOf = (k: TeamPermission) => teamPermissions.find((p) => p.key === k)!
 
 /** Team & staff: create accounts, give each one a job role and a place in the org chart,
@@ -184,115 +177,200 @@ export function OwnerTeam() {
   )
 }
 
-/** The org chart, drawn as a tree: every person sits under whoever they report to,
- *  with their own people branching beneath them. The owner is the root, so the whole
- *  team reads as one structure rather than a list of names. */
+/** The org chart, drawn top-down: a person sits above their people, who spread out
+ *  beneath on a shared bus. Wide branches are why it drills down — clicking a card makes
+ *  it the root and lifts its line of managers into the strip above the dashed rule, so a
+ *  manager with twenty reports is one readable level instead of an unscrollable row. */
 function OrgTree({ employees, onPick }: { employees: Employee[]; onPick: (id: string) => void }) {
   const { pick } = useLocale()
   const [open, setOpen] = useState(true)
+  const [focusId, setFocusId] = useState<string | null>(null) // null → the owner is the root
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
-  const ids = new Set(employees.map((e) => e.id))
-  // A person whose manager is unset (or was removed) branches directly off the owner.
-  const roots = employees.filter((e) => !e.managerId || !ids.has(e.managerId))
-  const reportsOf = (id: string) => employees.filter((r) => r.managerId === id)
-  const toggle = (id: string) => setCollapsed((prev) => {
-    const next = new Set(prev)
-    if (next.has(id)) next.delete(id); else next.add(id)
-    return next
-  })
 
-  // Everyone beneath a person, however deep — the number that makes a branch worth collapsing.
+  const ids = new Set(employees.map((e) => e.id))
+  const rootsOfOwner = employees.filter((e) => !e.managerId || !ids.has(e.managerId))
+  const reportsOf = (id: string) => employees.filter((r) => r.managerId === id)
+  const byId = (id: string) => employees.find((e) => e.id === id) ?? null
+
+  // Everyone beneath a person, however deep — the figure that says how big a branch is.
   const teamSize = (id: string, seen = new Set<string>()): number => {
     if (seen.has(id)) return 0
     seen.add(id)
     return reportsOf(id).reduce((a, r) => a + 1 + teamSize(r.id, seen), 0)
   }
 
-  const node = (e: Employee, isLast: boolean, seen: Set<string>): React.ReactNode => {
-    if (seen.has(e.id)) return null
-    const next = new Set(seen).add(e.id)
-    const reports = reportsOf(e.id)
+  // The managers above the focused node, top-most first, ending with the node itself.
+  const lineage = (() => {
+    if (!focusId) return []
+    const line: Employee[] = []
+    const seen = new Set<string>()
+    let cursor: string | undefined = focusId
+    while (cursor && !seen.has(cursor)) {
+      seen.add(cursor)
+      const e = byId(cursor)
+      if (!e) break
+      line.unshift(e)
+      cursor = e.managerId
+    }
+    return line
+  })()
+
+  const focused = focusId ? byId(focusId) : null
+  const toggle = (id: string) => setCollapsed((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+
+  const card = (e: Employee, tone: 'root' | 'branch' | 'leaf') => {
     const def = jobRoleOf(e.role)
+    const reports = reportsOf(e.id)
     const shut = collapsed.has(e.id)
     const below = teamSize(e.id)
     return (
-      <li key={e.id} className="relative" style={{ paddingInlineStart: RAIL }}>
-        {/* the spine this node hangs from — it stops at the elbow when nothing follows */}
-        <span aria-hidden className="absolute w-px bg-hairline-strong"
-          style={{ insetInlineStart: 0, top: 0, ...(isLast ? { height: ROW_MID } : { bottom: 0 }) }} />
-        {/* the elbow into the node itself */}
-        <span aria-hidden className="absolute h-px bg-hairline-strong"
-          style={{ insetInlineStart: 0, top: ROW_MID, width: RAIL - 6 }} />
-
-        {/* the row hugs its node so the branch keeps its shape — a full-width row would
-            stretch every level to the same edge and flatten the tree back into a list */}
-        <div className="inline-flex items-center gap-xxs max-w-full">
-          <button type="button" onClick={() => onPick(e.id)}
-            className="min-w-0 flex items-center gap-sm rounded-lg border border-transparent px-2 py-1.5 text-start hover:border-hairline hover:bg-surface-2 transition-colors">
-            <span className={cn('grid place-items-center w-9 h-9 rounded-pill shrink-0 font-sans text-caption font-semibold',
-              e.active ? 'bg-primary/10 text-primary-hover' : 'bg-surface-2 text-ink-subtle')}>{initials(pick(e.name))}</span>
-            <span className="min-w-0">
-              <span className="block font-sans text-data text-ink truncate">
-                {pick(e.name)}
-                {!e.active && <span className="text-ink-subtle"> · {pick({ en: 'suspended', ar: 'موقوف' })}</span>}
-              </span>
-              <span className="block font-sans text-caption text-ink-subtle truncate">{def ? pick(def.label) : pick(e.title)}</span>
-            </span>
-            {reports.length > 0 && (
-              <span className="shrink-0 rounded-pill border border-hairline-strong bg-surface-2 px-2 py-0.5 font-sans text-caption text-ink-muted tabular-nums">
-                {reports.length} {pick({ en: 'direct', ar: 'مباشر' })}{below > reports.length && ` · ${below} ${pick({ en: 'total', ar: 'الإجمالي' })}`}
-              </span>
-            )}
+      <div className="relative flex flex-col items-center">
+        <div className={cn('relative w-[164px] rounded-lg bg-surface-1 px-3 pt-3 pb-4 text-center transition-colors',
+          tone === 'root' ? 'border-2 border-ink' : tone === 'branch' ? 'border border-hairline-strong' : 'border border-hairline',
+          !e.active && 'opacity-60')}>
+          <span className="absolute top-2 end-2 rounded-pill bg-surface-2 border border-hairline px-1.5 py-0.5 font-sans text-caption text-ink-subtle tabular-nums">{e.id}</span>
+          <button type="button" onClick={() => onPick(e.id)} aria-label={pick({ en: 'Role & reporting', ar: 'الدور والتبعية' })}
+            className="absolute top-2 start-2 grid place-items-center w-6 h-6 rounded-md text-ink-subtle hover:text-ink hover:bg-surface-2 transition-colors">
+            <Settings2 size={13} />
           </button>
-          {reports.length > 0 && (
-            <button type="button" onClick={() => toggle(e.id)} aria-expanded={!shut}
-              aria-label={pick({ en: 'Collapse branch', ar: 'طيّ الفرع' })}
-              className="grid place-items-center w-7 h-7 rounded-md text-ink-subtle hover:text-ink hover:bg-surface-2 transition-colors shrink-0">
-              <ChevronDown size={15} className={cn('transition-transform', shut && '-rotate-90 rtl:rotate-90')} />
-            </button>
-          )}
+          <button type="button" onClick={() => setFocusId(e.id)} className="w-full flex flex-col items-center gap-xxs pt-3">
+            <span className={cn('grid place-items-center w-10 h-10 rounded-pill mb-1',
+              e.active ? 'bg-primary/10 text-primary-hover' : 'bg-surface-2 text-ink-subtle')}>
+              <User size={20} />
+            </span>
+            <span className="font-sans text-data text-ink leading-tight">{pick(e.name)}</span>
+            <span className="font-sans text-caption text-ink-subtle leading-tight">{def ? pick(def.label) : pick(e.title)}</span>
+            {!e.active && <span className="font-sans text-caption text-danger">{pick({ en: 'suspended', ar: 'موقوف' })}</span>}
+          </button>
         </div>
-
-        {reports.length > 0 && !shut && (
-          <ul className="relative" style={{ marginInlineStart: BRANCH }}>
-            {reports.map((r, i) => node(r, i === reports.length - 1, next))}
-          </ul>
-        )}
-      </li>
+        {/* the count chip straddles the card's bottom edge, as on a real org chart */}
+        <button type="button" onClick={() => reports.length > 0 && toggle(e.id)} disabled={reports.length === 0}
+          aria-expanded={reports.length > 0 ? !shut : undefined}
+          className={cn('-mt-2.5 z-10 inline-flex items-center gap-xxs rounded-md border bg-surface-1 px-2 py-0.5 font-sans text-caption tabular-nums transition-colors',
+            reports.length > 0 ? 'border-hairline-strong text-ink-muted hover:border-ink/40 hover:text-ink' : 'border-hairline text-ink-subtle cursor-default')}
+          title={below > reports.length ? `${below} ${pick({ en: 'in total', ar: 'في الفرع كله' })}` : undefined}>
+          <Users size={12} />
+          {reports.length}
+          {reports.length > 0 && <ChevronDown size={12} className={cn('transition-transform', !shut && 'rotate-180')} />}
+        </button>
+      </div>
     )
   }
 
+  // A node and everything under it. The connectors are drawn by the list items themselves:
+  // each one paints half the horizontal bus plus its own drop, and the outer halves are
+  // trimmed off the first and last child — which is also what makes an only child a
+  // straight line down rather than a stray stub.
+  const subtree = (e: Employee, seen: Set<string>): React.ReactNode => {
+    if (seen.has(e.id)) return null
+    const next = new Set(seen).add(e.id)
+    const reports = reportsOf(e.id)
+    const shut = collapsed.has(e.id)
+    return (
+      <div className="flex flex-col items-center">
+        {card(e, reports.length > 0 ? 'branch' : 'leaf')}
+        {reports.length > 0 && !shut && (
+          <ul className="relative flex justify-center pt-6 before:content-[''] before:absolute before:top-0 before:start-1/2 before:h-6 before:border-s before:border-hairline-strong">
+            {reports.map((r) => (
+              <li key={r.id} className={cn('relative flex flex-col items-center px-2 pt-6',
+                "before:content-[''] before:absolute before:top-0 before:end-1/2 before:w-1/2 before:h-6 before:border-t before:border-hairline-strong",
+                "after:content-[''] after:absolute after:top-0 after:start-1/2 after:w-1/2 after:h-6 after:border-t after:border-s after:border-hairline-strong",
+                'first:before:border-t-0 last:after:border-t-0')}>
+                {subtree(r, next)}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    )
+  }
+
+  const ownerCard = (
+    <div className="flex flex-col items-center">
+      <div className={cn('w-[164px] rounded-lg bg-surface-1 px-3 pt-3 pb-4 text-center', focusId ? 'border border-hairline-strong' : 'border-2 border-ink')}>
+        <button type="button" onClick={() => setFocusId(null)} className="w-full flex flex-col items-center gap-xxs">
+          <span className="grid place-items-center w-10 h-10 rounded-pill bg-ink text-ink-on-dark mb-1 font-sans text-caption font-semibold">JZ</span>
+          <span className="font-sans text-data text-ink leading-tight">{pick({ en: 'Owner', ar: 'المالك' })}</span>
+          <span className="font-sans text-caption text-ink-subtle leading-tight">{pick({ en: 'Top of every escalation line', ar: 'أعلى كل خط تصعيد' })}</span>
+        </button>
+      </div>
+      <span className="-mt-2.5 z-10 inline-flex items-center gap-xxs rounded-md border border-hairline-strong bg-surface-1 px-2 py-0.5 font-sans text-caption text-ink-muted tabular-nums">
+        <Users size={12} /> {rootsOfOwner.length}
+      </span>
+    </div>
+  )
+
   return (
     <div className="card overflow-hidden">
-      <button type="button" onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between gap-sm px-lg py-md border-b border-hairline text-start">
-        <span className="min-w-0">
-          <span className="block font-serif text-card-title text-ink inline-flex items-center gap-xs"><Network size={17} className="text-primary-hover" /> {pick({ en: 'Org chart', ar: 'الهيكل الإداري' })}</span>
-          <span className="block font-sans text-caption text-ink-subtle mt-xxs">{pick({ en: 'Who reports to whom — a decision nobody on a branch can sign climbs it to the owner.', ar: 'من يتبع من — والقرار الذي لا يستطيع أحد في الفرع توقيعه يصعد إلى المالك.' })}</span>
-        </span>
-        <ChevronDown size={18} className={cn('shrink-0 text-ink-subtle transition-transform', !open && 'rotate-180')} />
-      </button>
+      <div className="flex flex-wrap items-start justify-between gap-sm px-lg py-md border-b border-hairline">
+        <button type="button" onClick={() => setOpen((o) => !o)} className="flex-1 min-w-0 flex items-center justify-between gap-sm text-start">
+          <span className="min-w-0">
+            <span className="block font-serif text-card-title text-ink inline-flex items-center gap-xs"><Network size={17} className="text-primary-hover" /> {pick({ en: 'Org chart', ar: 'المخطط التنظيمي' })}</span>
+            <span className="block font-sans text-caption text-ink-subtle mt-xxs">{pick({ en: 'Click a card to open that branch · a decision nobody on it can sign climbs to the owner.', ar: 'اضغط بطاقة لفتح فرعها · والقرار الذي لا يوقّعه أحد فيه يصعد إلى المالك.' })}</span>
+          </span>
+          <ChevronDown size={18} className={cn('shrink-0 text-ink-subtle transition-transform', !open && 'rotate-180')} />
+        </button>
+      </div>
       {open && (
-        <div className="p-lg overflow-x-auto">
-          {/* the owner is the root — every branch ultimately hangs off it */}
-          <div className="flex items-center gap-sm px-2 py-1.5">
-            <span className="grid place-items-center w-9 h-9 rounded-pill bg-ink text-ink-on-dark shrink-0 font-sans text-caption font-semibold">JZ</span>
-            <span className="min-w-0">
-              <span className="block font-sans text-data text-ink">{pick({ en: 'Owner', ar: 'المالك' })}</span>
-              <span className="block font-sans text-caption text-ink-subtle">{pick({ en: 'Top of every escalation line', ar: 'أعلى كل خط تصعيد' })}</span>
-            </span>
-            {employees.length > 0 && (
-              <span className="shrink-0 rounded-pill border border-hairline-strong bg-surface-2 px-2 py-0.5 font-sans text-caption text-ink-muted tabular-nums">
-                {employees.length} {pick({ en: 'in the team', ar: 'في الفريق' })}
-              </span>
-            )}
-          </div>
-          {roots.length === 0
-            ? <p className="px-2 pt-sm font-sans text-caption text-ink-subtle">{pick({ en: 'No employees yet — add one and it appears on this chart.', ar: 'لا موظفين بعد — أضف موظفًا فيظهر في هذا الهيكل.' })}</p>
-            : (
-              <ul className="relative" style={{ marginInlineStart: BRANCH }}>
-                {roots.map((e, i) => node(e, i === roots.length - 1, new Set()))}
-              </ul>
-            )}
+        <div className="p-lg">
+          {employees.length === 0 ? (
+            <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'No employees yet — add one and it appears on this chart.', ar: 'لا موظفين بعد — أضف موظفًا فيظهر في هذا المخطط.' })}</p>
+          ) : (
+            <>
+              {/* the line of managers above whatever is in focus */}
+              {focused && (
+                <>
+                  <div className="flex flex-col items-center">
+                    {ownerCard}
+                    {lineage.map((e) => (
+                      <Fragment key={`ln-${e.id}`}>
+                        <span className="w-px h-6 bg-hairline-strong" />
+                        {card(e, e.id === focusId ? 'root' : 'branch')}
+                      </Fragment>
+                    ))}
+                  </div>
+                  <div className="my-lg border-t border-dashed border-hairline-strong" />
+                </>
+              )}
+
+              {/* `w-max` lets the chart be as wide as it needs and `mx-auto` centres it when it
+                  fits; forcing it to the container's width instead pushes a wide level off
+                  both edges at once and clips the leading card out of reach. */}
+              <div className="overflow-x-auto pb-sm">
+                <div className="w-max mx-auto flex justify-center">
+                  {focused
+                    ? subtree(focused, new Set())
+                    : (
+                      <div className="flex flex-col items-center">
+                        {ownerCard}
+                        {rootsOfOwner.length > 0 && (
+                          <ul className="relative flex justify-center pt-6 before:content-[''] before:absolute before:top-0 before:start-1/2 before:h-6 before:border-s before:border-hairline-strong">
+                            {rootsOfOwner.map((e) => (
+                              <li key={e.id} className={cn('relative flex flex-col items-center px-2 pt-6',
+                                "before:content-[''] before:absolute before:top-0 before:end-1/2 before:w-1/2 before:h-6 before:border-t before:border-hairline-strong",
+                                "after:content-[''] after:absolute after:top-0 after:start-1/2 after:w-1/2 after:h-6 after:border-t after:border-s after:border-hairline-strong",
+                                'first:before:border-t-0 last:after:border-t-0')}>
+                                {subtree(e, new Set())}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                </div>
+              </div>
+
+              {focused && (
+                <button type="button" onClick={() => setFocusId(null)} className="link-gold text-caption mt-md">
+                  ← {pick({ en: 'Back to the whole chart', ar: 'العودة للمخطط كاملًا' })}
+                </button>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>
