@@ -19,7 +19,7 @@ import { contracts as contractsSeed, b2cCatalog, stdCatalog, catTree, storeProdu
 import type { CountryCode } from '@/data/countries'
 import { ownerVendors as ownerVendorsSeed, onboardingStages, vendorDocsSeed, type OwnerVendor, type VendorDoc, type VendorDocKind } from '@/data/ownerVendors'
 import type { Employee, TeamPermission } from '@/data/ownerTeam'
-import type { DecisionKind, JobRole } from '@/data/governance'
+import type { JobRole } from '@/data/governance'
 import { useTeam } from '@/state/TeamContext'
 
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
@@ -152,7 +152,7 @@ interface OwnerStateValue {
   shelfLife: Record<string, number>
   bomHistory: Record<string, RecipeVersion[]>
   /** Execute a decision that has collected its signatures. */
-  applyApproved: (kind: DecisionKind, payload: unknown, by: Bilingual) => void
+  applyApproved: (kind: string, payload: unknown, by: Bilingual) => void
   // credit limits (overlay)
   creditLimits: Record<string, number>
   setCreditLimit: (id: string, limitMinor: number) => void
@@ -585,7 +585,8 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
      A held decision changes nothing until it is signed. When it is, the console
      hands the request back here and this is the one place that acts on it — so the
      approval queue never needs to know what a batch or a credit limit is. */
-  const applyApproved = useCallback((kind: DecisionKind, payload: unknown, by: Bilingual) => {
+  // A chain the owner added has no state to change — the signed record is the whole point.
+  const applyApproved = useCallback((kind: string, payload: unknown, by: Bilingual) => {
     const p = payload as ApprovalPayload
     switch (kind) {
       case 'credit_limit': setCreditLimit(p.vendorId!, p.limitMinor!); break

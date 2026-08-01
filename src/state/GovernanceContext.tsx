@@ -2,8 +2,9 @@ import { createContext, useContext, useCallback, useMemo, useRef, useState, type
 import type { Bilingual } from '@/data/types'
 import type { Employee } from '@/data/ownerTeam'
 import {
-  needsApproval, needsDualControl, policyOf, roleMayApprove, withOverride,
-  type DecisionKind, type DecisionPolicy, type JobRole, type PolicyOverride,
+  needsApproval, policyOf, roleMayApprove, roleMaySignStep, stepsFor, withOverride,
+  chainToPolicy, decisionPolicies,
+  type ApprovalStep, type CustomChain, type DecisionPolicy, type JobRole, type PolicyOverride,
 } from '@/data/governance'
 import { useTeam } from './TeamContext'
 
@@ -22,7 +23,7 @@ export type RequestStatus = 'pending' | 'approved' | 'rejected'
 
 export interface ApprovalRequest {
   id: string
-  kind: DecisionKind
+  kind: string
   /** One line naming the subject — "Batch BATCH-FG-12 · Dark 70% bar". */
   subject: Bilingual
   /** What changes if this is approved, in plain words. */
@@ -36,8 +37,11 @@ export interface ApprovalRequest {
   at: Bilingual
   seq: number
   status: RequestStatus
-  /** Signatures collected so far. Dual control needs the owner on top of the first approver. */
+  /** Signatures collected so far — one per rung climbed, in order. */
   signatures: { by: Bilingual; role: JobRole | 'owner'; at: Bilingual }[]
+  /** The rungs as they stood when this was raised. Editing the chain later cannot
+   *  move the goalposts under a request that is already waiting. */
+  steps: ApprovalStep[]
   needsDual: boolean
   decidedBy?: Bilingual
   decidedAt?: Bilingual
@@ -71,7 +75,7 @@ interface GovernanceCtx {
   audit: AuditEntry[]
   /** Raise a decision. Returns 'auto' when policy lets it through at this value. */
   submit: (r: {
-    kind: DecisionKind
+    kind: string
     subject: Bilingual
     detail: Bilingual
     amountMinor?: number
@@ -94,13 +98,22 @@ interface GovernanceCtx {
   log: (e: { action: Bilingual; resource: string; sensitive?: boolean; emergency?: boolean }) => void
   actor: Bilingual
   /** A chain as it currently stands — shipped defaults with the owner's edits applied. */
-  policyFor: (kind: DecisionKind) => DecisionPolicy
-  /** Change a chain's threshold, its dual-control point, or switch it off entirely. */
-  setPolicy: (kind: DecisionKind, patch: PolicyOverride) => void
+  policyFor: (kind: string) => DecisionPolicy
+  /** Change a chain's rungs, its thresholds, or switch it off entirely. */
+  setPolicy: (kind: string, patch: PolicyOverride) => void
   /** Put a chain back to how it shipped. */
-  resetPolicy: (kind: DecisionKind) => void
+  resetPolicy: (kind: string) => void
   /** Which chains the owner has edited. */
-  policyOverrides: Partial<Record<DecisionKind, PolicyOverride>>
+  policyOverrides: Record<string, PolicyOverride>
+  /** Every chain in force: the fifteen wired to actions, then the ones the owner added. */
+  chains: DecisionPolicy[]
+  customChains: CustomChain[]
+  addChain: (c: Omit<CustomChain, 'id'>) => string
+  removeChain: (id: string) => void
+  /** Raise a request by hand — the only way a custom chain gets one, since no action performs it. */
+  raiseManual: (r: { kind: string; subject: Bilingual; detail: Bilingual; amountMinor?: number; reason: string }) => SubmitOutcome
+  /** Which rung a waiting request is on, and who may sign it. */
+  stepStateOf: (r: ApprovalRequest) => { index: number; total: number; step: ApprovalStep | null }
   /** The trail as the signed-in account may see it — see `auditScope`. */
   scopedAudit: AuditEntry[]
   /** Whose actions that trail covers, said plainly. */
@@ -116,7 +129,9 @@ export function GovernanceProvider({ children }: { children: ReactNode }) {
   const { activeEmployee, managersOf, descendantsOf } = useTeam()
   const [requests, setRequests] = useState<ApprovalRequest[]>([])
   const [audit, setAudit] = useState<AuditEntry[]>([])
-  const [policyOverrides, setPolicyOverrides] = useState<Partial<Record<DecisionKind, PolicyOverride>>>({})
+  const [policyOverrides, setPolicyOverrides] = useState<Record<string, PolicyOverride>>({})
+  const [customChains, setCustomChains] = useState<CustomChain[]>([])
+  const chainSeqRef = useRef(1)
   const seqRef = useRef(1)
   const auditSeqRef = useRef(1)
 
@@ -135,10 +150,21 @@ export function GovernanceProvider({ children }: { children: ReactNode }) {
     }, ...prev])
   }, [actor, actorId, actorRole])
 
-  const policyFor = useCallback((kind: DecisionKind) => withOverride(policyOf(kind), policyOverrides[kind]), [policyOverrides])
+  const policyFor = useCallback((kind: string): DecisionPolicy => {
+    const custom = customChains.find((c) => c.id === kind)
+    const base = custom ? chainToPolicy(custom) : policyOf(kind)
+    // A kind with no chain behind it should never silently pass, so it falls back to held.
+    if (!base) return { kind, label: { en: kind, ar: kind }, desc: { en: '', ar: '' }, autoBelowMinor: null, steps: [], dualAboveMinor: null, requiresReason: false }
+    return withOverride(base, policyOverrides[kind])
+  }, [policyOverrides, customChains])
+
+  const chains = useMemo(() => [
+    ...decisionPolicies.map((b) => policyFor(b.kind)),
+    ...customChains.map((c) => policyFor(c.id)),
+  ], [policyFor, customChains])
 
   const submit = useCallback((r: {
-    kind: DecisionKind; subject: Bilingual; detail: Bilingual
+    kind: string; subject: Bilingual; detail: Bilingual
     amountMinor?: number; reason?: string; payload?: unknown; force?: boolean
   }): SubmitOutcome => {
     const amountMinor = r.amountMinor ?? 0
@@ -155,7 +181,7 @@ export function GovernanceProvider({ children }: { children: ReactNode }) {
     setRequests((prev) => [{
       id, seq, kind: r.kind, subject: r.subject, detail: r.detail, amountMinor,
       reason: r.reason ?? '', requestedBy: actor, requestedById: actorId, requestedRole: actorRole,
-      at: NOW, status: 'pending', signatures: [], needsDual: needsDualControl(p, amountMinor),
+      at: NOW, status: 'pending', signatures: [], steps: stepsFor(p, amountMinor), needsDual: false,
       payload: r.payload,
     }, ...prev])
     log({ action: { en: `${p.label.en} — submitted for approval`, ar: `${p.label.ar} — رُفعت للاعتماد` }, resource: r.subject.en, sensitive: true })
@@ -165,6 +191,13 @@ export function GovernanceProvider({ children }: { children: ReactNode }) {
   // Who may sign: never the requester (that is the whole point), and only a role the
   // policy names — unless the request has already climbed past everyone who could sign it,
   // in which case it rests with the owner.
+  /** The rung a request is waiting on. */
+  const stepStateOf = useCallback((r: ApprovalRequest) => {
+    const total = r.steps.length
+    const index = r.signatures.length
+    return { index, total, step: index < total ? r.steps[index] : null }
+  }, [])
+
   const blockReason = useCallback((r: ApprovalRequest): Bilingual | null => {
     if (r.status !== 'pending') return { en: 'Already decided', ar: 'حُسمت مسبقًا' }
     if (r.requestedById != null && r.requestedById === actorId) {
@@ -173,13 +206,16 @@ export function GovernanceProvider({ children }: { children: ReactNode }) {
     if (r.requestedById == null && isOwner) {
       return { en: 'You raised this — someone else signs it', ar: 'أنت من رفعها — يوقّعها غيرك' }
     }
-    if (isOwner) return null // the owner is the top of every escalation line
     if (r.signatures.some((s) => s.by.en === actor.en)) return { en: 'You already signed', ar: 'وقّعتها بالفعل' }
-    if (!roleMayApprove(actorRole ?? undefined, policyFor(r.kind), r.amountMinor)) {
-      return { en: 'Outside your role’s authority', ar: 'خارج صلاحية دورك' }
+    if (isOwner) return null // the owner sits above every rung
+    const { step } = stepStateOf(r)
+    if (!step) return { en: 'Already decided', ar: 'حُسمت مسبقًا' }
+    if (step.roles.length === 0) return { en: 'This step is the owner’s to sign', ar: 'هذه الدرجة توقيعها للمالك' }
+    if (!roleMaySignStep(actorRole ?? undefined, step, policyFor(r.kind), r.amountMinor)) {
+      return { en: 'Not your step on this chain', ar: 'ليست درجتك في هذه السلسلة' }
     }
     return null
-  }, [actorId, actorRole, actor, isOwner, policyFor])
+  }, [actorId, actorRole, actor, isOwner, policyFor, stepStateOf])
 
   const canSign = useCallback((r: ApprovalRequest) => blockReason(r) == null, [blockReason])
 
@@ -188,9 +224,8 @@ export function GovernanceProvider({ children }: { children: ReactNode }) {
     setRequests((prev) => prev.map((r) => {
       if (r.id !== id || r.status !== 'pending') return r
       const signatures = [...r.signatures, { by: actor, role: (actorRole ?? 'owner') as JobRole | 'owner', at: NOW }]
-      // Dual control is satisfied only once the owner has signed too.
-      const ownerSigned = signatures.some((s) => s.role === 'owner')
-      const complete = !r.needsDual || ownerSigned
+      // A chain is done when every rung has been climbed, not when someone senior signs.
+      const complete = signatures.length >= r.steps.length
       const next: ApprovalRequest = complete
         ? { ...r, signatures, status: 'approved', decidedBy: actor, decidedAt: NOW, decidedReason: note }
         : { ...r, signatures }
@@ -199,7 +234,7 @@ export function GovernanceProvider({ children }: { children: ReactNode }) {
     }))
     const p = requests.find((r) => r.id === id)
     if (p) {
-      const label = policyOf(p.kind).label
+      const label = policyFor(p.kind).label
       log({
         action: done
           ? { en: `Approved ${label.en.toLowerCase()}`, ar: `اعتمد ${label.ar}` }
@@ -214,7 +249,7 @@ export function GovernanceProvider({ children }: { children: ReactNode }) {
     setRequests((prev) => prev.map((r) => (r.id === id && r.status === 'pending'
       ? { ...r, status: 'rejected', decidedBy: actor, decidedAt: NOW, decidedReason: reason } : r)))
     const p = requests.find((r) => r.id === id)
-    if (p) log({ action: { en: `Rejected ${policyOf(p.kind).label.en.toLowerCase()}`, ar: `رفض ${policyOf(p.kind).label.ar}` }, resource: `${p.id} · ${p.subject.en}`, sensitive: true })
+    if (p) log({ action: { en: `Rejected ${policyFor(p.kind).label.en.toLowerCase()}`, ar: `رفض ${policyFor(p.kind).label.ar}` }, resource: `${p.id} · ${p.subject.en}`, sensitive: true })
   }, [actor, requests, log])
 
   // Break glass: the owner pushes a held decision through now. It still leaves a
@@ -232,7 +267,7 @@ export function GovernanceProvider({ children }: { children: ReactNode }) {
       return next
     }))
     const p = requests.find((r) => r.id === id)
-    if (p) log({ action: { en: `Emergency override — ${policyOf(p.kind).label.en.toLowerCase()}`, ar: `تنفيذ استثنائي — ${policyOf(p.kind).label.ar}` }, resource: `${p.id} · ${p.subject.en}`, sensitive: true, emergency: true })
+    if (p) log({ action: { en: `Emergency override — ${policyFor(p.kind).label.en.toLowerCase()}`, ar: `تنفيذ استثنائي — ${policyFor(p.kind).label.ar}` }, resource: `${p.id} · ${p.subject.en}`, sensitive: true, emergency: true })
     return done
   }, [isOwner, actor, requests, log])
 
@@ -254,16 +289,30 @@ export function GovernanceProvider({ children }: { children: ReactNode }) {
       : { en: 'Your own actions', ar: 'أعمالك أنت' }
   }, [isOwner, actorRole, actorId, descendantsOf])
 
-  const setPolicy = useCallback((kind: DecisionKind, patch: PolicyOverride) => {
+  const setPolicy = useCallback((kind: string, patch: PolicyOverride) => {
     setPolicyOverrides((prev) => ({ ...prev, [kind]: { ...prev[kind], ...patch } }))
-    const label = policyOf(kind).label
+    const label = policyOf(kind)?.label ?? { en: kind, ar: kind }
     log({ action: { en: `Changed the ${label.en.toLowerCase()} chain`, ar: `عدّل سلسلة ${label.ar}` }, resource: `Policy · ${kind}`, sensitive: true })
   }, [log])
-  const resetPolicy = useCallback((kind: DecisionKind) => {
+  const resetPolicy = useCallback((kind: string) => {
     setPolicyOverrides((prev) => { const next = { ...prev }; delete next[kind]; return next })
-    const label = policyOf(kind).label
+    const label = policyOf(kind)?.label ?? { en: kind, ar: kind }
     log({ action: { en: `Restored the ${label.en.toLowerCase()} chain`, ar: `أعاد سلسلة ${label.ar} لأصلها` }, resource: `Policy · ${kind}`, sensitive: true })
   }, [log])
+
+  const addChain = useCallback((c: Omit<CustomChain, 'id'>) => {
+    const id = `custom:${chainSeqRef.current++}`
+    setCustomChains((prev) => [...prev, { ...c, id }])
+    log({ action: { en: `Added the ${c.label.en.toLowerCase()} chain`, ar: `أضاف سلسلة ${c.label.ar}` }, resource: `Policy · ${id}`, sensitive: true })
+    return id
+  }, [log])
+  const removeChain = useCallback((id: string) => {
+    setCustomChains((prev) => prev.filter((c) => c.id !== id))
+    log({ action: { en: 'Removed a chain', ar: 'حذف سلسلة' }, resource: `Policy · ${id}`, sensitive: true })
+  }, [log])
+
+  const raiseManual = useCallback((r: { kind: string; subject: Bilingual; detail: Bilingual; amountMinor?: number; reason: string }) =>
+    submit({ ...r, force: true }), [submit])
 
   const pending = useMemo(() => requests.filter((r) => r.status === 'pending'), [requests])
   const mine = useMemo(() => (isOwner ? requests : requests.filter((r) => r.requestedById === actorId)), [requests, isOwner, actorId])
@@ -275,8 +324,10 @@ export function GovernanceProvider({ children }: { children: ReactNode }) {
   const value = useMemo<GovernanceCtx>(() => ({
     requests, pending, audit, submit, approve, reject, breakGlass, canSign, blockReason, mine, log, actor,
     scopedAudit, auditScope, policyFor, setPolicy, resetPolicy, policyOverrides,
+    chains, customChains, addChain, removeChain, raiseManual, stepStateOf,
   }), [requests, pending, audit, submit, approve, reject, breakGlass, canSign, blockReason, mine, log, actor,
-    scopedAudit, auditScope, policyFor, setPolicy, resetPolicy, policyOverrides])
+    scopedAudit, auditScope, policyFor, setPolicy, resetPolicy, policyOverrides,
+    chains, customChains, addChain, removeChain, raiseManual, stepStateOf])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
