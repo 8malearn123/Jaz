@@ -120,8 +120,13 @@ export type DecisionKind =
   // production
   | 'batch_release' | 'recipe_change' | 'shelf_life' | 'batch_disposition' | 'yield_variance'
 
+/** One rung of a chain: any of these roles may sign it, and the next rung waits for it. */
+export interface ApprovalStep {
+  roles: JobRole[]
+}
+
 export interface DecisionPolicy {
-  kind: DecisionKind
+  kind: string
   label: Bilingual
   /** What is being decided, in the requester's words. */
   desc: Bilingual
@@ -129,8 +134,8 @@ export interface DecisionPolicy {
   enabled?: boolean
   /** Below this value the action executes immediately. null → always needs approval. */
   autoBelowMinor: number | null
-  /** Roles competent to approve it, in escalation order. */
-  approverRoles: JobRole[]
+  /** The chain itself: signed rung by rung, in order. */
+  steps: ApprovalStep[]
   /** Above this value the first approver is not enough and the owner co-signs. */
   dualAboveMinor: number | null
   /** The requester must write why. */
@@ -147,7 +152,7 @@ export const decisionPolicies: DecisionPolicy[] = [
     label: { en: 'Credit limit raise', ar: 'رفع حد ائتماني' },
     desc: { en: 'Raising a partner’s credit limit', ar: 'رفع الحد الائتماني لشريك' },
     autoBelowMinor: 5000000, // ﷼ 50,000 — lowering a limit never needs approval
-    approverRoles: ['accountant', 'finance_mgr'],
+    steps: [{ roles: ['accountant', 'finance_mgr'] }],
     dualAboveMinor: 25000000, // ﷼ 250,000 → owner co-signs
     requiresReason: true,
   },
@@ -156,7 +161,7 @@ export const decisionPolicies: DecisionPolicy[] = [
     label: { en: 'Stock-take variance', ar: 'فرق جرد' },
     desc: { en: 'Posting a counted variance to stock', ar: 'ترحيل فرق الجرد إلى المخزون' },
     autoBelowMinor: 200000, // ﷼ 2,000 net variance
-    approverRoles: ['accountant', 'finance_mgr'],
+    steps: [{ roles: ['accountant', 'finance_mgr'] }],
     dualAboveMinor: null,
     requiresReason: true,
   },
@@ -165,7 +170,7 @@ export const decisionPolicies: DecisionPolicy[] = [
     label: { en: 'Waste write-off', ar: 'تسجيل هدر' },
     desc: { en: 'Writing stock off as waste', ar: 'إخراج مخزون كهدر' },
     autoBelowMinor: 50000, // ﷼ 500 per event
-    approverRoles: ['chef', 'accountant', 'finance_mgr'],
+    steps: [{ roles: ['chef', 'accountant', 'finance_mgr'] }],
     dualAboveMinor: null,
     requiresReason: true,
   },
@@ -174,7 +179,7 @@ export const decisionPolicies: DecisionPolicy[] = [
     label: { en: 'Invoice reconciliation', ar: 'مطابقة فاتورة' },
     desc: { en: 'Closing a purchase invoice’s three-way match', ar: 'إغلاق المطابقة الثلاثية لفاتورة مشتريات' },
     autoBelowMinor: null, // whoever entered it may never close it — always a second person
-    approverRoles: ['accountant', 'finance_mgr'],
+    steps: [{ roles: ['accountant', 'finance_mgr'] }],
     dualAboveMinor: null,
     requiresReason: false,
   },
@@ -183,7 +188,7 @@ export const decisionPolicies: DecisionPolicy[] = [
     label: { en: 'Price change', ar: 'تغيير سعر' },
     desc: { en: 'Changing a product’s selling price', ar: 'تغيير سعر بيع منتج' },
     autoBelowMinor: null, // gated on move size and on cost, not on value — see priceNeedsApproval
-    approverRoles: ['finance_mgr'],
+    steps: [{ roles: ['finance_mgr'] }],
     dualAboveMinor: null,
     requiresReason: true,
     valueless: true,
@@ -193,7 +198,7 @@ export const decisionPolicies: DecisionPolicy[] = [
     label: { en: 'Exchange rate change', ar: 'تغيير سعر صرف' },
     desc: { en: 'Moving a market rate beyond its tolerance', ar: 'تحريك سعر صرف سوقي خارج نطاق التسامح' },
     autoBelowMinor: null,
-    approverRoles: ['accountant', 'finance_mgr'],
+    steps: [{ roles: ['accountant', 'finance_mgr'] }],
     dualAboveMinor: null,
     requiresReason: true,
     valueless: true,
@@ -203,7 +208,7 @@ export const decisionPolicies: DecisionPolicy[] = [
     label: { en: 'Sensitive permission', ar: 'صلاحية حساسة' },
     desc: { en: 'Granting purchases, waste or products access', ar: 'منح صلاحية المشتريات أو الهدر أو المنتجات' },
     autoBelowMinor: null,
-    approverRoles: ['sys_admin', 'finance_mgr'],
+    steps: [{ roles: ['sys_admin', 'finance_mgr'] }],
     dualAboveMinor: null,
     requiresReason: true,
     valueless: true,
@@ -213,7 +218,7 @@ export const decisionPolicies: DecisionPolicy[] = [
     label: { en: 'Settlement', ar: 'سداد' },
     desc: { en: 'Recording a payment against a partner balance', ar: 'تسجيل سداد على رصيد شريك' },
     autoBelowMinor: 5000000, // ﷼ 50,000
-    approverRoles: ['accountant', 'finance_mgr'],
+    steps: [{ roles: ['accountant', 'finance_mgr'] }],
     dualAboveMinor: null,
     requiresReason: false,
   },
@@ -222,7 +227,7 @@ export const decisionPolicies: DecisionPolicy[] = [
     label: { en: 'Order cancellation', ar: 'إلغاء طلب' },
     desc: { en: 'Cancelling an order that already entered preparation', ar: 'إلغاء طلب دخل التجهيز' },
     autoBelowMinor: null,
-    approverRoles: ['sales', 'finance_mgr'],
+    steps: [{ roles: ['sales', 'finance_mgr'] }],
     dualAboveMinor: null,
     requiresReason: true,
     valueless: true,
@@ -232,7 +237,7 @@ export const decisionPolicies: DecisionPolicy[] = [
     label: { en: 'Loyalty mechanics', ar: 'آلية الولاء' },
     desc: { en: 'Changing earning or redemption rates', ar: 'تغيير نسب الاكتساب أو الاستبدال' },
     autoBelowMinor: null,
-    approverRoles: ['finance_mgr'],
+    steps: [{ roles: ['finance_mgr'] }],
     dualAboveMinor: null,
     requiresReason: true,
     valueless: true,
@@ -242,7 +247,7 @@ export const decisionPolicies: DecisionPolicy[] = [
     label: { en: 'Batch release', ar: 'إطلاق دفعة' },
     desc: { en: 'Releasing a produced batch from quarantine to sellable', ar: 'إطلاق دفعة من الحجر لتصبح قابلة للبيع' },
     autoBelowMinor: null, // nothing ships unreleased, whatever it is worth
-    approverRoles: ['chef'],
+    steps: [{ roles: ['chef'] }],
     dualAboveMinor: null,
     requiresReason: false,
     valueless: true,
@@ -252,7 +257,7 @@ export const decisionPolicies: DecisionPolicy[] = [
     label: { en: 'Recipe change', ar: 'تغيير وصفة' },
     desc: { en: 'Changing a live product’s formulation', ar: 'تعديل تركيبة منتج قائم' },
     autoBelowMinor: null,
-    approverRoles: ['chef', 'finance_mgr'],
+    steps: [{ roles: ['chef', 'finance_mgr'] }],
     dualAboveMinor: null,
     requiresReason: true,
     valueless: true,
@@ -262,7 +267,7 @@ export const decisionPolicies: DecisionPolicy[] = [
     label: { en: 'Shelf life exception', ar: 'استثناء عمر افتراضي' },
     desc: { en: 'Giving a batch a shelf life other than its product’s', ar: 'منح دفعة عمرًا افتراضيًا مخالفًا لعمر منتجها' },
     autoBelowMinor: null,
-    approverRoles: ['chef'],
+    steps: [{ roles: ['chef'] }],
     dualAboveMinor: null,
     requiresReason: true,
     valueless: true,
@@ -272,7 +277,7 @@ export const decisionPolicies: DecisionPolicy[] = [
     label: { en: 'Rejected batch disposition', ar: 'مصير دفعة مرفوضة' },
     desc: { en: 'Rework, downgrade or write off a rejected batch', ar: 'إعادة تشغيل أو تنزيل درجة أو هدر دفعة مرفوضة' },
     autoBelowMinor: null,
-    approverRoles: ['chef', 'finance_mgr'],
+    steps: [{ roles: ['chef', 'finance_mgr'] }],
     dualAboveMinor: 1000000, // ﷼ 10,000 of batch value → owner co-signs
     requiresReason: true,
   },
@@ -281,19 +286,21 @@ export const decisionPolicies: DecisionPolicy[] = [
     label: { en: 'Yield variance', ar: 'فرق عائد' },
     desc: { en: 'Confirming actual consumption against the recipe', ar: 'تأكيد المستهلك الفعلي مقابل الوصفة' },
     autoBelowMinor: 100000, // ﷼ 1,000 of extra draw passes as ordinary processing loss
-    approverRoles: ['chef', 'finance_mgr'],
+    steps: [{ roles: ['chef', 'finance_mgr'] }],
     dualAboveMinor: null,
     requiresReason: true,
   },
 ]
 
-export const policyOf = (kind: DecisionKind): DecisionPolicy => decisionPolicies.find((p) => p.kind === kind)!
+export const policyOf = (kind: string): DecisionPolicy | undefined => decisionPolicies.find((p) => p.kind === kind)
 
 /** What the owner may change about a chain without touching code. */
 export interface PolicyOverride {
   enabled?: boolean
   autoBelowMinor?: number | null
   dualAboveMinor?: number | null
+  /** Who signs it, rung by rung — the part an owner most often wants to change. */
+  steps?: ApprovalStep[]
 }
 /** The chain as it actually stands: its shipped defaults with the owner's edits on top. */
 export function withOverride(base: DecisionPolicy, o?: PolicyOverride): DecisionPolicy {
@@ -303,7 +310,15 @@ export function withOverride(base: DecisionPolicy, o?: PolicyOverride): Decision
     enabled: o.enabled ?? base.enabled ?? true,
     autoBelowMinor: o.autoBelowMinor !== undefined ? o.autoBelowMinor : base.autoBelowMinor,
     dualAboveMinor: o.dualAboveMinor !== undefined ? o.dualAboveMinor : base.dualAboveMinor,
+    steps: o.steps ?? base.steps,
   }
+}
+
+/** The rungs a request actually has to climb, given what it is worth: the chain as
+ *  configured, plus the owner on top when the value crosses the dual-control point. */
+export function stepsFor(p: DecisionPolicy, amountMinor = 0): ApprovalStep[] {
+  const base = p.steps.length > 0 ? p.steps : [{ roles: [] as JobRole[] }]
+  return needsDualControl(p, amountMinor) ? [...base, { roles: [] as JobRole[] }] : base
 }
 
 /** Permissions that hand someone real leverage — granting one is itself a decision. */
@@ -327,10 +342,97 @@ export function needsDualControl(p: DecisionPolicy, amountMinor = 0): boolean {
 }
 
 /** May this role approve this decision at this value? */
-export function roleMayApprove(role: JobRole | undefined, p: DecisionPolicy, amountMinor = 0): boolean {
+/** May this role sign this rung, at this value? A rung with no roles is the owner's. */
+export function roleMaySignStep(role: JobRole | undefined, step: ApprovalStep, p: DecisionPolicy, amountMinor = 0): boolean {
+  if (step.roles.length === 0) return false // owner-only rung
+  if (!role || !step.roles.includes(role)) return false
   const def = jobRoleOf(role)
-  if (!def || !def.approves.includes(p.kind)) return false
+  if (!def) return false
   if (def.ceilingMinor == null) return true
   if (p.valueless) return true
   return Math.abs(amountMinor) <= def.ceilingMinor
+}
+
+/** May this role sign anywhere on this chain? Used to name who to chase. */
+export function roleMayApprove(role: JobRole | undefined, p: DecisionPolicy, amountMinor = 0): boolean {
+  return stepsFor(p, amountMinor).some((st) => roleMaySignStep(role, st, p, amountMinor))
+}
+
+/* ── chains the owner can add ───────────────────────────────────────────────
+   The fifteen above are wired to actions in the console: the action raises its own
+   request. These are the rest of a business's approvals — the ones that live in
+   people's heads, in messages and in verbal say-so. Adding one gives that decision
+   a named chain, a limit and a signature trail; requests against it are raised by
+   hand from Approvals, because nothing in the console performs them. */
+
+export interface ChainTemplate {
+  key: string
+  label: Bilingual
+  desc: Bilingual
+  group: Bilingual
+  autoBelowMinor: number | null
+  dualAboveMinor: number | null
+  steps: ApprovalStep[]
+  valueless?: boolean
+}
+
+const G = {
+  money: { en: 'Money out', ar: 'صرف ومال' } as Bilingual,
+  commercial: { en: 'Commercial', ar: 'تجاري' } as Bilingual,
+  people: { en: 'People', ar: 'الموظفون' } as Bilingual,
+  ops: { en: 'Operations', ar: 'التشغيل' } as Bilingual,
+  quality: { en: 'Quality & product', ar: 'الجودة والمنتج' } as Bilingual,
+}
+
+export const chainTemplates: ChainTemplate[] = [
+  // ── money out ──
+  { key: 'capex', group: G.money, label: { en: 'Capital spend', ar: 'مصروف رأسمالي' }, desc: { en: 'Buying equipment, a vehicle or a fit-out', ar: 'شراء معدة أو مركبة أو تجهيز موقع' }, autoBelowMinor: 500000, dualAboveMinor: 5000000, steps: [{ roles: ['accountant'] }, { roles: ['finance_mgr'] }] },
+  { key: 'opex_bill', group: G.money, label: { en: 'Operating bill', ar: 'فاتورة تشغيلية' }, desc: { en: 'Rent, utilities, services and the like', ar: 'إيجار ومرافق وخدمات وما شابهها' }, autoBelowMinor: 300000, dualAboveMinor: null, steps: [{ roles: ['accountant'] }] },
+  { key: 'petty_cash', group: G.money, label: { en: 'Petty cash', ar: 'عهدة نقدية' }, desc: { en: 'Cash handed out and settled later', ar: 'نقد يُصرف ويُسوّى لاحقًا' }, autoBelowMinor: 50000, dualAboveMinor: null, steps: [{ roles: ['accountant'] }] },
+  { key: 'refund', group: G.money, label: { en: 'Customer refund', ar: 'ردّ مبلغ لعميل' }, desc: { en: 'Money returned against an order', ar: 'إعادة مبلغ مقابل طلب' }, autoBelowMinor: 100000, dualAboveMinor: 1000000, steps: [{ roles: ['accountant'] }, { roles: ['finance_mgr'] }] },
+  { key: 'writeoff_debt', group: G.money, label: { en: 'Bad debt write-off', ar: 'إعدام دين' }, desc: { en: 'Giving up on collecting a balance', ar: 'التوقف عن تحصيل رصيد' }, autoBelowMinor: null, dualAboveMinor: 500000, steps: [{ roles: ['finance_mgr'] }] },
+  { key: 'payroll_run', group: G.money, label: { en: 'Payroll run', ar: 'مسيّر الرواتب' }, desc: { en: 'Releasing the month’s salaries', ar: 'اعتماد صرف رواتب الشهر' }, autoBelowMinor: null, dualAboveMinor: null, steps: [{ roles: ['accountant'] }, { roles: ['finance_mgr'] }], valueless: true },
+  // ── commercial ──
+  { key: 'discount', group: G.commercial, label: { en: 'Discount beyond policy', ar: 'خصم يتجاوز السياسة' }, desc: { en: 'A price cut past what the price list allows', ar: 'تخفيض سعر يتجاوز ما تسمح به القائمة' }, autoBelowMinor: 50000, dualAboveMinor: 500000, steps: [{ roles: ['sales' ] }, { roles: ['finance_mgr'] }] },
+  { key: 'contract', group: G.commercial, label: { en: 'Contract signing', ar: 'توقيع عقد' }, desc: { en: 'Committing the company to terms', ar: 'إلزام الشركة بشروط' }, autoBelowMinor: null, dualAboveMinor: 2000000, steps: [{ roles: ['finance_mgr'] }], valueless: true },
+  { key: 'payment_terms', group: G.commercial, label: { en: 'Payment terms change', ar: 'تغيير شروط السداد' }, desc: { en: 'Moving a partner to longer or shorter terms', ar: 'تعديل أجل السداد لشريك' }, autoBelowMinor: null, dualAboveMinor: null, steps: [{ roles: ['accountant'] }, { roles: ['finance_mgr'] }], valueless: true },
+  { key: 'new_supplier', group: G.commercial, label: { en: 'New supplier', ar: 'اعتماد مورّد جديد' }, desc: { en: 'Adding a source to buy from', ar: 'إضافة مصدر شراء' }, autoBelowMinor: null, dualAboveMinor: null, steps: [{ roles: ['purchasing'] }, { roles: ['finance_mgr'] }], valueless: true },
+  { key: 'marketing_spend', group: G.commercial, label: { en: 'Marketing spend', ar: 'إنفاق تسويقي' }, desc: { en: 'A campaign, a sponsorship, an activation', ar: 'حملة أو رعاية أو تفعيل' }, autoBelowMinor: 200000, dualAboveMinor: 2000000, steps: [{ roles: ['finance_mgr'] }] },
+  { key: 'export_shipment', group: G.commercial, label: { en: 'Export shipment release', ar: 'إفراج شحنة تصدير' }, desc: { en: 'Letting a cold-chain export leave the site', ar: 'السماح بمغادرة شحنة مبرّدة للتصدير' }, autoBelowMinor: null, dualAboveMinor: null, steps: [{ roles: ['warehouse'] }, { roles: ['finance_mgr'] }], valueless: true },
+  // ── people ──
+  { key: 'hire', group: G.people, label: { en: 'Hiring', ar: 'توظيف' }, desc: { en: 'Adding a head to the payroll', ar: 'إضافة موظف على المسيّر' }, autoBelowMinor: null, dualAboveMinor: null, steps: [{ roles: ['sys_admin'] }, { roles: ['finance_mgr'] }], valueless: true },
+  { key: 'salary_change', group: G.people, label: { en: 'Salary change', ar: 'تعديل راتب' }, desc: { en: 'A raise, a cut or a new package', ar: 'زيادة أو خفض أو حزمة جديدة' }, autoBelowMinor: null, dualAboveMinor: null, steps: [{ roles: ['finance_mgr'] }], valueless: true },
+  { key: 'overtime', group: G.people, label: { en: 'Overtime', ar: 'عمل إضافي' }, desc: { en: 'Hours beyond the shift, and their cost', ar: 'ساعات خارج الدوام وتكلفتها' }, autoBelowMinor: 30000, dualAboveMinor: null, steps: [{ roles: ['production'] }, { roles: ['accountant'] }] },
+  { key: 'leave', group: G.people, label: { en: 'Leave request', ar: 'طلب إجازة' }, desc: { en: 'Time off that has to be covered', ar: 'إجازة تحتاج تغطية' }, autoBelowMinor: null, dualAboveMinor: null, steps: [{ roles: ['sys_admin'] }], valueless: true },
+  { key: 'termination', group: G.people, label: { en: 'Termination', ar: 'إنهاء خدمة' }, desc: { en: 'Ending someone’s employment', ar: 'إنهاء علاقة موظف بالعمل' }, autoBelowMinor: null, dualAboveMinor: null, steps: [{ roles: ['sys_admin'] }, { roles: ['finance_mgr'] }], valueless: true },
+  // ── operations & quality ──
+  { key: 'new_branch', group: G.ops, label: { en: 'Opening a branch', ar: 'افتتاح فرع' }, desc: { en: 'A new site, with everything it drags along', ar: 'موقع جديد بما يستتبعه' }, autoBelowMinor: null, dualAboveMinor: null, steps: [{ roles: ['finance_mgr'] }], valueless: true },
+  { key: 'maintenance', group: G.ops, label: { en: 'Line maintenance stop', ar: 'إيقاف خط للصيانة' }, desc: { en: 'Taking production down on purpose', ar: 'إيقاف الإنتاج عمدًا' }, autoBelowMinor: null, dualAboveMinor: null, steps: [{ roles: ['production'] }, { roles: ['chef'] }], valueless: true },
+  { key: 'recall', group: G.quality, label: { en: 'Product recall', ar: 'سحب منتج من السوق' }, desc: { en: 'Pulling sold stock back in', ar: 'استرجاع بضاعة بيعت' }, autoBelowMinor: null, dualAboveMinor: null, steps: [{ roles: ['chef'] }, { roles: ['finance_mgr'] }], valueless: true },
+  { key: 'new_product', group: G.quality, label: { en: 'New product launch', ar: 'إطلاق منتج جديد' }, desc: { en: 'Putting a new item in front of customers', ar: 'طرح صنف جديد للعملاء' }, autoBelowMinor: null, dualAboveMinor: null, steps: [{ roles: ['chef'] }, { roles: ['finance_mgr'] }], valueless: true },
+  { key: 'supplier_swap', group: G.quality, label: { en: 'Ingredient substitution', ar: 'استبدال مكوّن' }, desc: { en: 'Running a batch on a different input', ar: 'تشغيل دفعة بمكوّن مختلف' }, autoBelowMinor: null, dualAboveMinor: null, steps: [{ roles: ['chef'] }], valueless: true },
+  { key: 'lab_result', group: G.quality, label: { en: 'Lab result sign-off', ar: 'اعتماد نتيجة مختبر' }, desc: { en: 'Accepting a test that clears a batch', ar: 'قبول فحص يُجيز دفعة' }, autoBelowMinor: null, dualAboveMinor: null, steps: [{ roles: ['chef'] }], valueless: true },
+]
+
+/** A chain the owner added. It has no action wired to it, so its requests are raised by hand. */
+export interface CustomChain {
+  id: string // `custom:1`
+  label: Bilingual
+  desc: Bilingual
+  autoBelowMinor: number | null
+  dualAboveMinor: number | null
+  steps: ApprovalStep[]
+  valueless?: boolean
+  enabled?: boolean
+}
+
+export const isCustomChain = (kind: string) => kind.startsWith('custom:')
+
+/** A custom chain shaped like the built-in ones so everything downstream treats them alike. */
+export function chainToPolicy(c: CustomChain): DecisionPolicy {
+  return {
+    kind: c.id, label: c.label, desc: c.desc, enabled: c.enabled ?? true,
+    autoBelowMinor: c.autoBelowMinor, dualAboveMinor: c.dualAboveMinor,
+    steps: c.steps, requiresReason: true, valueless: c.valueless,
+  }
 }

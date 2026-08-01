@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { Check, X, ShieldAlert, Inbox, Lock, Zap, Settings2 } from 'lucide-react'
+import { Check, X, ShieldAlert, Inbox, Lock, Zap, Settings2, Plus, Trash2, Search } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { useGovernance, approversFor, type ApprovalRequest } from '@/state/GovernanceContext'
-import { decisionPolicies, jobRoleOf, type DecisionKind } from '@/data/governance'
+import { chainTemplates, isCustomChain, jobRoleOf, jobRoles, type ApprovalStep, type ChainTemplate } from '@/data/governance'
 import { cn } from '@/lib/cn'
 import { PanelHead, StatCard, Pill } from './_shared'
 
@@ -78,6 +78,22 @@ export function OwnerApprovals({ view = 'inbox' }: { view?: 'inbox' | 'policies'
         </div>
 
         {r.reason && <p className="font-sans text-caption text-ink-muted rounded-lg bg-surface-2 border border-hairline p-md">{pick({ en: 'Reason', ar: 'المبرر' })}: {r.reason}</p>}
+
+        {r.steps.length > 1 && (
+          <div className="flex flex-wrap items-center gap-xs">
+            {r.steps.map((st, i) => {
+              const done = i < r.signatures.length
+              const now = i === r.signatures.length && r.status === 'pending'
+              return (
+                <span key={i} className={cn('inline-flex items-center gap-xxs rounded-pill border px-2 py-0.5 font-sans text-caption',
+                  done ? 'border-success/30 bg-success/10 text-success' : now ? 'border-primary bg-primary/[0.08] text-primary-hover' : 'border-hairline text-ink-subtle')}>
+                  {done && <Check size={11} />}
+                  {i + 1}. {st.roles.length === 0 ? pick({ en: 'Owner', ar: 'المالك' }) : st.roles.map((x) => pick(jobRoleOf(x)!.label)).join(' / ')}
+                </span>
+              )
+            })}
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-x-md gap-y-xxs font-sans text-caption text-ink-subtle">
           <span>{pick({ en: 'Raised by', ar: 'رفعها' })}: {pick(r.requestedBy)}{r.requestedRole && ` · ${pick(jobRoleOf(r.requestedRole)!.label)}`}</span>
@@ -196,17 +212,16 @@ function ChainsView() {
   const { pick, money } = useLocale()
   const { flash } = useToast()
   const { employees } = useOwnerState()
-  const { policyFor, setPolicy, policyOverrides } = useGovernance()
-  const [editing, setEditing] = useState<DecisionKind | null>(null)
+  const { chains, setPolicy, policyOverrides, removeChain } = useGovernance()
+  const [editing, setEditing] = useState<string | null>(null)
+  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [raising, setRaising] = useState<string | null>(null)
 
-  const active = decisionPolicies.filter((b) => policyFor(b.kind).enabled !== false).length
-  const unstaffed = decisionPolicies.filter((b) => {
-    const p = policyFor(b.kind)
-    return p.enabled !== false && approversFor(employees, p).length === 0
-  })
+  const active = chains.filter((p) => p.enabled !== false).length
+  const unstaffed = chains.filter((p) => p.enabled !== false && approversFor(employees, p).length === 0)
 
   const stats = [
-    { label: { en: 'Chains', ar: 'السلاسل' }, value: String(decisionPolicies.length), sub: { en: 'One per guarded decision', ar: 'واحدة لكل قرار محكوم' }, tone: 'dark' as const },
+    { label: { en: 'Chains', ar: 'السلاسل' }, value: String(chains.length), sub: { en: 'Wired to actions, plus your own', ar: 'موصولة بإجراءات، وما أضفته' }, tone: 'dark' as const },
     { label: { en: 'Switched on', ar: 'مفعّلة' }, value: String(active), sub: { en: 'Holding decisions', ar: 'تحجز القرارات' }, tone: 'green' as const },
     { label: { en: 'Edited', ar: 'معدّلة' }, value: String(Object.keys(policyOverrides).length), sub: { en: 'Changed from the defaults', ar: 'غُيّرت عن الأصل' }, tone: 'gold' as const },
     { label: { en: 'Without a signer', ar: 'بلا موقّع' }, value: String(unstaffed.length), sub: { en: 'Only the owner can sign', ar: 'لا يوقّعها إلا المالك' }, tone: 'plain' as const },
@@ -233,13 +248,21 @@ function ChainsView() {
         </p>
       )}
 
+      <div className="flex items-center justify-between gap-sm">
+        <h3 className="font-serif text-card-title text-ink">{pick({ en: 'Chains in force', ar: 'السلاسل السارية' })} · {chains.length}</h3>
+        <button onClick={() => setLibraryOpen(true)} className={buttonClass('primary', 'sm')}><Plus size={15} /> {pick({ en: 'Add a chain', ar: 'إضافة سلسلة' })}</button>
+      </div>
+
       <div className="flex flex-col gap-sm">
-        {decisionPolicies.map((base) => {
-          const p = policyFor(base.kind)
+        {chains.map((p) => {
+          const base = { kind: p.kind }
+          const custom = isCustomChain(p.kind)
           const off = p.enabled === false
           const signers = approversFor(employees, p)
           const edited = policyOverrides[base.kind] != null
-          const roleNames = p.approverRoles.map((r) => pick(jobRoleOf(r)!.label)).join(' · ')
+          const roleNames = p.steps.length === 0
+            ? pick({ en: 'Owner only', ar: 'المالك فقط' })
+            : p.steps.map((st, i) => `${i + 1}. ${st.roles.length === 0 ? pick({ en: 'Owner', ar: 'المالك' }) : st.roles.map((r) => pick(jobRoleOf(r)!.label)).join(' / ')}`).join(' → ')
           return (
             <div key={base.kind} className={cn('card p-lg flex flex-col gap-sm', off && 'opacity-70')}>
               <div className="flex flex-wrap items-start justify-between gap-sm">
@@ -250,10 +273,16 @@ function ChainsView() {
                       ? <Pill color="#8a6b3f" bg="#f6edde">{pick({ en: 'Switched off', ar: 'موقوفة' })}</Pill>
                       : <Pill color="#2f7d5b" bg="#e6f2ea">{pick({ en: 'On', ar: 'مفعّلة' })}</Pill>}
                     {edited && <Pill color="#2e5f8a" bg="#e7f0f8">{pick({ en: 'Edited', ar: 'معدّلة' })}</Pill>}
+                    {custom && <Pill color="#8a6b3f" bg="#f6edde">{pick({ en: 'Raised by hand', ar: 'تُرفع يدويًا' })}</Pill>}
                   </div>
                   <p className="font-sans text-data text-ink-muted mt-xxs">{pick(p.desc)}</p>
                 </div>
                 <div className="flex items-center gap-xs shrink-0">
+                  {custom && !off && (
+                    <button onClick={() => setRaising(p.kind)} className={buttonClass('secondary', 'sm')}>
+                      <Inbox size={14} /> {pick({ en: 'Raise a request', ar: 'رفع طلب' })}
+                    </button>
+                  )}
                   <button onClick={() => setEditing(editing === base.kind ? null : base.kind)} className={buttonClass('secondary', 'sm')}>
                     <Settings2 size={14} /> {pick({ en: 'Adjust', ar: 'ضبط' })}
                   </button>
@@ -261,6 +290,10 @@ function ChainsView() {
                     className={buttonClass(off ? 'primary' : 'ghost', 'sm')}>
                     {off ? pick({ en: 'Switch on', ar: 'تفعيل' }) : pick({ en: 'Switch off', ar: 'إيقاف' })}
                   </button>
+                  {custom && (
+                    <button onClick={() => { removeChain(p.kind); flash(pick({ en: 'Chain removed', ar: 'حُذفت السلسلة' })) }}
+                      className="grid place-items-center w-8 h-8 rounded-md text-ink-subtle hover:text-danger hover:bg-danger/10 transition-colors" aria-label={pick({ en: 'Remove chain', ar: 'حذف السلسلة' })}><Trash2 size={15} /></button>
+                  )}
                 </div>
               </div>
 
@@ -296,23 +329,132 @@ function ChainsView() {
           )
         })}
       </div>
+
+      {libraryOpen && <ChainLibrary onClose={() => setLibraryOpen(false)} />}
+      {raising && <RaiseRequestModal kind={raising} onClose={() => setRaising(null)} />}
     </div>
+  )
+}
+
+/** The chains a business runs on that no screen performs: spending, hiring, contracts,
+ *  recalls. Adding one gives that decision a limit, a signer and a trail; its requests are
+ *  raised by hand, because nothing in the console can raise them for you. */
+function ChainLibrary({ onClose }: { onClose: () => void }) {
+  const { pick, money } = useLocale()
+  const { flash } = useToast()
+  const { addChain, customChains } = useGovernance()
+  const [q, setQ] = useState('')
+  const taken = new Set(customChains.map((c) => c.label.en))
+  const query = q.trim().toLowerCase()
+  const shown = chainTemplates.filter((t) => query === '' || [t.label.en, t.label.ar, t.desc.en, t.desc.ar, t.group.en, t.group.ar].some((x) => x.toLowerCase().includes(query)))
+  const groups = Array.from(new Set(shown.map((t) => t.group.en)))
+
+  const add = (t: ChainTemplate) => {
+    addChain({ label: t.label, desc: t.desc, autoBelowMinor: t.autoBelowMinor, dualAboveMinor: t.dualAboveMinor, steps: t.steps, valueless: t.valueless, enabled: true })
+    flash(`${pick({ en: 'Chain added', ar: 'أُضيفت السلسلة' })} · ${pick(t.label)}`)
+  }
+
+  return (
+    <Modal open onClose={onClose} size="lg" eyebrow={pick({ en: 'Approvals', ar: 'الاعتمادات' })} title={pick({ en: 'Add an approval chain', ar: 'إضافة سلسلة اعتماد' })}
+      footer={<button onClick={onClose} className={buttonClass('primary', 'sm')}>{pick({ en: 'Done', ar: 'تم' })}</button>}>
+      <div className="flex flex-col gap-md">
+        <p className="font-sans text-caption text-ink-subtle">{pick({
+          en: 'These are decisions the console does not perform, so nothing raises them on its own — you raise a request against the chain when the decision comes up. Everything else works the same: a limit, an order of signers, and a trail.',
+          ar: 'هذه قرارات لا تنفّذها اللوحة، فلا شيء يرفعها تلقائيًا — أنت ترفع الطلب على السلسلة حين يحين القرار. وما عدا ذلك يعمل كالمعتاد: حدّ، وترتيب موقّعين، وأثر مسجّل.',
+        })}</p>
+        <div className="relative">
+          <Search size={16} className="absolute top-1/2 -translate-y-1/2 start-3.5 text-ink-subtle pointer-events-none" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} className="input ps-10" placeholder={pick({ en: 'Search the library…', ar: 'ابحث في المكتبة…' })} />
+        </div>
+        {groups.map((g) => (
+          <div key={g} className="flex flex-col gap-xs">
+            <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick(shown.find((t) => t.group.en === g)!.group)}</span>
+            <div className="rounded-md border border-hairline-strong divide-y divide-hairline">
+              {shown.filter((t) => t.group.en === g).map((t) => (
+                <div key={t.key} className="flex flex-wrap items-center justify-between gap-sm px-3 py-2">
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-sans text-data text-ink">{pick(t.label)}</span>
+                    <span className="block font-sans text-caption text-ink-subtle">{pick(t.desc)}</span>
+                    <span className="block font-sans text-caption text-ink-subtle tabular-nums">
+                      {t.steps.map((st, i) => `${i + 1}. ${st.roles.map((r) => pick(jobRoleOf(r)!.label)).join(' / ')}`).join(' → ')}
+                      {t.autoBelowMinor != null && ` · ${pick({ en: 'passes below', ar: 'يمرّ تحت' })} ${money(t.autoBelowMinor)}`}
+                    </span>
+                  </span>
+                  <button onClick={() => add(t)} className={buttonClass(taken.has(t.label.en) ? 'ghost' : 'secondary', 'sm')}>
+                    <Plus size={14} /> {taken.has(t.label.en) ? pick({ en: 'Add again', ar: 'إضافة أخرى' }) : pick({ en: 'Add', ar: 'إضافة' })}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        {shown.length === 0 && <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Nothing in the library matches that.', ar: 'لا شيء في المكتبة يطابق ذلك.' })}</p>}
+      </div>
+    </Modal>
+  )
+}
+
+/** Raise a request against a chain the owner added. */
+function RaiseRequestModal({ kind, onClose }: { kind: string; onClose: () => void }) {
+  const { pick } = useLocale()
+  const { flash } = useToast()
+  const { policyFor, raiseManual } = useGovernance()
+  const p = policyFor(kind)
+  const [subject, setSubject] = useState('')
+  const [detail, setDetail] = useState('')
+  const [amount, setAmount] = useState('')
+  const [reason, setReason] = useState('')
+  const valid = subject.trim() !== '' && reason.trim().length > 3
+
+  const send = () => {
+    raiseManual({
+      kind,
+      subject: { en: subject.trim(), ar: subject.trim() },
+      detail: { en: detail.trim() || p.desc.en, ar: detail.trim() || p.desc.ar },
+      amountMinor: (parseInt(amount.replace(/\D/g, ''), 10) || 0) * 100,
+      reason: reason.trim(),
+    })
+    flash(pick({ en: 'Raised — waiting for its first signature', ar: 'رُفع — بانتظار أول توقيع' }))
+    onClose()
+  }
+
+  return (
+    <Modal open onClose={onClose} size="md" eyebrow={pick(p.label)} title={pick({ en: 'Raise a request', ar: 'رفع طلب' })}
+      footer={<><button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button><button onClick={send} disabled={!valid} className={buttonClass('primary', 'sm')}>{pick({ en: 'Raise', ar: 'رفع' })}</button></>}>
+      <div className="flex flex-col gap-md">
+        <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'What is being decided', ar: 'ما المطلوب إقراره' })}</span>
+          <input value={subject} onChange={(e) => setSubject(e.target.value)} className="input" placeholder={pick({ en: 'e.g. Cold room compressor', ar: 'مثال: ضاغط غرفة التبريد' })} autoFocus /></label>
+        <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Detail (optional)', ar: 'التفصيل (اختياري)' })}</span>
+          <input value={detail} onChange={(e) => setDetail(e.target.value)} className="input" placeholder={pick(p.desc)} /></label>
+        {!p.valueless && (
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Value (﷼)', ar: 'القيمة (﷼)' })}</span>
+            <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))} className="input tabular-nums" inputMode="numeric" placeholder="0" />
+            <span className="font-sans text-caption text-ink-subtle">{p.autoBelowMinor == null
+              ? pick({ en: 'This chain holds every request, whatever it is worth.', ar: 'هذه السلسلة تحجز كل طلب مهما كانت قيمته.' })
+              : pick({ en: 'Below the chain’s limit it would clear on its own — raised by hand, it is held either way.', ar: 'تحت حدّ السلسلة يمرّ تلقائيًا — أما المرفوع يدويًا فيُحجز في الحالتين.' })}</span>
+          </label>
+        )}
+        <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Why (required)', ar: 'المبرر (إلزامي)' })}</span>
+          <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} className="input resize-none" /></label>
+      </div>
+    </Modal>
   )
 }
 
 /** Set a chain's two numbers. Both accept a blank, which means "no threshold" — and for the
  *  pass-through limit that reads as: hold every one of these, whatever it is worth. */
-function ChainEditor({ kind, onClose }: { kind: DecisionKind; onClose: () => void }) {
+function ChainEditor({ kind, onClose }: { kind: string; onClose: () => void }) {
   const { pick } = useLocale()
   const { flash } = useToast()
   const { policyFor, setPolicy, resetPolicy, policyOverrides } = useGovernance()
   const p = policyFor(kind)
+  const [steps, setSteps] = useState<ApprovalStep[]>(() => p.steps.map((st) => ({ roles: [...st.roles] })))
   const [auto, setAuto] = useState(p.autoBelowMinor == null ? '' : String(Math.round(p.autoBelowMinor / 100)))
   const [dual, setDual] = useState(p.dualAboveMinor == null ? '' : String(Math.round(p.dualAboveMinor / 100)))
   const num = (v: string) => (v.trim() === '' ? null : Math.max(0, parseInt(v.replace(/\D/g, ''), 10) || 0) * 100)
 
   const save = () => {
-    setPolicy(kind, { autoBelowMinor: num(auto), dualAboveMinor: num(dual) })
+    setPolicy(kind, { autoBelowMinor: num(auto), dualAboveMinor: num(dual), steps })
     flash(pick({ en: 'Chain updated', ar: 'حُدّثت السلسلة' }))
     onClose()
   }
@@ -322,6 +464,35 @@ function ChainEditor({ kind, onClose }: { kind: DecisionKind; onClose: () => voi
       {p.valueless && (
         <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'This decision is not governed by a value — it is always held while the chain is on. The limits below have no effect on it.', ar: 'هذا القرار لا تحكمه قيمة — يُحجز دائمًا ما دامت السلسلة مفعّلة، ولا أثر للحدّين أدناه عليه.' })}</p>
       )}
+      {/* the chain itself: who signs, and in what order */}
+      <div className="flex flex-col gap-xs">
+        <span className="label">{pick({ en: 'Who signs it, in order', ar: 'من يوقّعها، بالترتيب' })}</span>
+        {steps.length === 0 && <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'No steps — only the owner can sign it.', ar: 'بلا درجات — لا يوقّعها إلا المالك.' })}</p>}
+        {steps.map((st, i) => (
+          <div key={i} className="rounded-lg border border-hairline p-md flex flex-col gap-xs">
+            <div className="flex items-center justify-between gap-sm">
+              <span className="font-sans text-caption text-ink-muted">{pick({ en: 'Step', ar: 'الدرجة' })} {i + 1}{st.roles.length === 0 && ` · ${pick({ en: 'owner', ar: 'المالك' })}`}</span>
+              <button onClick={() => setSteps(steps.filter((_, x) => x !== i))} className="grid place-items-center w-7 h-7 rounded-md text-ink-subtle hover:text-danger transition-colors" aria-label={pick({ en: 'Remove step', ar: 'حذف الدرجة' })}><Trash2 size={14} /></button>
+            </div>
+            <div className="flex flex-wrap gap-xxs">
+              {jobRoles.filter((r) => r.key !== 'auditor').map((r) => {
+                const on = st.roles.includes(r.key)
+                return (
+                  <button key={r.key} type="button"
+                    onClick={() => setSteps(steps.map((x, xi) => (xi === i ? { roles: on ? x.roles.filter((k) => k !== r.key) : [...x.roles, r.key] } : x)))}
+                    className={cn('rounded-pill border px-2.5 py-1 font-sans text-caption transition-colors',
+                      on ? 'border-primary bg-primary/[0.08] text-primary-hover' : 'border-hairline-strong text-ink-muted hover:text-ink')}>
+                    {on && '✓ '}{pick(r.label)}
+                  </button>
+                )
+              })}
+            </div>
+            <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'Any one of the ticked roles signs this step. Leave it empty and it becomes the owner’s.', ar: 'يوقّع هذه الدرجة أيٌّ من الأدوار المحددة. واتركها فارغة فتصير للمالك.' })}</span>
+          </div>
+        ))}
+        <button onClick={() => setSteps([...steps, { roles: [] }])} className={buttonClass('ghost', 'sm')}><Plus size={14} /> {pick({ en: 'Add a step', ar: 'إضافة درجة' })}</button>
+      </div>
+
       <div className="grid sm:grid-cols-2 gap-md">
         <label className="flex flex-col gap-xs">
           <span className="label">{pick({ en: 'Passes untouched below (﷼)', ar: 'يمرّ بلا حجز تحت (﷼)' })}</span>
