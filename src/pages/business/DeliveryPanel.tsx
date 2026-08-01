@@ -1,27 +1,37 @@
-import { Clock, Snowflake } from 'lucide-react'
+import { Clock, Snowflake, MapPin } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
-import { scheduledDeliveries, accountOrders, accountOrderItems, orgAddressById } from '@/data/business'
+import { scheduledPickups, accountOrders, accountOrderItems } from '@/data/business'
+import { plantSite, pickupNotice } from '@/data/fulfilment'
 import { StatusBadge } from '@/components/ui/Misc'
 import { cn } from '@/lib/cn'
 
-const statusVariant = { scheduled: 'gold', in_transit: 'gold', delivered: 'success' } as const
+const statusVariant = { scheduled: 'gold', ready: 'gold', collected: 'success' } as const
 
-/** Delivery tracking, embedded at the top of the Orders tab: scheduled orders with
- *  their branch-arrival windows, plus the cold-chain assurance strip. */
+/** Fulfilment, embedded at the top of the Orders tab. Wholesale is collected at the
+ *  plant rather than delivered, so an order carries a slot to come and take it — the
+ *  cold chain still matters, it just has to hold from the line to the buyer's own truck. */
 export function DeliverySchedule() {
   const { t, pick } = useLocale()
 
   return (
     <div className="flex flex-col gap-lg">
+      {/* the rule, stated before the schedule that follows from it */}
+      <div className="rounded-lg border border-hairline bg-surface-2 px-lg py-md flex items-start gap-sm">
+        <MapPin size={15} className="shrink-0 mt-0.5 text-primary-hover" />
+        <div className="min-w-0">
+          <p className="font-sans text-data text-ink">{pick(pickupNotice)}</p>
+          <p className="font-sans text-caption text-ink-subtle mt-xxs">{pick(plantSite.region)} · {pick(plantSite.hours)}</p>
+        </div>
+      </div>
+
       <div className="card p-lg">
-        <p className="font-sans text-caption uppercase tracking-[0.12em] text-ink-subtle mb-md">{t('delivery.scheduled')}</p>
+        <p className="font-sans text-caption uppercase tracking-[0.12em] text-ink-subtle mb-md">{t('pickup.scheduled')}</p>
         <div className="flex flex-col gap-sm">
-          {scheduledDeliveries.map((d) => {
+          {scheduledPickups.map((d) => {
             const order = accountOrders.find((o) => o.orderNo === d.orderNo)
             const count = (accountOrderItems[d.orderNo] ?? []).reduce((n, it) => n + it.qty, 0)
-            const dest = orgAddressById(d.branchId)
             const near = d.status !== 'scheduled'
-            const arrivedLabel = d.status === 'delivered' ? t('delivery.deliveredOn') : t('delivery.arriving')
+            const whenLabel = d.status === 'collected' ? t('pickup.collectedOn') : t('pickup.collectFrom')
             return (
               <div
                 key={d.orderNo}
@@ -38,31 +48,26 @@ export function DeliverySchedule() {
                     <span className="font-sans text-caption text-ink-subtle">· {count} {t('orders.items')}</span>
                   </div>
                   <p className="font-sans text-caption text-ink-muted truncate mt-0.5">{order ? pick(order.summary) : ''}</p>
-                  <p className="font-sans text-caption text-primary-hover mt-0.5 inline-flex items-center gap-xxs">
-                    <Clock size={12} /> {arrivedLabel} {pick(d.dow)} · {pick(d.window)}{dest ? ` · ${pick(dest.label)}` : ''}
+                  <p className="font-sans text-caption text-ink-subtle mt-0.5 inline-flex items-center gap-xxs">
+                    <Clock size={12} /> {whenLabel} {pick(d.window)} · {pick(plantSite.label)}
                   </p>
                 </div>
-                <StatusBadge variant={statusVariant[d.status]}>{t(`delivery.status.${d.status}`)}</StatusBadge>
+                <StatusBadge variant={statusVariant[d.status]}>{t(`pickup.status.${d.status}`)}</StatusBadge>
               </div>
             )
           })}
         </div>
       </div>
 
-      {/* cold-chain assurance — secondary to the schedule above */}
-      <div className="rounded-xl p-lg text-ink-on-dark flex flex-col sm:flex-row sm:items-center gap-lg" style={{ backgroundColor: '#221913' }}>
-        <div className="shrink-0">
+      <div className="rounded-lg bg-surface-dark-1 border border-hairline-dark p-lg flex flex-col sm:flex-row gap-lg">
+        <div className="sm:w-56 shrink-0">
           <p className="font-sans text-caption uppercase tracking-[0.12em] text-primary-bright inline-flex items-center gap-xs"><Snowflake size={14} /> {t('delivery.coldChain')}</p>
-          <div className="flex items-baseline gap-xs mt-sm">
-            <span className="font-serif text-display-md text-primary-bright tabular-nums leading-none">{pick({ en: '4°', ar: '٤°' })}</span>
+          <div className="mt-sm">
+            <span className="font-serif text-headline text-ink-on-dark tabular-nums">{t('delivery.coldChainTemp')}</span>
             <span className="font-sans text-data text-ink-on-dark-muted">{t('delivery.coldChainRange')}</span>
           </div>
         </div>
-        <p className="flex-1 font-sans text-caption text-ink-on-dark-muted leading-relaxed sm:border-s sm:border-hairline-dark sm:ps-lg">{t('delivery.coldChainNote')}</p>
-        <div className="inline-flex items-center gap-sm shrink-0 sm:border-s sm:border-hairline-dark sm:ps-lg">
-          <span className="w-2 h-2 rounded-pill bg-success" />
-          <span className="font-sans text-caption text-ink-on-dark-muted whitespace-nowrap">{t('delivery.driver')}</span>
-        </div>
+        <p className="flex-1 font-sans text-caption text-ink-on-dark-muted leading-relaxed sm:border-s sm:border-hairline-dark sm:ps-lg">{t('pickup.coldChainNote')}</p>
       </div>
     </div>
   )

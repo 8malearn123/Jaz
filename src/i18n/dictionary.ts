@@ -686,6 +686,17 @@ export const dict: Dict = {
   'wreorder.copy': { en: 'Copy to order', ar: 'نسخ إلى الطلب' },
   'wreorder.copied': { en: 'items copied to your order', ar: 'أصناف نُسخت إلى الطلب' },
   // delivery
+  // Wholesale is collected at the plant, not delivered — see data/fulfilment.ts.
+  'pickup.scheduled': { en: 'Scheduled orders · collection windows at the plant', ar: 'الطلبات المجدولة · مواعيد الاستلام من المصنع' },
+  'pickup.collectFrom': { en: 'Collect', ar: 'الاستلام' },
+  'pickup.collectedOn': { en: 'Collected', ar: 'استُلمت' },
+  'pickup.status.scheduled': { en: 'Scheduled', ar: 'مجدول' },
+  'pickup.status.ready': { en: 'Ready to collect', ar: 'جاهز للاستلام' },
+  'pickup.status.collected': { en: 'Collected', ar: 'استُلم' },
+  'pickup.nextTitle': { en: 'Next collection', ar: 'الاستلام القادم' },
+  'pickup.schedule': { en: 'Collection schedule', ar: 'جدول الاستلام' },
+  'pickup.coldChainNote': { en: 'The chain holds from the line to the loading bay; from the moment your driver takes the pallet it is on you to keep it. A temperature log leaves with every order.', ar: 'السلسلة محفوظة من الخط إلى رصيف التحميل؛ ومن لحظة استلام سائقكم للطبلية تصير مسؤوليتكم. ويخرج مع كل طلب سجل حرارة.' },
+  'checkout.collection': { en: 'Collection', ar: 'الاستلام' },
   'delivery.title': { en: 'Delivery', ar: 'التوصيل' },
   'delivery.subtitle': { en: 'Your scheduled orders and their arrival at the branch via an unbroken cold chain.', ar: 'طلباتك المجدولة ومواعيد وصولها إلى الفرع عبر سلسلة تبريد مستمرّة.' },
   'delivery.scheduled': { en: 'Scheduled orders · branch arrival times', ar: 'الطلبات المجدولة · مواعيد الوصول للفرع' },

@@ -6,7 +6,8 @@ import { useCart } from '@/state/CartContext'
 import { useChannel, type Channel } from '@/state/ChannelContext'
 import { customer } from '@/data/account'
 import { organization, availableCreditMinor } from '@/data/organization'
-import { members, orgAddresses } from '@/data/business'
+import { members } from '@/data/business'
+import { plantSite, pickupNotice } from '@/data/fulfilment'
 import { variantById } from '@/data/products'
 import type { Bilingual } from '@/data/types'
 import { openPrintWindow } from '@/lib/printWindow'
@@ -243,25 +244,31 @@ function AddressForm() {
 }
 
 function DeliverySection({ channel }: { channel: Channel }) {
-  const { t } = useLocale()
+  const { t, pick } = useLocale()
   const b2c = channel === 'b2c'
   const [mode, setMode] = useState<'me' | 'gift'>('me')
 
-  // Reuse the account's known addresses — the customer's saved ones for B2C, the org's branches for B2B.
-  const addresses = b2c ? customer.addresses : orgAddresses.filter((a) => a.type === 'shipping')
-
-  // No saved addresses on either side → plain manual entry.
-  if (addresses.length === 0) {
-    return <FieldShell step="02" title={t('checkout.delivery')}><AddressForm /></FieldShell>
-  }
-
-  // B2B ships to its own branches — pick one, no gift mode.
+  // Wholesale is collected at the plant, so there is no address to choose — the step
+  // states where and on what terms the order is handed over.
   if (!b2c) {
     return (
-      <FieldShell step="02" title={t('checkout.delivery')}>
-        <SavedAddressPicker addresses={addresses} />
+      <FieldShell step="02" title={t('checkout.collection')}>
+        <div className="rounded-lg border border-hairline bg-surface-2 p-md flex items-start gap-sm">
+          <MapPin size={16} className="shrink-0 mt-0.5 text-primary-hover" />
+          <div className="min-w-0">
+            <p className="font-sans text-data text-ink">{pick(pickupNotice)}</p>
+            <p className="font-sans text-caption text-ink-subtle mt-xxs">{pick(plantSite.region)} · {pick(plantSite.hours)}</p>
+          </div>
+        </div>
       </FieldShell>
     )
+  }
+
+  const addresses = customer.addresses
+
+  // No saved address → plain manual entry.
+  if (addresses.length === 0) {
+    return <FieldShell step="02" title={t('checkout.delivery')}><AddressForm /></FieldShell>
   }
 
   return (

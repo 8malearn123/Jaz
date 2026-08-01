@@ -23,7 +23,7 @@ import { useTab } from '@/lib/useTab'
 import { cn } from '@/lib/cn'
 import { downloadExcel } from '@/lib/excel'
 import {
-  megaAccount, megaCatalog, megaVolumeTiers, volumeDiscount, trucksFor,
+  megaAccount, megaCatalog, trucksFor,
   shipFlow, SHIP_LAST, CANCEL_WINDOW_MS, megaCredit, megaStatements, megaInvoices, megaCompliance,
   megaMarkets, megaExportTrend, type MegaOrder, type ShipStage,
 } from '@/data/mega'
@@ -262,17 +262,13 @@ function Catalog({ onTab }: { onTab: (id: string) => void }) {
         </div>
       )}
 
-      {/* volume ladder */}
-      <div className="card p-lg flex flex-col gap-sm">
-        <h3 className="font-serif text-card-title text-ink">{pick({ en: 'Volume pricing', ar: 'تسعير الكمية' })}</h3>
-        <div className="grid grid-cols-3 gap-sm">
-          {megaVolumeTiers.map((t, i) => (
-            <div key={i} className={cn('rounded-lg border p-md text-center', t.discount > 0 ? 'border-success/30 bg-success/8' : 'border-hairline')}>
-              <p className="font-sans text-caption text-ink-subtle">{pick(t.range)}</p>
-              <p className="font-serif text-card-title tabular-nums" style={{ color: t.discount > 0 ? '#355c4b' : '#241712' }}>{t.discount > 0 ? `−${t.discount}%` : pick({ en: 'List', ar: 'قائمة' })}</p>
-            </div>
-          ))}
-        </div>
+      {/* the pricing rule, in place of the ladder that used to sit here */}
+      <div className="card p-lg flex items-start gap-sm">
+        <Landmark size={16} className="shrink-0 mt-0.5 text-primary-hover" />
+        <p className="font-sans text-data text-ink-muted">{pick({
+          en: 'Fixed price list — a pallet costs what it is listed at, whatever the size of the order. No volume breaks.',
+          ar: 'قائمة أسعار ثابتة — سعر الطبلية كما هو مدرج مهما كان حجم الطلب. لا توجد كسور سعرية على الكمية.',
+        })}</p>
       </div>
 
       {categories.map((cat) => (
@@ -281,7 +277,6 @@ function Catalog({ onTab }: { onTab: (id: string) => void }) {
           <div className="grid md:grid-cols-2 gap-sm">
             {myCatalog.filter((p) => pick(p.category) === cat).map((p) => {
               const n = draft[p.sku] ?? 0
-              const disc = volumeDiscount(Math.max(n, 1))
               return (
                 <div key={p.sku} className="card p-lg flex flex-col gap-md">
                   <div className="flex items-start gap-sm">
@@ -304,7 +299,7 @@ function Catalog({ onTab }: { onTab: (id: string) => void }) {
                       <button onClick={() => addPallets(p.sku, 1)} className="grid place-items-center w-9 h-9 text-primary-hover hover:bg-hairline/50" aria-label="+"><Plus size={15} /></button>
                     </div>
                     {n > 0
-                      ? <span className="font-sans text-data tabular-nums text-ink">{money(lineValueMinor(p.sku, n))}{disc > 0 && <span className="text-success text-caption"> · −{disc}%</span>}</span>
+                      ? <span className="font-sans text-data tabular-nums text-ink">{money(lineValueMinor(p.sku, n))}</span>
                       : <button onClick={() => { setDraftPallets(p.sku, p.moq); flash(`${p.moq}× ${pick(p.name)} ${pick({ en: 'added', ar: 'أُضيف' })}`) }} className={buttonClass('secondary', 'sm')}><Plus size={14} /> {pick({ en: 'Add MOQ', ar: 'أضف الحد الأدنى' })}</button>}
                   </div>
                 </div>
@@ -352,13 +347,12 @@ function ReviewOrderModal({ open, onClose, onTab }: { open: boolean; onClose: ()
           <ul className="rounded-lg border border-hairline overflow-hidden divide-y divide-hairline">
             {lines.map(([sku, n]) => {
               const p = megaCatalog.find((x) => x.sku === sku)!
-              const disc = volumeDiscount(n)
               return (
                 <li key={sku} className="flex items-center gap-md px-md py-2.5">
                   <span className="w-8 h-8 rounded-md shrink-0" style={{ backgroundColor: p.color, backgroundImage: 'repeating-linear-gradient(135deg, rgba(255,255,255,0.13) 0 2px, transparent 2px 9px)' }} />
                   <div className="flex-1 min-w-0">
                     <p className="font-sans text-data text-ink truncate">{pick(p.name)}</p>
-                    <p className="font-sans text-caption text-ink-subtle tabular-nums">{n} × {money(p.pricePerPalletMinor, { withSymbol: false })}{disc > 0 && <span className="text-success"> · −{disc}%</span>}</p>
+                    <p className="font-sans text-caption text-ink-subtle tabular-nums">{n} × {money(p.pricePerPalletMinor, { withSymbol: false })}</p>
                   </div>
                   <span className="font-sans text-data text-ink tabular-nums shrink-0">{money(lineValueMinor(sku, n))}</span>
                 </li>

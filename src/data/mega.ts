@@ -39,16 +39,9 @@ export const megaCatalog: MegaProduct[] = [
   { sku: 'BULK-COCOA', name: { en: 'Cocoa mass (ton)', ar: 'كتلة كاكاو (طن)' }, category: { en: 'Raw by ton', ar: 'خام بالطن' }, pricePerPalletMinor: 1840000, cbm: 1.0, grossKg: 1000, unitsPerPallet: 1, moq: 1, costPerPalletMinor: 1150000, color: '#6b4a30' },
 ]
 
-// Volume breaks apply per line once the pallet count is met.
-export const megaVolumeTiers: { range: Bilingual; minPallets: number; discount: number }[] = [
-  { range: { en: '1–4 pallets', ar: '١–٤ طبليات' }, minPallets: 1, discount: 0 },
-  { range: { en: '5–9 pallets', ar: '٥–٩ طبليات' }, minPallets: 5, discount: 6 },
-  { range: { en: '10+ pallets', ar: '١٠+ طبليات' }, minPallets: 10, discount: 12 },
-]
-
-export function volumeDiscount(pallets: number): number {
-  return [...megaVolumeTiers].reverse().find((t) => pallets >= t.minPallets)?.discount ?? 0
-}
+// Pricing is fixed: a pallet costs what the price list says it costs, and ordering more
+// of it does not change that. There are no volume breaks — a line is simply its list
+// price times its quantity.
 
 const PALLETS_PER_TRUCK_CBM = 76 // usable reefer volume
 export function trucksFor(cbm: number): number {

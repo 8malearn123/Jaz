@@ -212,7 +212,7 @@ export const accountOrderItems: Record<string, { variantId: string; qty: number 
 // ── Organization addresses & verification (org admin) ──
 export interface OrgAddress {
   id: string
-  type: 'billing' | 'shipping'
+  type: 'billing' | 'site'
   label: Bilingual
   city: Bilingual
   district: Bilingual
@@ -221,10 +221,12 @@ export interface OrgAddress {
   phone?: string // site contact number (for delivery / logistics)
 }
 
+// Wholesale is collected at the plant, so a branch here is where invoices go and who to
+// call — not somewhere an order is sent. `site` marks the ones that are physical premises.
 export const orgAddresses: OrgAddress[] = [
   { id: 'oa-1', type: 'billing', label: { en: 'Head office', ar: 'المقر الرئيسي' }, city: { en: 'Riyadh', ar: 'الرياض' }, district: { en: 'Al Olaya', ar: 'العليا' }, shortAddress: 'OLYA2231', isDefault: true, phone: '+966 11 200 1120' },
-  { id: 'oa-2', type: 'shipping', label: { en: 'Central warehouse', ar: 'المستودع المركزي' }, city: { en: 'Riyadh', ar: 'الرياض' }, district: { en: 'Al Sulay', ar: 'السلي' }, shortAddress: 'SULY7740', isDefault: true, phone: '+966 11 477 3300' },
-  { id: 'oa-3', type: 'shipping', label: { en: 'Jeddah branch', ar: 'فرع جدة' }, city: { en: 'Jeddah', ar: 'جدة' }, district: { en: 'Al Hamra', ar: 'الحمراء' }, shortAddress: 'HMRA1180', isDefault: false, phone: '+966 12 610 4400' },
+  { id: 'oa-2', type: 'site', label: { en: 'Central warehouse', ar: 'المستودع المركزي' }, city: { en: 'Riyadh', ar: 'الرياض' }, district: { en: 'Al Sulay', ar: 'السلي' }, shortAddress: 'SULY7740', isDefault: true, phone: '+966 11 477 3300' },
+  { id: 'oa-3', type: 'site', label: { en: 'Jeddah branch', ar: 'فرع جدة' }, city: { en: 'Jeddah', ar: 'جدة' }, district: { en: 'Al Hamra', ar: 'الحمراء' }, shortAddress: 'HMRA1180', isDefault: false, phone: '+966 12 610 4400' },
 ]
 
 export interface OrgVerificationCase {
@@ -378,23 +380,24 @@ export const b2bInvoices: B2BInvoice[] = [
 ]
 
 /** This-month rollup shown under the credit tab. */
-export const b2bMonthSummary = { orders: 8, purchasesMinor: 4720000, savedMinor: 288000 }
+// No volume savings line: pricing is fixed, so there is nothing saved by ordering more.
+export const b2bMonthSummary = { orders: 8, purchasesMinor: 4720000 }
 
-// ── Scheduled cold-chain deliveries to org branches (delivery tab) ─────────
-export interface ScheduledDelivery {
+// ── Scheduled collections at the plant (fulfilment tab) ────────────────────
+// Wholesale is picked up, not delivered — see data/fulfilment.ts. A slot is a window
+// to arrive at the Jazan site and take the order, so it carries no destination.
+export interface ScheduledPickup {
   orderNo: string
-  /** Org shipping address (branch) id — see orgAddresses. */
-  branchId: string
   day: string
   dow: Bilingual
   window: Bilingual
-  status: 'scheduled' | 'in_transit' | 'delivered'
+  status: 'scheduled' | 'ready' | 'collected'
 }
 
-export const scheduledDeliveries: ScheduledDelivery[] = [
-  { orderNo: 'JAZ-2026-001140', branchId: 'oa-2', day: '5', dow: { en: 'Tomorrow', ar: 'غدًا' }, window: { en: '7:00–9:00 AM', ar: '٧:٠٠ – ٩:٠٠ ص' }, status: 'in_transit' },
-  { orderNo: 'JAZ-2026-001190', branchId: 'oa-3', day: '8', dow: { en: 'Thu', ar: 'الخميس' }, window: { en: '7:00–9:00 AM', ar: '٧:٠٠ – ٩:٠٠ ص' }, status: 'scheduled' },
-  { orderNo: 'JAZ-2026-001188', branchId: 'oa-2', day: '12', dow: { en: 'Mon', ar: 'الإثنين' }, window: { en: '7:00–9:00 AM', ar: '٧:٠٠ – ٩:٠٠ ص' }, status: 'scheduled' },
+export const scheduledPickups: ScheduledPickup[] = [
+  { orderNo: 'JAZ-2026-001140', day: '5', dow: { en: 'Tomorrow', ar: 'غدًا' }, window: { en: '7:00–9:00 AM', ar: '٧:٠٠ – ٩:٠٠ ص' }, status: 'ready' },
+  { orderNo: 'JAZ-2026-001190', day: '8', dow: { en: 'Thu', ar: 'الخميس' }, window: { en: '7:00–9:00 AM', ar: '٧:٠٠ – ٩:٠٠ ص' }, status: 'scheduled' },
+  { orderNo: 'JAZ-2026-001188', day: '12', dow: { en: 'Mon', ar: 'الإثنين' }, window: { en: '7:00–9:00 AM', ar: '٧:٠٠ – ٩:٠٠ ص' }, status: 'scheduled' },
 ]
 
 /** Default B2B notification preferences (toggled in the company tab). */
