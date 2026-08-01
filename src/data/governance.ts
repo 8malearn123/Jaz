@@ -125,6 +125,8 @@ export interface DecisionPolicy {
   label: Bilingual
   /** What is being decided, in the requester's words. */
   desc: Bilingual
+  /** Off → the action always executes immediately and nothing is held. */
+  enabled?: boolean
   /** Below this value the action executes immediately. null → always needs approval. */
   autoBelowMinor: number | null
   /** Roles competent to approve it, in escalation order. */
@@ -287,6 +289,23 @@ export const decisionPolicies: DecisionPolicy[] = [
 
 export const policyOf = (kind: DecisionKind): DecisionPolicy => decisionPolicies.find((p) => p.kind === kind)!
 
+/** What the owner may change about a chain without touching code. */
+export interface PolicyOverride {
+  enabled?: boolean
+  autoBelowMinor?: number | null
+  dualAboveMinor?: number | null
+}
+/** The chain as it actually stands: its shipped defaults with the owner's edits on top. */
+export function withOverride(base: DecisionPolicy, o?: PolicyOverride): DecisionPolicy {
+  if (!o) return { ...base, enabled: base.enabled ?? true }
+  return {
+    ...base,
+    enabled: o.enabled ?? base.enabled ?? true,
+    autoBelowMinor: o.autoBelowMinor !== undefined ? o.autoBelowMinor : base.autoBelowMinor,
+    dualAboveMinor: o.dualAboveMinor !== undefined ? o.dualAboveMinor : base.dualAboveMinor,
+  }
+}
+
 /** Permissions that hand someone real leverage — granting one is itself a decision. */
 export const sensitivePerms: TeamPermission[] = ['purchases', 'waste', 'products']
 
@@ -296,23 +315,22 @@ export const PRICE_MOVE_TOLERANCE = 0.15
 export const FX_MOVE_TOLERANCE = 0.05
 
 /** Does this decision clear on its own, given what it is worth? */
-export function needsApproval(kind: DecisionKind, amountMinor = 0): boolean {
-  const p = policyOf(kind)
+export function needsApproval(p: DecisionPolicy, amountMinor = 0): boolean {
+  if (p.enabled === false) return false
   if (p.autoBelowMinor == null) return true
   return Math.abs(amountMinor) >= p.autoBelowMinor
 }
 
 /** Does it need the owner's co-signature on top of the first approver? */
-export function needsDualControl(kind: DecisionKind, amountMinor = 0): boolean {
-  const p = policyOf(kind)
+export function needsDualControl(p: DecisionPolicy, amountMinor = 0): boolean {
   return p.dualAboveMinor != null && Math.abs(amountMinor) >= p.dualAboveMinor
 }
 
 /** May this role approve this decision at this value? */
-export function roleMayApprove(role: JobRole | undefined, kind: DecisionKind, amountMinor = 0): boolean {
+export function roleMayApprove(role: JobRole | undefined, p: DecisionPolicy, amountMinor = 0): boolean {
   const def = jobRoleOf(role)
-  if (!def || !def.approves.includes(kind)) return false
+  if (!def || !def.approves.includes(p.kind)) return false
   if (def.ceilingMinor == null) return true
-  if (policyOf(kind).valueless) return true
+  if (p.valueless) return true
   return Math.abs(amountMinor) <= def.ceilingMinor
 }
