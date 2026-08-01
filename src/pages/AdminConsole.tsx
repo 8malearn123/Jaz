@@ -32,6 +32,7 @@ import { OwnerExec } from './admin/owner/OwnerExec'
 import { OwnerOrders } from './admin/owner/OwnerOrders'
 import { OwnerSupply } from './admin/owner/OwnerSupply'
 import { OwnerApprovals } from './admin/owner/OwnerApprovals'
+import { OwnerAudit } from './admin/owner/OwnerAudit'
 import { jobRoleOf } from '@/data/governance'
 import { OwnerCustomers } from './admin/owner/OwnerCustomers'
 import { OwnerTeam } from './admin/owner/OwnerTeam'
@@ -42,7 +43,7 @@ import { OwnerBrand } from './admin/owner/OwnerBrand'
 type Section =
   | 'overview' | 'credit' | 'invoicing' | 'accounts' | 'pipeline' | 'performance' | 'support' | 'catalogue' | 'audit' | 'users'
   // Owner operational sections (owner role only)
-  | 'owner_exec' | 'owner_orders' | 'owner_supply' | 'owner_customers' | 'owner_team' | 'owner_catalog' | 'owner_vendors' | 'owner_brand' | 'owner_approvals'
+  | 'owner_exec' | 'owner_orders' | 'owner_supply' | 'owner_customers' | 'owner_team' | 'owner_catalog' | 'owner_vendors' | 'owner_brand' | 'owner_approvals' | 'owner_audit'
 
 const SECTION_META: Record<Section, { key: string; icon: NonNullable<TabDef['icon']> }> = {
   overview: { key: 'admin.section.overview', icon: LayoutGrid },
@@ -64,9 +65,10 @@ const SECTION_META: Record<Section, { key: string; icon: NonNullable<TabDef['ico
   owner_vendors: { key: 'owner.section.vendors', icon: Handshake },
   owner_brand: { key: 'owner.section.brand', icon: Palette },
   owner_approvals: { key: 'owner.section.approvals', icon: ShieldCheck },
+  owner_audit: { key: 'owner.section.audit', icon: ScrollText },
 }
 
-const OWNER_SECTIONS: Section[] = ['owner_exec', 'owner_orders', 'owner_supply', 'owner_customers', 'owner_team', 'owner_approvals', 'owner_catalog', 'owner_vendors', 'owner_brand']
+const OWNER_SECTIONS: Section[] = ['owner_exec', 'owner_orders', 'owner_supply', 'owner_customers', 'owner_team', 'owner_approvals', 'owner_catalog', 'owner_vendors', 'owner_brand', 'owner_audit']
 
 // Owner sections that expand into nested sidebar sub-tabs, mapped to their sub-views (id + bilingual label).
 // The active sub-view is carried in a shared `?sub=` URL param and passed down to the panel as `view`.
@@ -89,14 +91,8 @@ const VENDOR_VIEWS: SubView[] = [
   { id: 'forecast', label: { en: 'Order forecasts', ar: 'تنبؤات الطلبات' } },
   { id: 'credit', label: { en: 'Join requests', ar: 'طلبات الانضمام' } },
 ]
-// Approvals nests its queue and the trail it writes.
-const APPROVAL_VIEWS: SubView[] = [
-  { id: 'inbox', label: { en: 'Awaiting signature', ar: 'بانتظار التوقيع' } },
-  { id: 'audit', label: { en: 'Audit trail', ar: 'سجل التدقيق' } },
-]
 const SUB_NAVS: Partial<Record<Section, SubView[]>> = {
   owner_supply: SUPPLY_VIEWS,
-  owner_approvals: APPROVAL_VIEWS,
   owner_catalog: CHANNEL_VIEWS,
   owner_vendors: VENDOR_VIEWS,
 }
@@ -137,7 +133,9 @@ export function AdminConsole() {
   const allowed = activeEmployee
     ? OWNER_SECTIONS.filter((s) => (s === 'owner_approvals'
       ? (jobRoleOf(activeEmployee.role)?.approves.length ?? 0) > 0
-      : activeEmployee.perms.some((p) => PERM_SECTIONS[p] === s)))
+      : s === 'owner_audit'
+        ? true // everyone can open the trail; it only ever shows their own branch
+        : activeEmployee.perms.some((p) => PERM_SECTIONS[p] === s)))
     : ACCESS[role]
   const [params, setParams] = useSearchParams()
 
@@ -207,7 +205,8 @@ export function AdminConsole() {
         {active === 'owner_exec' && <OwnerExec />}
         {active === 'owner_orders' && <OwnerOrders />}
         {active === 'owner_supply' && <OwnerSupply view={(sub ?? 'po') as SupplyView} />}
-        {active === 'owner_approvals' && <OwnerApprovals view={(sub ?? 'inbox') as 'inbox' | 'audit'} />}
+        {active === 'owner_approvals' && <OwnerApprovals />}
+        {active === 'owner_audit' && <OwnerAudit />}
         {active === 'owner_customers' && <OwnerCustomers />}
         {active === 'owner_team' && <OwnerTeam />}
         {active === 'owner_catalog' && <OwnerCatalog view={(sub ?? 'b2c') as ProdChannel} />}

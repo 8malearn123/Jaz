@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, X, ShieldAlert, Inbox, ScrollText, Lock, Zap } from 'lucide-react'
+import { Check, X, ShieldAlert, Inbox, Lock, Zap } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
@@ -19,11 +19,11 @@ const statusPill = {
 /** Approvals & audit: the queue of decisions waiting on a signature, and the live
  *  trail of everything that was decided. A held decision has changed nothing yet —
  *  approving it here is what makes it happen. */
-export function OwnerApprovals({ view = 'inbox' }: { view?: 'inbox' | 'audit' }) {
+export function OwnerApprovals() {
   const { pick, money } = useLocale()
   const { flash } = useToast()
   const { applyApproved, employees } = useOwnerState()
-  const { requests, pending, audit, approve, reject, breakGlass, canSign, blockReason, actor } = useGovernance()
+  const { requests, pending, approve, reject, breakGlass, canSign, blockReason, actor } = useGovernance()
   const [decide, setDecide] = useState<{ r: ApprovalRequest; mode: 'approve' | 'reject' | 'glass' } | null>(null)
 
   const decided = requests.filter((r) => r.status !== 'pending')
@@ -33,7 +33,7 @@ export function OwnerApprovals({ view = 'inbox' }: { view?: 'inbox' | 'audit' })
     { label: { en: 'Awaiting signature', ar: 'بانتظار التوقيع' }, value: String(pending.length), sub: { en: 'Nothing has taken effect yet', ar: 'لم يُنفَّذ منها شيء بعد' }, tone: 'dark' as const },
     { label: { en: 'You can sign', ar: 'يمكنك توقيعها' }, value: String(signable), sub: { en: 'Within your authority', ar: 'ضمن صلاحيتك' }, tone: 'gold' as const },
     { label: { en: 'Approved', ar: 'معتمدة' }, value: String(requests.filter((r) => r.status === 'approved').length), sub: { en: 'Executed', ar: 'نُفّذت' }, tone: 'green' as const },
-    { label: { en: 'Audit entries', ar: 'قيود التدقيق' }, value: String(audit.length), sub: { en: 'This session', ar: 'في هذه الجلسة' }, tone: 'plain' as const },
+    { label: { en: 'Rejected', ar: 'مرفوضة' }, value: String(requests.filter((r) => r.status === 'rejected').length), sub: { en: 'Turned down', ar: 'رُدّت' }, tone: 'plain' as const },
   ]
 
   const submit = (note: string) => {
@@ -115,56 +115,27 @@ export function OwnerApprovals({ view = 'inbox' }: { view?: 'inbox' | 'audit' })
 
   return (
     <div className="flex flex-col gap-lg">
-      <PanelHead title={pick({ en: 'Approvals & audit', ar: 'الاعتمادات والتدقيق' })}
+      <PanelHead title={pick({ en: 'Approvals', ar: 'الاعتمادات' })}
         subtitle={pick({ en: 'Decisions waiting on a signature · nothing takes effect until it is signed', ar: 'قرارات بانتظار التوقيع · لا ينفذ منها شيء قبل اعتماده' })} />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-sm">
         {stats.map((s, i) => <StatCard key={i} label={pick(s.label)} value={s.value} sub={pick(s.sub)} tone={s.tone} />)}
       </div>
 
-      {view === 'inbox' ? (
-        <div className="flex flex-col gap-lg">
+      <div className="flex flex-col gap-lg">
+        <div className="flex flex-col gap-md">
+          <h3 className="font-serif text-card-title text-ink inline-flex items-center gap-xs"><Inbox size={17} className="text-primary-hover" /> {pick({ en: 'Awaiting signature', ar: 'بانتظار التوقيع' })} · {pending.length}</h3>
+          {pending.length === 0
+            ? <p className="card p-lg font-sans text-data text-ink-subtle">{pick({ en: 'Nothing is waiting. Guarded actions that exceed their threshold land here.', ar: 'لا يوجد ما ينتظر. تصل إلى هنا الإجراءات التي تتجاوز حدّها المسموح.' })}</p>
+            : pending.map(card)}
+        </div>
+        {decided.length > 0 && (
           <div className="flex flex-col gap-md">
-            <h3 className="font-serif text-card-title text-ink inline-flex items-center gap-xs"><Inbox size={17} className="text-primary-hover" /> {pick({ en: 'Awaiting signature', ar: 'بانتظار التوقيع' })} · {pending.length}</h3>
-            {pending.length === 0
-              ? <p className="card p-lg font-sans text-data text-ink-subtle">{pick({ en: 'Nothing is waiting. Guarded actions that exceed their threshold land here.', ar: 'لا يوجد ما ينتظر. تصل إلى هنا الإجراءات التي تتجاوز حدّها المسموح.' })}</p>
-              : pending.map(card)}
+            <h3 className="font-serif text-card-title text-ink">{pick({ en: 'Decided', ar: 'محسومة' })} · {decided.length}</h3>
+            {decided.map(card)}
           </div>
-          {decided.length > 0 && (
-            <div className="flex flex-col gap-md">
-              <h3 className="font-serif text-card-title text-ink">{pick({ en: 'Decided', ar: 'محسومة' })} · {decided.length}</h3>
-              {decided.map(card)}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="card overflow-hidden">
-          <div className="px-lg py-md border-b border-hairline">
-            <h3 className="font-serif text-card-title text-ink inline-flex items-center gap-xs"><ScrollText size={17} className="text-primary-hover" /> {pick({ en: 'Audit trail', ar: 'سجل التدقيق' })}</h3>
-            <p className="font-sans text-caption text-ink-subtle mt-xxs">{pick({ en: 'Written as it happens — who acted, on what, and whether it was sensitive.', ar: 'يُكتب لحظة وقوعه — من تصرّف، وعلى ماذا، وهل كان حساسًا.' })}</p>
-          </div>
-          {audit.length === 0
-            ? <p className="px-lg py-md font-sans text-data text-ink-subtle">{pick({ en: 'No entries yet in this session.', ar: 'لا قيود في هذه الجلسة بعد.' })}</p>
-            : (
-              <ul className="divide-y divide-hairline">
-                {audit.map((e) => (
-                  <li key={e.id} className={cn('flex flex-wrap items-center gap-sm px-lg py-md', e.emergency && 'bg-danger/5')}>
-                    <span className="font-sans text-caption text-ink-subtle tabular-nums w-16 shrink-0">{e.id}</span>
-                    <div className="flex-1 min-w-[200px]">
-                      <p className="font-sans text-data text-ink">{pick(e.action)}</p>
-                      <p className="font-sans text-caption text-ink-subtle truncate">{e.resource}</p>
-                    </div>
-                    <span className="font-sans text-caption text-ink-muted">{pick(e.actor)}</span>
-                    <span className="font-sans text-caption text-ink-subtle">{pick(e.at)}</span>
-                    {e.emergency
-                      ? <Pill color="#b5403b" bg="#faeceb">{pick({ en: 'Override', ar: 'استثنائي' })}</Pill>
-                      : e.sensitive && <Pill color="#8a6b3f" bg="#f6edde">{pick({ en: 'Sensitive', ar: 'حسّاس' })}</Pill>}
-                  </li>
-                ))}
-              </ul>
-            )}
-        </div>
-      )}
+        )}
+      </div>
 
       {decide && <DecideModal state={decide} onClose={() => setDecide(null)} onSubmit={submit} />}
     </div>
