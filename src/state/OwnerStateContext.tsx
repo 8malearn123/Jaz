@@ -112,7 +112,8 @@ interface OwnerStateValue {
   addPurchaseInvoice: (inv: { supplier: Bilingual; material: Bilingual; date: Bilingual; totalMinor: number; po?: string; rawKey?: RawKey; qty?: number }) => void
   // multi-line purchase: each line is assigned to a stock item (seed raw or owner-added) and restocks it.
   // Amounts arrive already converted to SAR — the invoice's own currency and rate ride along in `fx`.
-  receivePurchase: (inv: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extra?: { label: Bilingual; amountMinor: number }; fx?: { code: string; rate: number; totalMinor: number } }) => void
+  /** Returns the id of the invoice it booked, so the caller can file it elsewhere (e.g. against a cost centre). */
+  receivePurchase: (inv: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extra?: { label: Bilingual; amountMinor: number }; fx?: { code: string; rate: number; totalMinor: number } }) => string
   // market exchange rates (SAR per unit) the owner keeps current — they seed each invoice's rate
   fxRates: Record<string, number>
   fxUpdatedAt: Bilingual
@@ -432,6 +433,7 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
       }
       logMovement({ itemId: l.itemId, kind: 'in', qty: l.qty, note: { en: `Purchase invoice ${id} received`, ar: `استلام فاتورة المشتريات ${id}` } })
     }
+    return id
   }, [invSeq, extraRaws, logMovement])
 
   /* ── waste → finance ── */

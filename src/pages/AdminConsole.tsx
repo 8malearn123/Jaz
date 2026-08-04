@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import {
   LayoutGrid, Wallet, FileText, Building2, Headset, PenTool, ScrollText, Users, Workflow,
   X, Check, RefreshCw, QrCode, Lock, ArrowRight, ShieldCheck, ShieldAlert, Target,
-  Gauge, ClipboardList, Factory, UsersRound, UserCog, LayoutList, Handshake, Palette,
+  Gauge, ClipboardList, Factory, UsersRound, UserCog, LayoutList, Handshake, Palette, Calculator,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useChannel } from '@/state/ChannelContext'
@@ -39,11 +39,13 @@ import { OwnerTeam } from './admin/owner/OwnerTeam'
 import { OwnerCatalog } from './admin/owner/OwnerCatalog'
 import { OwnerVendors, type VendorView } from './admin/owner/OwnerVendors'
 import { OwnerBrand } from './admin/owner/OwnerBrand'
+import { OwnerAccounting, type AccountingView } from './admin/owner/OwnerAccounting'
+import { CostCenterProvider } from '@/state/CostCenterContext'
 
 type Section =
   | 'overview' | 'credit' | 'invoicing' | 'accounts' | 'pipeline' | 'performance' | 'support' | 'catalogue' | 'audit' | 'users'
   // Owner operational sections (owner role only)
-  | 'owner_exec' | 'owner_orders' | 'owner_supply' | 'owner_customers' | 'owner_team' | 'owner_catalog' | 'owner_vendors' | 'owner_brand' | 'owner_approvals' | 'owner_audit'
+  | 'owner_exec' | 'owner_orders' | 'owner_supply' | 'owner_customers' | 'owner_team' | 'owner_catalog' | 'owner_vendors' | 'owner_accounting' | 'owner_brand' | 'owner_approvals' | 'owner_audit'
 
 const SECTION_META: Record<Section, { key: string; icon: NonNullable<TabDef['icon']> }> = {
   overview: { key: 'admin.section.overview', icon: LayoutGrid },
@@ -63,12 +65,13 @@ const SECTION_META: Record<Section, { key: string; icon: NonNullable<TabDef['ico
   owner_team: { key: 'owner.section.team', icon: UserCog },
   owner_catalog: { key: 'owner.section.catalog', icon: LayoutList },
   owner_vendors: { key: 'owner.section.vendors', icon: Handshake },
+  owner_accounting: { key: 'owner.section.accounting', icon: Calculator },
   owner_brand: { key: 'owner.section.brand', icon: Palette },
   owner_approvals: { key: 'owner.section.approvals', icon: ShieldCheck },
   owner_audit: { key: 'owner.section.audit', icon: ScrollText },
 }
 
-const OWNER_SECTIONS: Section[] = ['owner_exec', 'owner_orders', 'owner_supply', 'owner_customers', 'owner_team', 'owner_approvals', 'owner_catalog', 'owner_vendors', 'owner_brand', 'owner_audit']
+const OWNER_SECTIONS: Section[] = ['owner_exec', 'owner_orders', 'owner_supply', 'owner_customers', 'owner_team', 'owner_approvals', 'owner_catalog', 'owner_vendors', 'owner_accounting', 'owner_brand', 'owner_audit']
 
 // Owner sections that expand into nested sidebar sub-tabs, mapped to their sub-views (id + bilingual label).
 // The active sub-view is carried in a shared `?sub=` URL param and passed down to the panel as `view`.
@@ -96,11 +99,18 @@ const APPROVAL_VIEWS: SubView[] = [
   { id: 'inbox', label: { en: 'Awaiting signature', ar: 'بانتظار التوقيع' } },
   { id: 'policies', label: { en: 'Approval chains', ar: 'سلاسل الاعتماد' } },
 ]
+// Accounting: define the cost centres, read their postings, print their reports.
+const ACCOUNTING_VIEWS: SubView[] = [
+  { id: 'centers', label: { en: 'Cost centres', ar: 'مراكز التكلفة' } },
+  { id: 'entries', label: { en: 'Entries', ar: 'القيود' } },
+  { id: 'reports', label: { en: 'Reports', ar: 'التقارير' } },
+]
 const SUB_NAVS: Partial<Record<Section, SubView[]>> = {
   owner_supply: SUPPLY_VIEWS,
   owner_approvals: APPROVAL_VIEWS,
   owner_catalog: CHANNEL_VIEWS,
   owner_vendors: VENDOR_VIEWS,
+  owner_accounting: ACCOUNTING_VIEWS,
 }
 
 // Which owner-console section each grantable team permission opens up.
@@ -114,6 +124,7 @@ const PERM_SECTIONS: Record<TeamPermission, Section> = {
   customers: 'owner_customers',
   suppliers: 'owner_vendors',
   reports: 'owner_supply',
+  accounting: 'owner_accounting',
 }
 
 const ACCESS: Record<RoleId, Section[]> = {
@@ -188,6 +199,9 @@ export function AdminConsole() {
   return (
     <StepUpGate id={activeEmployee ? `emp-${activeEmployee.id}` : role} required={isPrivileged && !activeEmployee}>
      <ToastProvider>
+      {/* Cost centres sit above the owner state: the accounting section defines them,
+          the orders board and the purchase desk post against them. */}
+      <CostCenterProvider>
       <OwnerStateProvider>
       <AccountShell
         eyebrow={t('admin.platform')}
@@ -217,9 +231,11 @@ export function AdminConsole() {
         {active === 'owner_team' && <OwnerTeam />}
         {active === 'owner_catalog' && <OwnerCatalog view={(sub ?? 'b2c') as ProdChannel} />}
         {active === 'owner_vendors' && <OwnerVendors view={(sub ?? 'accounts') as VendorView} />}
+        {active === 'owner_accounting' && <OwnerAccounting view={(sub ?? 'centers') as AccountingView} />}
         {active === 'owner_brand' && <OwnerBrand />}
       </AccountShell>
       </OwnerStateProvider>
+      </CostCenterProvider>
      </ToastProvider>
     </StepUpGate>
   )

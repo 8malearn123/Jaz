@@ -47,7 +47,7 @@ export const jobRoles: JobRoleDef[] = [
     key: 'finance_mgr',
     label: { en: 'Finance manager', ar: 'مدير مالي' },
     desc: { en: 'Credit, settlements and pricing above the accountant’s ceiling.', ar: 'الائتمان والسداد والتسعير فوق سقف المحاسب.' },
-    perms: ['reports', 'customers', 'suppliers'],
+    perms: ['reports', 'customers', 'suppliers', 'accounting'],
     approves: ['credit_limit', 'vendor_payment', 'price_change', 'fx_rate', 'stock_take', 'waste', 'invoice_match', 'order_cancel', 'loyalty', 'batch_disposition'],
     ceilingMinor: null,
   },
@@ -55,7 +55,7 @@ export const jobRoles: JobRoleDef[] = [
     key: 'accountant',
     label: { en: 'Accountant', ar: 'محاسب' },
     desc: { en: 'Books, matching and settlements within a set ceiling.', ar: 'الدفاتر والمطابقة والسداد ضمن سقف محدد.' },
-    perms: ['purchases', 'reports', 'suppliers'],
+    perms: ['purchases', 'reports', 'suppliers', 'accounting'],
     approves: ['invoice_match', 'vendor_payment', 'waste', 'stock_take'],
     ceilingMinor: 5000000, // ﷼ 50,000
   },

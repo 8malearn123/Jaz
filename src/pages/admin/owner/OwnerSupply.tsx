@@ -13,9 +13,11 @@ import {
 import { wasteReasons } from '@/data/ownerFinance'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { useGovernance } from '@/state/GovernanceContext'
+import { useCostCenters } from '@/state/CostCenterContext'
 import { FX_MOVE_TOLERANCE } from '@/data/governance'
 import { cn } from '@/lib/cn'
 import { PanelHead, Pill, UtilBar } from './_shared'
+import { CostCenterField } from './OwnerAccounting'
 
 // Whole-number parser: normalize Arabic digits, take the integer part (so a stray "1500.50" can't concatenate to 150050).
 const parseNum = (s: string) => Math.max(0, parseInt(toAsciiDigits(s).replace(/[^\d.]/g, '').split('.')[0] || '0', 10) || 0)
@@ -38,6 +40,7 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
   const { flash } = useToast()
   const { invoices, receivePurchase } = useOwnerState()
   const { submit } = useGovernance()
+  const { post, entryForRef, centerOf } = useCostCenters()
   const [invoiceOpen, setInvoiceOpen] = useState(false)
   const [ratesOpen, setRatesOpen] = useState(false)
 
@@ -89,7 +92,10 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
                         <td className="px-lg py-md font-sans text-data text-ink tabular-nums whitespace-nowrap align-top">{iv.id}</td>
                         <td className="px-lg py-md align-top">
                           <p className="font-sans text-data text-ink">{pick(iv.supplier)}</p>
-                          <p className="font-sans text-caption text-ink-subtle">{iv.po ?? pick({ en: 'No PO', ar: 'بدون أمر شراء' })} · {pick(iv.material)}{iv.extra && <span className="tabular-nums"> · {pick(iv.extra.label)} {money(iv.extra.amountMinor)}</span>}</p>
+                          <p className="font-sans text-caption text-ink-subtle">{iv.po ?? pick({ en: 'No PO', ar: 'بدون أمر شراء' })} · {pick(iv.material)}{iv.extra && <span className="tabular-nums"> · {pick(iv.extra.label)} {money(iv.extra.amountMinor)}</span>}{(() => {
+                            const e = entryForRef(iv.id)
+                            return e ? <span className="text-ink-muted tabular-nums"> · {centerOf(e.centerId)?.code ?? e.centerId} {money(e.processMinor)}</span> : null
+                          })()}</p>
                         </td>
                         <td className="px-lg py-md text-end font-sans text-data text-ink-muted tabular-nums whitespace-nowrap align-top">{pick(iv.date)}</td>
                         <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums whitespace-nowrap align-top">
@@ -124,7 +130,16 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
 
           {invoiceOpen && (
             <EnterInvoiceModal onClose={() => setInvoiceOpen(false)}
-              onSubmit={(payload) => { receivePurchase(payload); flash(`${pick({ en: 'Invoice entered · stock updated', ar: 'أُدخلت الفاتورة · حُدّث المخزون' })}`) }} />
+              onSubmit={(payload) => {
+                const id = receivePurchase(payload)
+                // The purchase is filed against its cost centre as it is booked: the centre's
+                // purchase-side processes are valued on the invoice and frozen onto the entry.
+                const qty = payload.lines.reduce((a, l) => a + l.qty, 0)
+                const e = payload.costCenterId ? post({ side: 'purchase', centerId: payload.costCenterId, ref: id, party: payload.supplier, baseMinor: payload.totalMinor, qty }) : null
+                flash(e
+                  ? `${pick({ en: 'Invoice entered · stock updated', ar: 'أُدخلت الفاتورة · حُدّث المخزون' })} · ${centerOf(e.centerId)?.code ?? ''} ${money(e.processMinor)}`
+                  : `${pick({ en: 'Invoice entered · stock updated', ar: 'أُدخلت الفاتورة · حُدّث المخزون' })}`)
+              }} />
           )}
 
           {ratesOpen && <ExchangeRatesModal onClose={() => setRatesOpen(false)} flash={flash} />}
@@ -412,7 +427,7 @@ const allocate = (amountMinor: number, weightsMinor: number[]): number[] => {
  *  market rate, which is frozen onto the invoice on entry. The extra cost is classified
  *  under a named line item (shipping, packaging…) and allocated across the lines so it
  *  enters the stock products' landed cost. */
-function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extra?: { label: Bilingual; amountMinor: number }; fx?: { code: string; rate: number; totalMinor: number } }) => void }) {
+function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { supplier: Bilingual; po?: string; totalMinor: number; lines: { itemId: string; qty: number; costMinor: number }[]; extra?: { label: Bilingual; amountMinor: number }; fx?: { code: string; rate: number; totalMinor: number }; costCenterId: string }) => void }) {
   const { pick, money, locale } = useLocale()
   const { suppliers, extraRaws, rawQty, fxRates, fxUpdatedAt } = useOwnerState()
   type Line = { itemId: string; q: string; qtyStr: string; costStr: string }
@@ -424,6 +439,7 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
   const [extraTypeIdx, setExtraTypeIdx] = useState(-1)
   const [extraOther, setExtraOther] = useState('')
   const [lines, setLines] = useState<Line[]>([emptyLine])
+  const [costCenterId, setCostCenterId] = useState('')
 
   const items = [
     ...rawMaterials.map((r) => ({ id: r.key as string, name: r.name, unit: r.unit, category: r.category, balance: rawQty[r.key] })),
@@ -489,6 +505,7 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
       lines: lines.map((l, i) => ({ itemId: l.itemId, qty: Math.round(parseDec(l.qtyStr)), costMinor: lineSar[i] + extraShares[i] })),
       extra: extraFx > 0 && extraLabel ? { label: extraLabel, amountMinor: extraSar } : undefined,
       fx: isSar ? undefined : { code, rate, totalMinor: totalFx },
+      costCenterId,
     })
     onClose()
   }
@@ -616,6 +633,10 @@ function EnterInvoiceModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
             {!isSar && rate > 0 && <span className="font-sans text-caption text-primary-hover tabular-nums">= {money(totalSar)}</span>}
           </div>
         </div>
+
+        {/* the purchase side of the cost model — the centre's processes are added the moment the invoice is booked */}
+        <CostCenterField side="purchase" value={costCenterId} onChange={setCostCenterId}
+          doc={{ amountMinor: totalSar, qty: lines.reduce((a, l) => a + Math.round(parseDec(l.qtyStr)), 0) }} />
 
         <p className="font-sans text-caption rounded-lg bg-surface-2 border border-hairline p-md text-ink-subtle">
           {pick({ en: 'On entry: every line restocks its assigned stock product, the extra cost is recorded under its named line item and allocated across the lines into their landed cost, the invoice is linked to the supplier number and awaits 3-way match.', ar: 'عند الإدخال: يرتفع رصيد كل منتج مخزون مُسكَّن عليه صنف، وتُسجَّل التكلفة الإضافية تحت بندها وتُوزَّع على الأصناف لتدخل في تكلفتها الفعلية، وتُربط الفاتورة برقم المورد وتنتظر المطابقة الثلاثية.' })}
