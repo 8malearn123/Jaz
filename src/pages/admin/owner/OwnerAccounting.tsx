@@ -8,12 +8,12 @@ import { buttonClass } from '@/components/ui/Button'
 import type { Bilingual } from '@/data/types'
 import {
   costCenterKinds, processSideMeta, processBasisMeta, applyProcesses, sumCharges, processesFor,
-  type CostCenter, type CostCenterKind, type CostProcess, type ProcessBasis, type ProcessSide,
+  type CostCenter, type CostCenterKind, type CostProcess, type CostEntry, type ProcessBasis, type ProcessSide,
 } from '@/data/costCenters'
 import { useCostCenters } from '@/state/CostCenterContext'
 import { openCostCenterReportPdf } from '@/lib/costCenterPdf'
 import { cn } from '@/lib/cn'
-import { PanelHead, StatCard, Pill, FilterChips, UtilBar } from './_shared'
+import { PanelHead, StatCard, Pill, FilterChips, SegTabs, UtilBar } from './_shared'
 
 export type AccountingView = 'centers' | 'entries' | 'reports'
 
@@ -193,9 +193,12 @@ function rateLabel(p: CostProcess, money: (m: number, o?: { withSymbol?: boolean
 /* ───────────── Entries (the posting ledger) ───────────── */
 function EntriesView() {
   const { pick, money } = useLocale()
-  const { entries, centers, centerOf } = useCostCenters()
+  const { flash } = useToast()
+  const { entries, centers, centerOf, unpost } = useCostCenters()
   const [side, setSide] = useState<'all' | 'sale' | 'purchase'>('all')
   const [center, setCenter] = useState<string>('all')
+  const [manualOpen, setManualOpen] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState<CostEntry | null>(null)
 
   const shown = entries.filter((e) => (side === 'all' || e.side === side) && (center === 'all' || e.centerId === center))
   const baseTotal = shown.reduce((a, e) => a + e.baseMinor, 0)
@@ -209,12 +212,15 @@ function EntriesView() {
 
   return (
     <div className="flex flex-col gap-md">
-      <div className="min-w-0">
-        <h3 className="font-serif text-card-title text-ink">{pick({ en: 'Cost centre entries', ar: 'قيود مراكز التكلفة' })}</h3>
-        <p className="font-sans text-caption text-ink-subtle mt-xxs">{pick({
-          en: 'Every sale and purchase filed against a centre, with the processes that were added at that moment',
-          ar: 'كل عملية بيع وشراء مُرحّلة على مركز، ومعها العمليات التي أُضيفت في تلك اللحظة',
-        })}</p>
+      <div className="flex flex-wrap items-start justify-between gap-md">
+        <div className="min-w-0">
+          <h3 className="font-serif text-card-title text-ink">{pick({ en: 'Cost centre entries', ar: 'قيود مراكز التكلفة' })}</h3>
+          <p className="font-sans text-caption text-ink-subtle mt-xxs">{pick({
+            en: 'Every sale and purchase filed against a centre, with the processes that were added at that moment',
+            ar: 'كل عملية بيع وشراء مُرحّلة على مركز، ومعها العمليات التي أُضيفت في تلك اللحظة',
+          })}</p>
+        </div>
+        <button onClick={() => setManualOpen(true)} className={buttonClass('primary', 'sm')}><Plus size={15} /> {pick({ en: 'Manual entry', ar: 'قيد يدوي' })}</button>
       </div>
 
       <div className="flex flex-wrap items-center gap-md">
@@ -230,17 +236,20 @@ function EntriesView() {
           <table className="w-full border-collapse min-w-[860px]">
             <thead>
               <tr className="bg-surface-2 border-b border-hairline">
-                {[{ h: { en: 'Entry · document', ar: 'القيد · المستند' }, a: 'text-start' }, { h: { en: 'Cost centre', ar: 'مركز التكلفة' }, a: 'text-start' }, { h: { en: 'Party', ar: 'الطرف' }, a: 'text-start' }, { h: { en: 'Base amount', ar: 'المبلغ الأساس' }, a: 'text-end' }, { h: { en: 'Processes added', ar: 'العمليات المضافة' }, a: 'text-start' }, { h: { en: 'Load', ar: 'التحميل' }, a: 'text-end' }].map((x, i) => (
+                {[{ h: { en: 'Entry · document', ar: 'القيد · المستند' }, a: 'text-start' }, { h: { en: 'Cost centre', ar: 'مركز التكلفة' }, a: 'text-start' }, { h: { en: 'Party', ar: 'الطرف' }, a: 'text-start' }, { h: { en: 'Base amount', ar: 'المبلغ الأساس' }, a: 'text-end' }, { h: { en: 'Processes added', ar: 'العمليات المضافة' }, a: 'text-start' }, { h: { en: 'Load', ar: 'التحميل' }, a: 'text-end' }, { h: { en: '', ar: '' }, a: 'text-end' }].map((x, i) => (
                   <th key={i} className={cn('font-sans text-caption uppercase tracking-wide text-ink-subtle px-lg py-2.5', x.a)}>{pick(x.h)}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {shown.length === 0 && (
-                <tr><td colSpan={6} className="px-lg py-lg text-center font-sans text-data text-ink-subtle">{pick({
-                  en: 'Nothing filed yet. Create a manual order or enter a purchase invoice and pick a cost centre — the entry appears here.',
-                  ar: 'لا توجد قيود بعد. أنشئ طلبًا يدويًا أو أدخل فاتورة مشتريات واختر مركز تكلفة — يظهر القيد هنا.',
-                })}</td></tr>
+                <tr><td colSpan={7} className="px-lg py-lg text-center">
+                  <p className="font-sans text-data text-ink-subtle">{pick({
+                    en: 'Nothing filed yet. A sale or a purchase files itself when you pick a cost centre on it — or record one here directly.',
+                    ar: 'لا توجد قيود بعد. تُرحَّل عملية البيع أو الشراء تلقائيًا عند اختيار مركز تكلفة عليها — أو سجّل قيدًا هنا مباشرة.',
+                  })}</p>
+                  <button onClick={() => setManualOpen(true)} className={buttonClass('secondary', 'sm', 'mt-sm')}><Plus size={15} /> {pick({ en: 'Manual entry', ar: 'قيد يدوي' })}</button>
+                </td></tr>
               )}
               {shown.map((e) => {
                 const c = centerOf(e.centerId)
@@ -268,6 +277,9 @@ function EntriesView() {
                       </ul>
                     </td>
                     <td className="px-lg py-md text-end font-sans text-data text-primary-hover tabular-nums whitespace-nowrap">{money(e.processMinor)}</td>
+                    <td className="px-lg py-md text-end">
+                      <button onClick={() => setConfirmDelete(e)} className="grid place-items-center w-7 h-7 rounded-md text-ink-subtle hover:text-danger ms-auto" aria-label={pick({ en: 'Remove entry', ar: 'حذف القيد' })}><Trash2 size={14} /></button>
+                    </td>
                   </tr>
                 )
               })}
@@ -281,7 +293,115 @@ function EntriesView() {
           </span>
         </div>
       </div>
+
+      {manualOpen && <ManualEntryModal onClose={() => setManualOpen(false)} />}
+      {confirmDelete && (
+        <ConfirmDialog
+          open
+          onClose={() => setConfirmDelete(null)}
+          onConfirm={() => { unpost(confirmDelete.id); flash(`${pick({ en: 'Entry removed', ar: 'حُذف القيد' })} ${confirmDelete.id}`) }}
+          title={pick({ en: 'Remove this entry?', ar: 'حذف هذا القيد؟' })}
+          message={pick({
+            en: `${confirmDelete.id} · ${confirmDelete.ref} (${money(confirmDelete.processMinor)}) will be removed from the ledger, and its load will leave the cost centre's reports.`,
+            ar: `سيُحذف القيد ${confirmDelete.id} · ${confirmDelete.ref} (${money(confirmDelete.processMinor)}) من السجل، ويخرج تحميله من تقارير مركز التكلفة.`,
+          })}
+          confirmLabel={pick({ en: 'Yes, remove it', ar: 'نعم، احذفه' })}
+        />
+      )}
     </div>
+  )
+}
+
+/**
+ * Record a cost-centre entry by hand — for costs that ride on no order and no purchase
+ * invoice (a service, a one-off charge, an opening balance). It goes through the very
+ * same posting path as a sale or a purchase, so the centre's processes are applied and
+ * frozen onto it identically.
+ */
+function ManualEntryModal({ onClose }: { onClose: () => void }) {
+  const { pick, money } = useLocale()
+  const { flash } = useToast()
+  const { entries, post, centerOf } = useCostCenters()
+  const [side, setSide] = useState<'sale' | 'purchase'>('sale')
+  const [centerId, setCenterId] = useState('')
+  const [ref, setRef] = useState('')
+  const [party, setParty] = useState('')
+  const [amountStr, setAmountStr] = useState('')
+  const [qtyStr, setQtyStr] = useState('')
+  const [note, setNote] = useState('')
+
+  // Next free MAN-#### — derived from the highest one in the ledger, so removing an
+  // entry can never make the generator hand back a reference that is still in use.
+  const autoRef = useMemo(() => {
+    const max = entries.reduce((m, e) => {
+      const hit = /^MAN-(\d+)$/.exec(e.ref)
+      return hit ? Math.max(m, parseInt(hit[1], 10)) : m
+    }, 0)
+    return `MAN-${String(max + 1).padStart(4, '0')}`
+  }, [entries])
+
+  const finalRef = ref.trim() === '' ? autoRef : ref.trim()
+  const baseMinor = parseMinor(amountStr)
+  const qty = Math.max(0, parseInt(toAsciiDigits(qtyStr).replace(/\D/g, ''), 10) || 0)
+  // A document is filed once — reusing a reference replaces the posting that carries it.
+  const replaces = entries.find((e) => e.ref === finalRef)
+  const valid = centerId !== '' && party.trim() !== '' && (baseMinor > 0 || qty > 0)
+
+  const submit = () => {
+    if (!valid) return
+    const e = post({
+      side, centerId, ref: finalRef,
+      party: { en: party.trim(), ar: party.trim() },
+      baseMinor, qty,
+      note: note.trim() === '' ? undefined : { en: note.trim(), ar: note.trim() },
+    })
+    if (e) flash(`${e.id} · ${centerOf(e.centerId)?.code ?? ''} · ${money(e.processMinor)}`)
+    onClose()
+  }
+
+  return (
+    <Modal open onClose={onClose} size="lg" eyebrow={pick({ en: 'Accounting', ar: 'المحاسبة' })} title={pick({ en: 'Manual entry', ar: 'قيد يدوي' })}
+      footer={<>
+        <button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button>
+        <button onClick={submit} disabled={!valid} className={buttonClass('primary', 'sm')}>{pick({ en: 'File the entry', ar: 'ترحيل القيد' })}</button>
+      </>}>
+      <div className="flex flex-col gap-md">
+        <SegTabs
+          tabs={[{ id: 'sale' as const, label: pick({ en: 'Sale side', ar: 'جانب البيع' }) }, { id: 'purchase' as const, label: pick({ en: 'Purchase side', ar: 'جانب الشراء' }) }]}
+          active={side}
+          onChange={setSide}
+        />
+
+        <div className="grid sm:grid-cols-2 gap-md">
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Party', ar: 'الطرف' })}</span>
+            <input value={party} onChange={(e) => setParty(e.target.value)} className={cn('input', party.trim() === '' && 'border-hairline-strong')} placeholder={pick(side === 'sale' ? { en: 'Customer name…', ar: 'اسم العميل…' } : { en: 'Supplier name…', ar: 'اسم المورّد…' })} />
+          </label>
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Document reference', ar: 'مرجع المستند' })}</span>
+            <input value={ref} onChange={(e) => setRef(e.target.value)} className="input tabular-nums" placeholder={autoRef} dir="ltr" />
+            <span className="font-sans text-caption text-ink-subtle">
+              {replaces
+                ? pick({ en: `Already used by ${replaces.id} — filing again replaces that posting.`, ar: `مستخدم في القيد ${replaces.id} — الترحيل مجددًا يستبدل ذلك القيد.` })
+                : pick({ en: 'Leave it empty to number it automatically.', ar: 'اتركه فارغًا ليُرقَّم تلقائيًا.' })}
+            </span>
+          </label>
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Base amount (SAR)', ar: 'المبلغ الأساس (ريال)' })}</span>
+            <input value={amountStr} onChange={(e) => setAmountStr(e.target.value)} className="input tabular-nums" inputMode="decimal" placeholder="0" />
+            <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'What percentage processes are calculated on.', ar: 'ما تُحتسب عليه العمليات ذات النسبة.' })}</span>
+          </label>
+          <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Quantity (units)', ar: 'الكمية (وحدات)' })}</span>
+            <input value={qtyStr} onChange={(e) => setQtyStr(e.target.value)} className="input tabular-nums" inputMode="numeric" placeholder="0" />
+            <span className="font-sans text-caption text-ink-subtle">{pick({ en: 'What per-unit processes are calculated on.', ar: 'ما تُحتسب عليه العمليات لكل وحدة.' })}</span>
+          </label>
+        </div>
+
+        {/* same picker the sale and purchase desks use — with the live preview of what will be added */}
+        <CostCenterField side={side} value={centerId} onChange={setCenterId} doc={{ amountMinor: baseMinor, qty }} required />
+
+        <label className="flex flex-col gap-xs"><span className="label">{pick({ en: 'Note (optional)', ar: 'ملاحظة (اختياري)' })}</span>
+          <input value={note} onChange={(e) => setNote(e.target.value)} className="input" placeholder={pick({ en: 'What this entry is for…', ar: 'سبب القيد…' })} />
+        </label>
+      </div>
+    </Modal>
   )
 }
 
