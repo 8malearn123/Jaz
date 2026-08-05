@@ -1,4 +1,4 @@
-import type { ReactNode, ComponentType } from 'react'
+import { useEffect, useRef, type ReactNode, type ComponentType } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { Eyebrow } from '@/components/ui/Misc'
@@ -29,6 +29,22 @@ interface AccountShellProps {
 /** Dashboard chrome shared by the Individual and Business account worlds. */
 export function AccountShell({ eyebrow, title, subtitle, tone = 'light', tabs, active, onSelect, headerExtra, navFooter, children }: AccountShellProps) {
   const dark = tone === 'dark'
+  const navRef = useRef<HTMLElement>(null)
+
+  // Keep the current section visible inside the nav's own scroll — a deep link to a
+  // section far down the list should land on it, not below the fold of the column.
+  // Only the nav's scrollTop is ever touched, so the page itself never jumps.
+  useEffect(() => {
+    const nav = navRef.current
+    if (!nav || nav.scrollHeight <= nav.clientHeight) return
+    const el = nav.querySelector<HTMLElement>('[aria-current="page"]')
+    if (!el) return
+    const navBox = nav.getBoundingClientRect()
+    const elBox = el.getBoundingClientRect()
+    if (elBox.top < navBox.top) nav.scrollTop -= navBox.top - elBox.top + 8
+    else if (elBox.bottom > navBox.bottom) nav.scrollTop += elBox.bottom - navBox.bottom + 8
+  }, [active])
+
   return (
     <>
       {/* header band */}
@@ -50,8 +66,11 @@ export function AccountShell({ eyebrow, title, subtitle, tone = 'light', tabs, a
       <section className="container-jaz py-xl">
         <div className="grid lg:grid-cols-[236px_1fr] gap-lg lg:gap-xl items-start">
           {/* tab nav */}
+          {/* Sticky on its own: pinned under the navbar and scrolling inside itself, so a
+              long section list never drags the page with it. Mobile keeps the horizontal rail. */}
           <nav
-            className="flex items-start lg:items-stretch lg:flex-col gap-xs overflow-x-auto no-scrollbar lg:overflow-visible lg:sticky lg:top-28 -mx-lg px-lg lg:mx-0 lg:px-0"
+            ref={navRef}
+            className="flex items-start lg:items-stretch lg:flex-col gap-xs overflow-x-auto sidebar-scroll -mx-lg px-lg lg:mx-0 lg:px-0 lg:sticky lg:top-28 lg:max-h-[calc(100vh-9rem)] lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-contain lg:pe-1.5"
             aria-label={title}
           >
             {tabs.map((tab) => {

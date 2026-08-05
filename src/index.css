@@ -183,6 +183,37 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  /* Dashboard side nav: a horizontal rail on mobile (scrollbar hidden), and on desktop
+     its own vertical scroll — a long section list moves under its own scrollbar instead
+     of forcing the whole page down. The bar is slim and warm so it reads as brand chrome. */
+  .sidebar-scroll::-webkit-scrollbar {
+    display: none;
+  }
+  .sidebar-scroll {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  @media (min-width: 1024px) {
+    .sidebar-scroll {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(176, 138, 87, 0.45) transparent;
+    }
+    .sidebar-scroll::-webkit-scrollbar {
+      display: block;
+      width: 6px;
+    }
+    .sidebar-scroll::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .sidebar-scroll::-webkit-scrollbar-thumb {
+      background-color: rgba(176, 138, 87, 0.45);
+      border-radius: 9999px;
+    }
+    .sidebar-scroll:hover::-webkit-scrollbar-thumb {
+      background-color: rgba(176, 138, 87, 0.7);
+    }
+  }
 }
 
 @layer utilities {
