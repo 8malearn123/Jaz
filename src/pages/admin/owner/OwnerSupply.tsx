@@ -43,6 +43,7 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
   const { post, entryForRef, centerOf } = useCostCenters()
   const [invoiceOpen, setInvoiceOpen] = useState(false)
   const [ratesOpen, setRatesOpen] = useState(false)
+  const [viewInvoice, setViewInvoice] = useState<string | null>(null)
 
   const matched = invoices.filter((iv) => iv.match === 'matched').length
   const pending = invoices.filter((iv) => iv.match === 'pending').length
@@ -79,7 +80,7 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
               <table className="w-full border-collapse min-w-[680px]">
                 <thead>
                   <tr className="bg-surface-2 border-b border-hairline">
-                    {[{ en: 'Invoice #', ar: 'رقم الفاتورة' }, { en: 'Supplier · raw material', ar: 'المورّد · المادة الخام' }, { en: 'Date', ar: 'التاريخ' }, { en: 'Value (incl. VAT)', ar: 'القيمة (شامل الضريبة)' }, { en: 'Status', ar: 'الحالة' }].map((h, i) => (
+                    {[{ en: 'Invoice #', ar: 'رقم الفاتورة' }, { en: 'Supplier · raw material', ar: 'المورّد · المادة الخام' }, { en: 'Date', ar: 'التاريخ' }, { en: 'Value (incl. VAT)', ar: 'القيمة (شامل الضريبة)' }, { en: 'Status', ar: 'الحالة' }, { en: '', ar: '' }].map((h, i) => (
                       <th key={i} className={cn('font-sans text-caption uppercase tracking-wide text-ink-subtle px-lg py-2.5', i === 2 || i === 3 ? 'text-end' : 'text-start')}>{pick(h)}</th>
                     ))}
                   </tr>
@@ -120,6 +121,9 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
                             )}
                           </div>
                         </td>
+                        <td className="px-lg py-md align-top text-end">
+                          <button onClick={() => setViewInvoice(iv.id)} className="grid place-items-center w-8 h-8 rounded-md border border-hairline text-ink-muted hover:text-ink hover:border-ink/30 transition-colors ms-auto" aria-label={pick({ en: 'View invoice', ar: 'عرض الفاتورة' })} title={pick({ en: 'View invoice', ar: 'عرض الفاتورة' })}><Eye size={15} /></button>
+                        </td>
                       </tr>
                     )
                   })}
@@ -143,6 +147,8 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
           )}
 
           {ratesOpen && <ExchangeRatesModal onClose={() => setRatesOpen(false)} flash={flash} />}
+
+          {viewInvoice && <InvoiceDetailModal id={viewInvoice} onClose={() => setViewInvoice(null)} />}
         </div>
       )}
 
@@ -154,6 +160,149 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
 
       {view === 'waste' && <WastePanel flash={flash} />}
     </div>
+  )
+}
+
+/** The invoice as it was entered: its lines against stock items, the VAT and extra cost
+ *  split out of the total, the currency it was billed in, and the cost centre it was
+ *  filed against. Read-only — the entry itself is the record. */
+function InvoiceDetailModal({ id, onClose }: { id: string; onClose: () => void }) {
+  const { pick, money, locale } = useLocale()
+  const { invoices, extraRaws } = useOwnerState()
+  const { entryForRef, centerOf } = useCostCenters()
+  const iv = invoices.find((x) => x.id === id)
+  if (!iv) return null
+
+  // The total is what was paid; VAT and the classified extra are carried inside it, so the
+  // goods subtotal is what remains once both are taken back out (VAT is 15% of that subtotal).
+  const extraMinor = iv.extra?.amountMinor ?? 0
+  const goodsWithVat = Math.max(0, iv.totalMinor - extraMinor)
+  const vatMinor = Math.round((goodsWithVat * 15) / 115)
+  const subtotalMinor = goodsWithVat - vatMinor
+
+  const nameOf = (itemId: string): Bilingual =>
+    rawMaterials.find((r) => r.key === itemId)?.name ?? extraRaws.find((x) => x.id === itemId)?.name ?? { en: itemId, ar: itemId }
+  const unitOf = (itemId: string): Bilingual | undefined =>
+    rawMaterials.find((r) => r.key === itemId)?.unit ?? extraRaws.find((x) => x.id === itemId)?.unit
+
+  // Older invoices carry a single raw line instead of the multi-line shape.
+  const lines = iv.lines ?? (iv.rawKey && iv.qty != null ? [{ itemId: iv.rawKey as string, qty: iv.qty, costMinor: subtotalMinor }] : [])
+  const m = matchMeta[iv.match]
+  const entry = entryForRef(iv.id)
+  const center = entry ? centerOf(entry.centerId) : undefined
+  const cur = iv.fx ? currencyOf(iv.fx.code) : null
+
+  const field = (label: Bilingual, value: string, sub?: string) => (
+    <div className="flex flex-col gap-xxs">
+      <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick(label)}</span>
+      <span className="font-sans text-data text-ink">{value}</span>
+      {sub && <span className="font-sans text-caption text-ink-subtle tabular-nums">{sub}</span>}
+    </div>
+  )
+
+  return (
+    <Modal open onClose={onClose} size="lg" eyebrow={pick({ en: 'Purchase invoice', ar: 'فاتورة مشتريات' })} title={iv.id}
+      footer={<button onClick={onClose} className={buttonClass('primary', 'sm')}>{pick({ en: 'Close', ar: 'إغلاق' })}</button>}>
+      <div className="flex flex-col gap-md">
+        <div className="flex flex-wrap items-center gap-sm">
+          <Pill color={m.color} bg={m.bg}>{pick(m.label)}</Pill>
+          {!iv.po && <Pill color="#b5403b" bg="#faeceb">{pick({ en: 'No purchase order', ar: 'بدون أمر شراء' })}</Pill>}
+          {iv.fx && <Pill color="#365766" bg="#e7eef1">{iv.fx.code}</Pill>}
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-md rounded-lg bg-surface-2 border border-hairline p-md">
+          {field({ en: 'Supplier', ar: 'المورّد' }, pick(iv.supplier))}
+          {field({ en: 'Purchase order', ar: 'أمر الشراء' }, iv.po ?? '—')}
+          {field({ en: 'Date', ar: 'التاريخ' }, pick(iv.date))}
+          {field({ en: 'Items', ar: 'الأصناف' }, pick(iv.material))}
+        </div>
+
+        {/* the lines, each against the stock item it restocked */}
+        <div className="rounded-lg border border-hairline overflow-hidden">
+          <div className="px-md py-sm bg-surface-2 border-b border-hairline">
+            <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Lines', ar: 'بنود الفاتورة' })}</h4>
+          </div>
+          {lines.length === 0
+            ? <p className="px-md py-sm font-sans text-caption text-ink-subtle">{pick({ en: 'This invoice was entered before line detail was kept.', ar: 'أُدخلت هذه الفاتورة قبل حفظ تفصيل البنود.' })}</p>
+            : (
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b border-hairline">
+                    {[{ h: { en: 'Stock item', ar: 'منتج المخزون' }, a: 'text-start' }, { h: { en: 'Qty received', ar: 'الكمية المستلمة' }, a: 'text-end' }, { h: { en: 'Landed cost', ar: 'التكلفة الفعلية' }, a: 'text-end' }].map((c, i) => (
+                      <th key={i} className={cn('font-sans text-caption uppercase tracking-wide text-ink-subtle px-md py-2', c.a)}>{pick(c.h)}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((l, i) => {
+                    const unit = unitOf(l.itemId)
+                    return (
+                      <tr key={i} className="border-b border-hairline last:border-0">
+                        <td className="px-md py-sm font-sans text-data text-ink">{pick(nameOf(l.itemId))}</td>
+                        <td className="px-md py-sm text-end font-sans text-data text-ink-muted tabular-nums whitespace-nowrap">{l.qty.toLocaleString()} {unit ? pick(unit) : ''}</td>
+                        <td className="px-md py-sm text-end font-sans text-data text-ink tabular-nums whitespace-nowrap">
+                          {money(l.costMinor)}
+                          {l.qty > 0 && <span className="block font-sans text-caption text-ink-subtle">{money(Math.round(l.costMinor / l.qty))} / {unit ? pick(unit) : pick({ en: 'unit', ar: 'وحدة' })}</span>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+        </div>
+
+        {/* what the total is made of */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-md rounded-lg bg-surface-2 border border-hairline p-md">
+          {field({ en: 'Subtotal', ar: 'المجموع الفرعي' }, money(subtotalMinor))}
+          {field({ en: 'VAT 15%', ar: 'الضريبة ١٥٪' }, money(vatMinor))}
+          {field(
+            { en: 'Extra cost', ar: 'التكلفة الإضافية' },
+            extraMinor > 0 ? money(extraMinor) : '—',
+            iv.extra ? `${pick(iv.extra.label)} · ${pick({ en: 'allocated into the lines', ar: 'موزّعة على البنود' })}` : undefined,
+          )}
+          <div className="flex flex-col gap-xxs">
+            <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Total paid', ar: 'الإجمالي المدفوع' })}</span>
+            <span className="font-serif text-card-title text-ink tabular-nums">{money(iv.totalMinor)}</span>
+            {iv.fx && cur && (
+              <span dir="ltr" className="font-sans text-caption text-ink-subtle tabular-nums">
+                {cur.symbol} {money(iv.fx.totalMinor, { withSymbol: false })} · 1 {iv.fx.code} = {locale === 'ar' ? toArabicDigits(String(iv.fx.rate)) : iv.fx.rate} ﷼
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* where its cost landed */}
+        {entry && (
+          <div className="rounded-lg border border-hairline overflow-hidden">
+            <div className="px-md py-sm bg-surface-2 border-b border-hairline flex flex-wrap items-center justify-between gap-sm">
+              <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Cost centre', ar: 'مركز التكلفة' })}</h4>
+              <span className="font-sans text-caption text-ink-muted">{center ? `${center.code} · ${pick(center.name)}` : entry.centerId} · {entry.id}</span>
+            </div>
+            <div className="divide-y divide-hairline">
+              {entry.charges.map((ch) => (
+                <div key={ch.processId} className="flex items-center justify-between gap-sm px-md py-1.5">
+                  <span className="font-sans text-caption text-ink">{pick(ch.name)} <span className="text-ink-subtle">({ch.basis === 'pct' ? `${ch.rate}%` : money(ch.rate)})</span></span>
+                  <span className="font-sans text-caption text-ink tabular-nums">{money(ch.amountMinor)}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between gap-sm px-md py-sm">
+                <span className="font-sans text-caption uppercase tracking-wide text-ink-subtle">{pick({ en: 'Cost centre load', ar: 'تحميل مركز التكلفة' })}</span>
+                <span className="font-sans text-data text-primary-hover tabular-nums">{money(entry.processMinor)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <p className="font-sans text-caption rounded-lg bg-surface-2 border border-hairline p-md text-ink-subtle">
+          {iv.match === 'matched'
+            ? pick({ en: 'Three-way matched — invoice, purchase order and goods received agree.', ar: 'مطابقة ثلاثية تامة — الفاتورة وأمر الشراء والاستلام متطابقة.' })
+            : iv.match === 'pending'
+              ? pick({ en: 'Waiting for a second person to close its three-way match — whoever entered it may not be the one who clears it.', ar: 'بانتظار شخص ثانٍ ليغلق المطابقة الثلاثية — فمن أدخلها لا يغلقها.' })
+              : pick({ en: 'No purchase order to match against, so it is flagged for review.', ar: 'لا يوجد أمر شراء للمطابقة عليه، لذلك وُسمت للمراجعة.' })}
+        </p>
+      </div>
+    </Modal>
   )
 }
 

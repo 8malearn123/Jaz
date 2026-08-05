@@ -423,7 +423,7 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     setInvSeq((s) => s + 1)
     const names: Bilingual[] = inv.lines.map((l) => rawMaterials.find((r) => r.key === l.itemId)?.name ?? extraRaws.find((x) => x.id === l.itemId)?.name ?? { en: l.itemId, ar: l.itemId })
     const material: Bilingual = names.length === 1 ? names[0] : { en: `${names[0].en} +${names.length - 1}`, ar: `${names[0].ar} +${names.length - 1}` }
-    setInvoices((prev) => [{ id, supplier: inv.supplier, material, date: { en: 'Today', ar: 'اليوم' }, totalMinor: inv.totalMinor, match: inv.po ? 'pending' : 'flagged', po: inv.po, extra: inv.extra, fx: inv.fx }, ...prev])
+    setInvoices((prev) => [{ id, supplier: inv.supplier, material, date: { en: 'Today', ar: 'اليوم' }, totalMinor: inv.totalMinor, match: inv.po ? 'pending' : 'flagged', po: inv.po, extra: inv.extra, fx: inv.fx, lines: inv.lines }, ...prev])
     for (const l of inv.lines) {
       if (rawMaterials.some((r) => r.key === l.itemId)) {
         const k = l.itemId as RawKey
