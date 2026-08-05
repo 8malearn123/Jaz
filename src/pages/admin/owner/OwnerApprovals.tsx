@@ -1,12 +1,18 @@
 import { useState } from 'react'
-import { Check, X, ShieldAlert, Inbox, Lock, Zap, Settings2, Plus, Trash2, Search } from 'lucide-react'
+import { Check, X, ShieldAlert, Inbox, Lock, Zap, Settings2, Plus, Trash2, Search, ArrowLeft } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
-import { useOwnerState } from '@/state/OwnerStateContext'
+import { useOwnerState, type ApprovalPayload } from '@/state/OwnerStateContext'
 import { useGovernance, approversFor, type ApprovalRequest } from '@/state/GovernanceContext'
 import { chainTemplates, isCustomChain, jobRoleOf, jobRoles, type ApprovalStep, type ChainTemplate } from '@/data/governance'
+import type { Bilingual } from '@/data/types'
+import { rawMaterials, batchDispositions, currencyOf, type RawKey } from '@/data/ownerSupply'
+import { b2cCatalog, stdCatalog } from '@/data/ownerCatalog'
+import { teamPermissions } from '@/data/ownerTeam'
+import { ownerOrderStatuses } from '@/data/ownerOrders'
+import { ownerTiers } from '@/data/ownerCustomers'
 import { cn } from '@/lib/cn'
 import { PanelHead, StatCard, Pill } from './_shared'
 
@@ -76,6 +82,9 @@ export function OwnerApprovals({ view = 'inbox' }: { view?: 'inbox' | 'policies'
             <span className="font-serif text-card-title text-ink tabular-nums shrink-0">{money(r.amountMinor)}</span>
           )}
         </div>
+
+        {/* the decision spelled out against the books as they stand right now */}
+        <RequestFacts r={r} />
 
         {r.reason && <p className="font-sans text-caption text-ink-muted rounded-lg bg-surface-2 border border-hairline p-md">{pick({ en: 'Reason', ar: 'المبرر' })}: {r.reason}</p>}
 
@@ -165,6 +174,239 @@ export function OwnerApprovals({ view = 'inbox' }: { view?: 'inbox' | 'policies'
   )
 }
 
+/* ── what a decision actually changes ──────────────────────────────────────────
+   The card above names the decision; this reads its payload against the books as
+   they stand right now and says, line by line, what signing it would do — the value
+   before, the value after. A signer should never have to open another screen to
+   find out what is in front of them. */
+
+type Fact = { label: Bilingual; value?: string; before?: string; after?: string }
+
+function RequestFacts({ r }: { r: ApprovalRequest }) {
+  const { pick, money } = useLocale()
+  const {
+    vendors, creditLimits, invoices, orders, products, catalog, fxRates, employees,
+    finished, rawQty, extraRaws, loyalty, bomOf, shelfLife,
+  } = useOwnerState()
+
+  const p = (r.payload ?? {}) as ApprovalPayload
+  const facts: Fact[] = []
+  const one = (label: Bilingual, value: string) => facts.push({ label, value })
+  const move = (label: Bilingual, before: string, after: string) => facts.push({ label, before, after })
+  const rawName = (k: string): string => pick(rawMaterials.find((x) => x.key === k)?.name ?? extraRaws.find((x) => x.id === k)?.name ?? { en: k, ar: k })
+  const productBySku = (sku?: string) => (sku ? Object.values(products).flat().find((x) => x.sku === sku) : undefined)
+
+  switch (r.kind) {
+    case 'credit_limit': {
+      const v = vendors.find((x) => x.id === p.vendorId)
+      if (v) {
+        one({ en: 'Account', ar: 'الحساب' }, `${pick(v.name)} · ${v.id}`)
+        move({ en: 'Credit limit', ar: 'حد الائتمان' }, money(creditLimits[v.id] ?? v.limitMinor), money(p.limitMinor ?? 0))
+        one({ en: 'Owes right now', ar: 'المستحق عليه الآن' }, money(v.outstandingMinor))
+      }
+      break
+    }
+    case 'vendor_payment': {
+      const v = vendors.find((x) => x.id === p.vendorId)
+      if (v) {
+        one({ en: 'Account', ar: 'الحساب' }, `${pick(v.name)} · ${v.id}`)
+        one({ en: 'Settlement', ar: 'قيمة السداد' }, money(p.amountMinor ?? 0))
+        move({ en: 'Outstanding', ar: 'الرصيد المستحق' }, money(v.outstandingMinor), money(Math.max(0, v.outstandingMinor - (p.amountMinor ?? 0))))
+      }
+      break
+    }
+    case 'invoice_match': {
+      const iv = invoices.find((x) => x.id === p.invoiceId)
+      if (iv) {
+        one({ en: 'Invoice', ar: 'الفاتورة' }, `${iv.id} · ${pick(iv.supplier)}`)
+        one({ en: 'Items', ar: 'الأصناف' }, pick(iv.material))
+        one({ en: 'Value', ar: 'القيمة' }, money(iv.totalMinor))
+        one({ en: 'Purchase order', ar: 'أمر الشراء' }, iv.po ?? pick({ en: 'None — nothing to match against', ar: 'لا يوجد — لا شيء للمطابقة عليه' }))
+        move({ en: 'Match state', ar: 'حالة المطابقة' },
+          pick(iv.match === 'pending' ? { en: 'Awaiting match', ar: 'بانتظار المطابقة' } : { en: 'Variance', ar: 'فرق يتطلّب مراجعة' }),
+          pick({ en: 'Matched', ar: 'مطابقة تامة' }))
+      }
+      break
+    }
+    case 'price_change': {
+      const prod = productBySku(p.sku)
+      if (prod) {
+        one({ en: 'Product', ar: 'المنتج' }, `${pick(prod.name)} · ${prod.sku}`)
+        move({ en: 'Price', ar: 'السعر' }, money(prod.priceMinor), money(p.priceMinor ?? 0))
+      } else {
+        const item = [...b2cCatalog, ...stdCatalog].find((x) => x.id === p.itemId)
+        const current = catalog.price[p.itemId ?? ''] ?? (item && 'priceMinor' in item ? item.priceMinor : item?.basePriceMinor ?? 0)
+        one({ en: 'Catalogue item', ar: 'صنف الكتالوج' }, item ? pick(item.name) : (p.itemId ?? '—'))
+        move({ en: 'Price', ar: 'السعر' }, money(current), money(p.priceMinor ?? 0))
+      }
+      break
+    }
+    case 'fx_rate': {
+      const code = p.code ?? ''
+      const current = fxRates[code] ?? currencyOf(code).sarPerUnit
+      const next = p.rate ?? 0
+      one({ en: 'Currency', ar: 'العملة' }, `${code} · ${pick(currencyOf(code).label)}`)
+      move({ en: 'Rate (SAR per unit)', ar: 'السعر (ريال للوحدة)' }, String(current), String(next))
+      if (current > 0) one({ en: 'Move', ar: 'نسبة التغيّر' }, `${(((next - current) / current) * 100).toFixed(2)}%`)
+      one({ en: 'Applies to', ar: 'يسري على' }, pick({ en: 'New invoices only — booked ones keep their frozen rate', ar: 'الفواتير الجديدة فقط — والمقيّدة تحتفظ بسعرها المثبّت' }))
+      break
+    }
+    case 'perm_grant': {
+      const emp = employees.find((x) => x.id === p.employeeId)
+      const perm = teamPermissions.find((x) => x.key === p.perm)
+      const has = !!emp?.perms.includes(p.perm!)
+      if (emp) one({ en: 'Employee', ar: 'الموظف' }, `${pick(emp.name)} · ${pick(emp.title)}`)
+      if (perm) {
+        one({ en: 'Access', ar: 'الصلاحية' }, `${pick(perm.label)} — ${pick(perm.desc)}`)
+        move({ en: 'Holds it', ar: 'يملكها' }, pick(has ? { en: 'Yes', ar: 'نعم' } : { en: 'No', ar: 'لا' }), pick(has ? { en: 'No — it is withdrawn', ar: 'لا — تُسحب' } : { en: 'Yes — it is granted', ar: 'نعم — تُمنح' }))
+      }
+      break
+    }
+    case 'order_cancel': {
+      const o = orders.find((x) => x.id === p.orderId)
+      if (o) {
+        one({ en: 'Order', ar: 'الطلب' }, `${o.id} · ${pick(o.customer)}`)
+        one({ en: 'Contents', ar: 'المحتوى' }, `${pick(o.items)} · ${o.qty.toLocaleString()} ${pick({ en: 'units', ar: 'وحدة' })}`)
+        one({ en: 'Value', ar: 'القيمة' }, money(o.amountMinor))
+        move({ en: 'Stage', ar: 'المرحلة' }, pick(ownerOrderStatuses[o.stage].label), pick({ en: 'Cancelled — not fulfilled', ar: 'ملغى — لن يُنفَّذ' }))
+      }
+      break
+    }
+    case 'loyalty': {
+      const l = p.loyalty ?? {}
+      const num = (n: number) => n.toLocaleString()
+      if (l.earnPerRiyal != null && l.earnPerRiyal !== loyalty.earnPerRiyal) move({ en: 'Points per SAR', ar: 'نقاط لكل ريال' }, num(loyalty.earnPerRiyal), num(l.earnPerRiyal))
+      if (l.riyalPer100Points != null && l.riyalPer100Points !== loyalty.riyalPer100Points) move({ en: 'SAR per 100 points', ar: 'ريال لكل ١٠٠ نقطة' }, num(loyalty.riyalPer100Points), num(l.riyalPer100Points))
+      if (l.minRedeemPoints != null && l.minRedeemPoints !== loyalty.minRedeemPoints) move({ en: 'Minimum to redeem', ar: 'أقل رصيد للاستبدال' }, num(loyalty.minRedeemPoints), num(l.minRedeemPoints))
+      if (l.expiryMonths != null && l.expiryMonths !== loyalty.expiryMonths) move({ en: 'Points expire after', ar: 'انتهاء النقاط بعد' }, `${loyalty.expiryMonths} ${pick({ en: 'months', ar: 'شهر' })}`, `${l.expiryMonths} ${pick({ en: 'months', ar: 'شهر' })}`)
+      for (const t of ownerTiers) {
+        const next = l.thresholds?.[t.key]
+        if (next != null && next !== loyalty.thresholds[t.key]) move({ en: `${t.label.en} tier from`, ar: `عتبة ${t.label.ar}` }, money(loyalty.thresholds[t.key]), money(next))
+      }
+      break
+    }
+    case 'stock_take': {
+      if (p.scope === 'finished') {
+        const counts = p.counts ?? {}
+        const rows = Object.entries(counts).filter(([code, c]) => {
+          const b = finished.find((x) => x.code === code)
+          return b && b.systemQty !== c
+        })
+        one({ en: 'Scope', ar: 'النطاق' }, pick({ en: 'Finished goods', ar: 'المخزون المصنّع' }))
+        one({ en: 'Batches counted', ar: 'دفعات مجرودة' }, String(Object.keys(counts).length))
+        for (const [code, c] of rows.slice(0, 6)) {
+          const b = finished.find((x) => x.code === code)!
+          move({ en: `${code} · ${b.product.en}`, ar: `${code} · ${b.product.ar}` }, b.systemQty.toLocaleString(), c.toLocaleString())
+        }
+        if (rows.length > 6) one({ en: 'And more', ar: 'وغيرها' }, `${rows.length - 6} ${pick({ en: 'further variances', ar: 'فرق إضافي' })}`)
+        if (rows.length === 0) one({ en: 'Variances', ar: 'الفروقات' }, pick({ en: 'None — the count agrees with the system', ar: 'لا يوجد — الجرد مطابق للنظام' }))
+      } else {
+        const counts = p.rawCounts ?? {}
+        one({ en: 'Scope', ar: 'النطاق' }, pick({ en: 'Raw materials', ar: 'المواد الخام' }))
+        for (const k of Object.keys(counts) as RawKey[]) {
+          const now = rawQty[k]
+          if (counts[k] === now) continue
+          move({ en: rawName(k), ar: rawName(k) }, now.toLocaleString(), (counts[k] ?? 0).toLocaleString())
+        }
+      }
+      break
+    }
+    case 'waste': {
+      const name = p.scope === 'finished'
+        ? (() => { const b = finished.find((x) => x.code === p.itemId); return b ? `${pick(b.product)} · ${b.code}` : (p.itemId ?? '—') })()
+        : rawName(p.itemId ?? '')
+      one({ en: 'Item', ar: 'الصنف' }, name)
+      one({ en: 'Quantity written off', ar: 'الكمية المهدرة' }, (p.qty ?? 0).toLocaleString())
+      if (p.reason) one({ en: 'Justification', ar: 'المبرر' }, pick(p.reason))
+      one({ en: 'Loss booked', ar: 'الخسارة المقيدة' }, money(r.amountMinor))
+      one({ en: 'Effect', ar: 'الأثر' }, pick({ en: 'Stock is deducted and net profit falls by this amount', ar: 'يُخصم من المخزون وينخفض صافي الربح بهذا المبلغ' }))
+      break
+    }
+    case 'batch_release': {
+      const b = finished.find((x) => x.code === p.code)
+      if (b) {
+        one({ en: 'Batch', ar: 'الدفعة' }, `${b.code} · ${pick(b.product)}`)
+        one({ en: 'Quantity', ar: 'الكمية' }, `${b.systemQty.toLocaleString()} ${pick({ en: 'units', ar: 'وحدة' })}`)
+        one({ en: 'Value', ar: 'القيمة' }, money(b.systemQty * b.unitMinor))
+        one({ en: 'Shelf life left', ar: 'العمر المتبقي' }, `${b.expiryDays} ${pick({ en: 'days', ar: 'يوم' })}`)
+        move({ en: 'Status', ar: 'الحالة' }, pick({ en: 'Quarantine — not sellable', ar: 'قيد الحجر — غير قابلة للبيع' }), pick({ en: 'Released — sellable', ar: 'مُطلقة — قابلة للبيع' }))
+      }
+      break
+    }
+    case 'batch_disposition': {
+      const b = finished.find((x) => x.code === p.code)
+      const d = batchDispositions.find((x) => x.key === p.disposition)
+      if (b) {
+        one({ en: 'Batch', ar: 'الدفعة' }, `${b.code} · ${pick(b.product)}`)
+        one({ en: 'Quantity', ar: 'الكمية' }, `${b.systemQty.toLocaleString()} ${pick({ en: 'units', ar: 'وحدة' })} · ${money(b.systemQty * b.unitMinor)}`)
+      }
+      if (d) move({ en: 'Fate', ar: 'المصير' }, pick({ en: 'Rejected — awaiting a decision', ar: 'مرفوضة — بانتظار قرار' }), `${pick(d.label)} — ${pick(d.desc)}`)
+      break
+    }
+    case 'recipe_change': {
+      const prod = productBySku(p.sku)
+      const before = bomOf(p.sku ?? '')[p.rawKey as RawKey]
+      one({ en: 'Product', ar: 'المنتج' }, prod ? `${pick(prod.name)} · ${prod.sku}` : (p.sku ?? '—'))
+      one({ en: 'Component', ar: 'المكوّن' }, rawName(p.rawKey ?? ''))
+      move({ en: 'Per unit produced', ar: 'لكل وحدة منتَجة' }, before != null ? String(before) : '—', String(p.per ?? 0))
+      one({ en: 'Effect', ar: 'الأثر' }, pick({ en: 'Future batches draw the new quantity; the old recipe is kept for traceability', ar: 'الدفعات القادمة تسحب الكمية الجديدة، وتُحفظ الوصفة السابقة للتتبّع' }))
+      break
+    }
+    case 'shelf_life': {
+      if (p.code) {
+        const b = finished.find((x) => x.code === p.code)
+        one({ en: 'Batch', ar: 'الدفعة' }, b ? `${b.code} · ${pick(b.product)}` : p.code)
+        move({ en: 'Days left', ar: 'الأيام المتبقية' }, b ? String(b.expiryDays) : '—', String(p.days ?? 0))
+      } else {
+        const prod = productBySku(p.sku)
+        one({ en: 'Product', ar: 'المنتج' }, prod ? `${pick(prod.name)} · ${prod.sku}` : (p.sku ?? '—'))
+        move({ en: 'Shelf life (days)', ar: 'العمر الافتراضي (يوم)' }, p.sku && shelfLife[p.sku] != null ? String(shelfLife[p.sku]) : '—', String(p.days ?? 0))
+      }
+      break
+    }
+    case 'yield_variance': {
+      const b = finished.find((x) => x.code === p.code)
+      one({ en: 'Batch', ar: 'الدفعة' }, b ? `${b.code} · ${pick(b.product)}` : (p.code ?? '—'))
+      for (const k of Object.keys(p.extra ?? {}) as RawKey[]) {
+        const over = p.extra?.[k] ?? 0
+        if (!over) continue
+        move({ en: rawName(k), ar: rawName(k) }, rawQty[k].toLocaleString(), Math.max(0, rawQty[k] - over).toLocaleString())
+      }
+      one({ en: 'Effect', ar: 'الأثر' }, pick({ en: 'The floor drew more than the recipe — the difference is booked against this batch', ar: 'سحب الإنتاج أكثر من الوصفة — ويُقيَّد الفارق على هذه الدفعة' }))
+      break
+    }
+  }
+
+  // A chain the owner raised by hand carries no payload — its own words are the whole story.
+  if (facts.length === 0) return null
+
+  return (
+    <div className="rounded-lg border border-hairline overflow-hidden">
+      <div className="px-md py-1.5 bg-surface-2 border-b border-hairline">
+        <span className="font-sans text-caption uppercase tracking-[0.1em] text-ink-subtle">
+          {r.status === 'pending' ? pick({ en: 'What signing this changes', ar: 'ما الذي يغيّره التوقيع' }) : pick({ en: 'What this decided', ar: 'ما الذي قرّرته' })}
+        </span>
+      </div>
+      <div className="divide-y divide-hairline">
+        {facts.map((f, i) => (
+          <div key={i} className="flex flex-wrap items-baseline justify-between gap-x-md gap-y-xxs px-md py-1.5">
+            <span className="font-sans text-caption text-ink-muted">{pick(f.label)}</span>
+            {f.value != null
+              ? <span className="font-sans text-caption text-ink text-end">{f.value}</span>
+              : (
+                <span className="inline-flex items-center gap-xs font-sans text-caption tabular-nums">
+                  <span className="text-ink-subtle line-through decoration-ink-subtle/40">{f.before}</span>
+                  <ArrowLeft size={12} className="text-ink-subtle ltr:rotate-180 shrink-0" />
+                  <span className="text-ink font-medium">{f.after}</span>
+                </span>
+              )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /** Approve, reject or override — a reason is mandatory for anything but a plain approval. */
 function DecideModal({ state, onClose, onSubmit }: { state: { r: ApprovalRequest; mode: 'approve' | 'reject' | 'glass' }; onClose: () => void; onSubmit: (note: string) => void }) {
   const { pick } = useLocale()
@@ -188,6 +430,9 @@ function DecideModal({ state, onClose, onSubmit }: { state: { r: ApprovalRequest
           <p className="font-sans text-data text-ink">{pick(r.subject)}</p>
           <p className="font-sans text-caption text-ink-muted mt-xxs">{pick(r.detail)}</p>
         </div>
+
+        {/* the same read-out as the card — nobody signs without seeing the figures */}
+        <RequestFacts r={r} />
         {mode === 'glass' && (
           <p className="inline-flex items-start gap-xs font-sans text-caption text-danger rounded-lg bg-danger/5 border border-danger/20 p-md">
             <ShieldAlert size={14} className="mt-0.5 shrink-0" />

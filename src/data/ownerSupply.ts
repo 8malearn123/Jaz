@@ -153,6 +153,8 @@ export interface PurchaseInvoice {
   qty?: number // received quantity in the raw's unit
   extra?: { label: Bilingual; amountMinor: number } // classified extra cost (shipping, packaging…) allocated into the lines' landed cost
   fx?: { code: string; rate: number; totalMinor: number } // billed currency, rate frozen at entry, and the total in that currency
+  /** The lines as entered — each assigned to a stock item, with its landed cost. */
+  lines?: { itemId: string; qty: number; costMinor: number }[]
 }
 
 // Classified line items an invoice's extra cost can be recorded under (plus a free-text "other").
