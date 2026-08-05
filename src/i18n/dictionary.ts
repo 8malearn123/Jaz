@@ -19,7 +19,7 @@ export const dict: Dict = {
   'nav.shop': { en: 'Shop', ar: 'المتجر' },
   'nav.collections': { en: 'Collections', ar: 'المجموعات' },
   'nav.corporate': { en: 'Corporate', ar: 'الشركات' },
-  'nav.heritage': { en: 'Heritage', ar: 'الإرث' },
+  'nav.heritage': { en: 'About JAZ', ar: 'عن جاز' },
   'nav.account': { en: 'Account', ar: 'الحساب' },
   'nav.search': { en: 'Search', ar: 'بحث' },
   'nav.cart': { en: 'Cart', ar: 'السلة' },
