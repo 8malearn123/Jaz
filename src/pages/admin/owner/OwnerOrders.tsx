@@ -13,9 +13,11 @@ import type { OwnerProduct, ProdChannel } from '@/data/ownerProducts'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { useGovernance } from '@/state/GovernanceContext'
 import { useBilling } from '@/state/BillingContext'
+import { useCostCenters } from '@/state/CostCenterContext'
 import { cn } from '@/lib/cn'
 import { PanelHead, StatCard, FilterChips, Pill } from './_shared'
 import { BillingDesk } from './OwnerBilling'
+import { CostCenterField } from './OwnerAccounting'
 
 const LAST = (ownerOrderStatuses.length - 1) as OwnerOrderStage
 
@@ -24,6 +26,7 @@ export function OwnerOrders() {
   const { flash } = useToast()
   const { orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pipelineValueMinor } = useOwnerState()
   const { submit } = useGovernance()
+  const { post, entryForRef, centerOf } = useCostCenters()
   const { billingFor, attachTaxInvoice } = useBilling()
   const [chan, setChan] = useState<OwnerChannel | 'all'>('all')
   const [status, setStatus] = useState<string>('all')
@@ -114,7 +117,10 @@ export function OwnerOrders() {
                     <td className="px-lg py-md"><Pill color={cm.color} bg={cm.bg}>{pick(cm.label)}</Pill></td>
                     <td className="px-lg py-md">
                       <p className="font-sans text-data text-ink truncate max-w-[220px]">{pick(o.items)}</p>
-                      <p className="font-sans text-caption text-ink-subtle tabular-nums">{o.qty.toLocaleString()} {pick({ en: 'units', ar: 'وحدة' })} · {pick(o.date)}{o.department && <span className="text-primary-hover"> · {pick(o.department)}</span>}</p>
+                      <p className="font-sans text-caption text-ink-subtle tabular-nums">{o.qty.toLocaleString()} {pick({ en: 'units', ar: 'وحدة' })} · {pick(o.date)}{o.department && <span className="text-primary-hover"> · {pick(o.department)}</span>}{(() => {
+                        const e = entryForRef(o.id)
+                        return e ? <span className="text-ink-muted"> · {centerOf(e.centerId)?.code ?? e.centerId}</span> : null
+                      })()}</p>
                     </td>
                     <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums">{money(o.amountMinor)}</td>
                     <td className="px-lg py-md">{o.cancelled ? <Pill color="#b5403b" bg="#faeceb">{pick({ en: 'Cancelled', ar: 'ملغى' })}</Pill> : <Pill color={s.color} bg={s.bg}>{pick(s.label)}</Pill>}</td>
@@ -185,6 +191,9 @@ export function OwnerOrders() {
               <p className="font-sans text-caption text-ink-subtle tabular-nums mt-xxs">{order.qty.toLocaleString()} {pick({ en: 'units', ar: 'وحدة' })} · {money(order.amountMinor)}</p>
             </div>
 
+            {/* the sale side of the cost model — which centre carries this order, and what its processes add */}
+            {!order.cancelled && <OrderCostCenter key={order.id} order={order} />}
+
             {/* billing trail for this order — buyer receipts in, tax invoice out (shared store) */}
             {!order.cancelled && (() => {
               const b = billingFor(order.id)
@@ -250,7 +259,59 @@ export function OwnerOrders() {
         />
       )}
 
-      <ManualOrderModal open={newOpen} onClose={() => setNewOpen(false)} onCreate={(o) => { const id = createOrder(o); flash(`${pick({ en: 'Order created', ar: 'أُنشئ الطلب' })} ${id}`) }} />
+      <ManualOrderModal open={newOpen} onClose={() => setNewOpen(false)} onCreate={(o) => {
+        const id = createOrder(o)
+        // The sale is filed against its cost centre in the same breath it is created —
+        // the centre's sale-side processes are valued on the order and frozen onto the entry.
+        const e = o.costCenterId ? post({ side: 'sale', centerId: o.costCenterId, ref: id, party: o.customer, baseMinor: o.amountMinor, qty: o.qty }) : null
+        flash(e
+          ? `${pick({ en: 'Order created', ar: 'أُنشئ الطلب' })} ${id} · ${centerOf(e.centerId)?.code ?? ''} ${money(e.processMinor)}`
+          : `${pick({ en: 'Order created', ar: 'أُنشئ الطلب' })} ${id}`)
+      }} />
+    </div>
+  )
+}
+
+/** Assign (or refile) an order against a cost centre — the sale-side half of the cost model. */
+function OrderCostCenter({ order }: { order: { id: string; customer: { en: string; ar: string }; qty: number; amountMinor: number } }) {
+  const { pick, money } = useLocale()
+  const { flash } = useToast()
+  const { post, unpost, entryForRef, centerOf } = useCostCenters()
+  const existing = entryForRef(order.id)
+  const [sel, setSel] = useState(existing?.centerId ?? '')
+  const center = existing ? centerOf(existing.centerId) : undefined
+  const dirty = sel !== '' && sel !== existing?.centerId
+
+  return (
+    <div className="rounded-lg border border-hairline overflow-hidden">
+      <div className="px-md py-sm bg-surface-2 border-b border-hairline flex flex-wrap items-center justify-between gap-sm">
+        <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Cost centre', ar: 'مركز التكلفة' })}</h4>
+        {existing && (
+          <span className="font-sans text-caption text-ink-muted tabular-nums">
+            {existing.id} · {center ? `${center.code} · ${pick(center.name)}` : existing.centerId} · <span className="text-primary-hover">{money(existing.processMinor)}</span>
+          </span>
+        )}
+      </div>
+      <div className="flex flex-col gap-sm px-md py-sm">
+        <CostCenterField side="sale" value={sel} onChange={setSel} doc={{ amountMinor: order.amountMinor, qty: order.qty }} />
+        <div className="flex flex-wrap items-center gap-xs">
+          <button
+            disabled={!dirty}
+            onClick={() => {
+              const e = post({ side: 'sale', centerId: sel, ref: order.id, party: order.customer, baseMinor: order.amountMinor, qty: order.qty })
+              if (e) flash(`${order.id} → ${centerOf(e.centerId)?.code ?? ''} · ${money(e.processMinor)}`)
+            }}
+            className={buttonClass('primary', 'sm')}
+          >
+            {existing ? pick({ en: 'Refile against this centre', ar: 'إعادة الترحيل على هذا المركز' }) : pick({ en: 'File against this centre', ar: 'ترحيل على هذا المركز' })}
+          </button>
+          {existing && (
+            <button onClick={() => { unpost(existing.id); setSel(''); flash(pick({ en: 'Posting removed', ar: 'أُلغي الترحيل' })) }} className="font-sans text-caption text-danger hover:underline ms-xs">
+              {pick({ en: 'Remove posting', ar: 'إلغاء الترحيل' })}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -259,7 +320,7 @@ const chanToProd: Record<OwnerChannel, ProdChannel> = { B2C: 'b2c', B2B: 'b2b', 
 const norm = (s: string) => s.trim().toLowerCase()
 const nameMatches = (q: string, name: { en: string; ar: string }) => norm(name.ar).includes(norm(q)) || norm(name.en).includes(norm(q))
 
-function ManualOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (o: { customer: { en: string; ar: string }; chan: OwnerChannel; items: { en: string; ar: string }; qty: number; amountMinor: number }) => void }) {
+function ManualOrderModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (o: { customer: { en: string; ar: string }; chan: OwnerChannel; items: { en: string; ar: string }; qty: number; amountMinor: number; costCenterId: string }) => void }) {
   const { pick, money } = useLocale()
   const { customers, products } = useOwnerState()
   const [chan, setChan] = useState<OwnerChannel>('B2C')
@@ -267,6 +328,7 @@ function ManualOrderModal({ open, onClose, onCreate }: { open: boolean; onClose:
   const [custQ, setCustQ] = useState('')
   const [prodQ, setProdQ] = useState('')
   const [lines, setLines] = useState<Record<string, number>>({}) // sku → qty
+  const [costCenterId, setCostCenterId] = useState('')
 
   const chanProducts = products[chanToProd[chan]]
   const chanCustomers = customers.filter((c) => (chan === 'B2C' ? c.type === 'B2C' : c.type === 'B2B'))
@@ -286,7 +348,7 @@ function ManualOrderModal({ open, onClose, onCreate }: { open: boolean; onClose:
   const removeLine = (sku: string) => setLines((prev) => { const next = { ...prev }; delete next[sku]; return next })
   const setQty = (sku: string, raw: string) => setLines((prev) => ({ ...prev, [sku]: Math.max(0, parseInt(raw.replace(/\D/g, ''), 10) || 0) }))
 
-  const reset = () => { setChan('B2C'); setCustomerId(''); setCustQ(''); setProdQ(''); setLines({}) }
+  const reset = () => { setChan('B2C'); setCustomerId(''); setCustQ(''); setProdQ(''); setLines({}); setCostCenterId('') }
   const submit = () => {
     if (!customer) return
     onCreate({
@@ -298,6 +360,7 @@ function ManualOrderModal({ open, onClose, onCreate }: { open: boolean; onClose:
       },
       qty: totalQty,
       amountMinor: totalMinor,
+      costCenterId,
     })
     reset(); onClose()
   }
@@ -372,6 +435,9 @@ function ManualOrderModal({ open, onClose, onCreate }: { open: boolean; onClose:
             </div>
           )}
         </div>
+        {/* the sale side of the cost model — the centre's processes are added the moment the order is created */}
+        <CostCenterField side="sale" value={costCenterId} onChange={setCostCenterId} doc={{ amountMinor: totalMinor, qty: totalQty }} />
+
         <div className="flex items-center justify-between rounded-lg bg-surface-2 border border-hairline px-md py-sm">
           <span className="font-sans text-caption text-ink-subtle">{totalQty.toLocaleString()} {pick({ en: 'units', ar: 'وحدة' })}</span>
           <span className="font-sans text-data text-ink tabular-nums">{pick({ en: 'Total', ar: 'الإجمالي' })}: {money(totalMinor)}</span>
