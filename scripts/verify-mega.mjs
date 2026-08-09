@@ -8,6 +8,8 @@ const EN = [
   ['orders', ['MEX-4021', 'Hamburg', 'Incoterm', 'export orders']],
   ['shipments', ['MEX-4021', 'In cold transit', 'pallets']],
   ['finance', ['Available', 'Outstanding', 'Statements', 'Export invoices', 'Export compliance']],
+  // Distributor pack = the standing terms, on the export side of every per-channel line
+  ['distributor', ['Distributor information pack', 'Export distributor terms', 'Distributor margin structure', 'Territory exclusivity model', 'Loading table', 'HS codes', 'Duty-free merchandising', 'PLT-ASSORTED']],
 ]
 
 const AR = [
@@ -15,6 +17,7 @@ const AR = [
   ['catalog', ['تسعير الكمية', 'طبلية ألواح مشكّلة']],
   ['orders', ['هامبورغ', 'الوجهة']],
   ['finance', ['كشوف الحساب', 'فواتير التصدير', 'المتاح']],
+  ['distributor', ['حقيبة معلومات الموزّع', 'هيكل هامش الموزّع', 'جدول التحميل', 'الرموز الجمركية', 'العرض في الأسواق الحرّة']],
 ]
 
 const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' })

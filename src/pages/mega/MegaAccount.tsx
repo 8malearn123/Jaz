@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react'
 import {
   LayoutGrid, Boxes, Package, Ship, Landmark, Plus, Minus, ArrowRight, Check, X,
   MapPin, Download, ShieldCheck, Snowflake, PackageCheck, Truck, Globe, FileText, Container, Clock,
-  Upload, CheckCircle2, CalendarRange, Lock,
+  Upload, CheckCircle2, CalendarRange, Lock, BookOpen,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { AccountShell, type TabDef } from '@/components/account/AccountShell'
+import { DistributorPack } from '@/components/account/DistributorPack'
 import { ToastProvider, useToast } from '@/components/account/Toast'
 import { MegaStateProvider, useMegaState } from '@/state/MegaStateContext'
 import { useBilling } from '@/state/BillingContext'
@@ -28,7 +29,7 @@ import {
   megaMarkets, megaExportTrend, type MegaOrder, type ShipStage,
 } from '@/data/mega'
 
-const TABS = ['overview', 'catalog', 'orders', 'forecast', 'finance'] as const
+const TABS = ['overview', 'catalog', 'orders', 'forecast', 'finance', 'distributor'] as const
 type Tab = (typeof TABS)[number]
 
 // This partner is an export account, so every figure it is quoted, invoiced and
@@ -73,6 +74,7 @@ function MegaContent() {
     { id: 'orders', label: pick({ en: 'Orders & shipments', ar: 'الطلبات والشحنات' }), icon: Package },
     { id: 'forecast', label: pick({ en: 'Order forecasts', ar: 'تنبؤات الطلبات' }), icon: CalendarRange },
     { id: 'finance', label: pick({ en: 'Finance', ar: 'المالية' }), icon: Landmark },
+    { id: 'distributor', label: pick({ en: 'Distributor pack', ar: 'حقيبة الموزّع' }), icon: BookOpen },
   ]
 
   return (
@@ -95,6 +97,8 @@ function MegaContent() {
       {active === 'orders' && <Orders />}
       {active === 'forecast' && <Forecast />}
       {active === 'finance' && <Finance />}
+      {/* This partner distributes abroad, so the pack shows the export side of every term. */}
+      {active === 'distributor' && <DistributorPack channel="export" />}
     </AccountShell>
   )
 }

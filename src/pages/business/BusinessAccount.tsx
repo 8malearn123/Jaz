@@ -2,7 +2,7 @@ import { useState } from 'react'
 import {
   LayoutGrid, Landmark, Package, Building2, ShieldCheck, BadgeCheck, Download,
   ArrowUpRight, ArrowDownRight, MapPin, Plus, Lock, FileText, TrendingUp,
-  Store, Bell, Phone, Check, CheckCircle2,
+  Store, Bell, Phone, Check, CheckCircle2, BookOpen,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { WholesaleOrderProvider } from '@/state/WholesaleOrderContext'
@@ -18,6 +18,7 @@ import {
   type OrgMember, type OrgAddress,
 } from '@/data/business'
 import { AccountShell, type TabDef } from '@/components/account/AccountShell'
+import { DistributorPack } from '@/components/account/DistributorPack'
 import { ToastProvider, useToast } from '@/components/account/Toast'
 import { AreaTrend, UtilizationGauge, TrendPill } from '@/components/charts/Charts'
 import { Modal } from '@/components/ui/Modal'
@@ -37,7 +38,7 @@ const VENDOR_ID = 'V-01'
 const org = organization
 const roleAccent: Record<OrgMember['role'], 'gold' | 'success' | 'neutral'> = { b2b_admin: 'gold', approver: 'success', buyer: 'neutral', viewer: 'neutral' }
 
-const TABS = ['overview', 'catalog', 'orders', 'credit', 'company'] as const
+const TABS = ['overview', 'catalog', 'orders', 'credit', 'distributor', 'company'] as const
 type Tab = (typeof TABS)[number]
 
 export function BusinessAccount() {
@@ -62,6 +63,7 @@ function BusinessContent() {
     { id: 'catalog', label: t('biz.tab.catalog'), icon: Store },
     { id: 'orders', label: t('business.tab.orders'), icon: Package },
     { id: 'credit', label: t('biz.tab.finance'), icon: Landmark },
+    { id: 'distributor', label: pick({ en: 'Distributor pack', ar: 'حقيبة الموزّع' }), icon: BookOpen },
     { id: 'company', label: t('biz.tab.company'), icon: Building2 },
   ]
 
@@ -85,6 +87,8 @@ function BusinessContent() {
       {active === 'catalog' && <CatalogPanel />}
       {active === 'orders' && <OrgOrdersPanel />}
       {active === 'credit' && <Credit />}
+      {/* This account is a HORECA operator, so the pack shows the in-Kingdom side of every term. */}
+      {active === 'distributor' && <DistributorPack channel="horeca" />}
       {active === 'company' && <Account />}
     </AccountShell>
   )

@@ -11,6 +11,8 @@ const EN = [
   ['delivery', ['Delivery', 'Cold chain', 'Scheduled', 'Central warehouse']],
   // Finance = single money home (gauge + spend trend + ledger + statements + invoices + month)
   ['credit', ['Spend', 'Latest invoices', 'ZATCA', 'This month', 'INV-2026']],
+  // Distributor pack = the standing terms, on the in-Kingdom side of every per-channel line
+  ['distributor', ['Distributor information pack', 'HORECA operator terms', 'Distributor margin structure', 'Territory exclusivity model', 'Loading table', 'HS codes', 'Coffee pairing recommendations', 'CHV70']],
   ['company', ['Legal entity', 'Notification preferences', 'Low-stock alerts', 'Central warehouse']],
 ]
 
@@ -19,6 +21,7 @@ const AR = [
   ['catalog', ['كوفرتور داكن ٧٠٪', 'سعر الكمية', 'مراجعة الطلب']],
   ['delivery', ['التوصيل', 'سلسلة التبريد', 'الطلبات المجدولة']],
   ['credit', ['أحدث الفواتير', 'متوافقة ZATCA', 'ملخّص الشهر']],
+  ['distributor', ['حقيبة معلومات الموزّع', 'هيكل هامش الموزّع', 'جدول التحميل', 'الرموز الجمركية', 'توصيات إقران القهوة']],
   ['company', ['تفضيلات الإشعارات', 'تنبيهات المخزون المنخفض']],
 ]
 
