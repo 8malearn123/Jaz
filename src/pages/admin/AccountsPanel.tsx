@@ -1,17 +1,29 @@
 import { useState } from 'react'
-import { Building2, ArrowUpRight, CheckCircle2, Lock, FileText, Briefcase } from 'lucide-react'
+import { Building2, ArrowUpRight, CheckCircle2, Lock, FileText, Briefcase, ClipboardList } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useChannel } from '@/state/ChannelContext'
 import { orgDirectory, salesPipeline, creditApplications, type OrgSummary, type CreditApplication } from '@/data/staff'
+import type { Bilingual } from '@/data/types'
 import { UtilizationGauge } from '@/components/charts/Charts'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
 import { cn } from '@/lib/cn'
+import { openDistributorFilePdf } from '@/lib/distributorFilePdf'
+import { packValue } from '@/data/distributorPack'
+import { completeness, displayValue, distributorProfileSeed, profileFields } from '@/data/distributorProfile'
 
 const tierVariant = { platinum: 'gold', gold: 'gold', silver: 'neutral', bronze: 'neutral' } as const
 const statusVariant = { active: 'success', pending: 'gold', suspended: 'danger' } as const
 const stageVariant: Record<string, 'gold' | 'success' | 'neutral' | 'danger'> = { draft: 'neutral', sent: 'gold', accepted: 'gold', won: 'success', lost: 'danger' }
+
+/** The directory chip for an account's distributor file — not started, or how far along. */
+function fileState(o: OrgSummary, pick: (b: Bilingual) => string): { variant: 'neutral' | 'gold' | 'success'; label: string } {
+  const word = pick({ en: 'file', ar: 'الملف' })
+  if (!o.fileChannel) return { variant: 'neutral', label: `${word} — ${pick({ en: 'not started', ar: 'لم يبدأ' })}` }
+  const done = completeness(distributorProfileSeed[o.fileChannel], o.fileChannel)
+  return { variant: done.missing.length === 0 ? 'success' : 'gold', label: `${word} ${done.pct}%` }
+}
 
 export function AccountsPanel() {
   const { t, pick, money } = useLocale()
@@ -40,6 +52,7 @@ export function AccountsPanel() {
         {shown.map((o) => {
           const pct = Math.round((o.availableMinor / o.limitMinor) * 100)
           const deals = salesPipeline.filter((q) => q.accountId === o.id && q.stage !== 'lost')
+          const file = fileState(o, pick)
           const pipelineValue = deals.reduce((s, q) => s + q.valueMinor, 0)
           return (
             <button key={o.id} onClick={() => setDetail(o)} className="card card-hover p-lg flex flex-col gap-sm text-start">
@@ -54,6 +67,8 @@ export function AccountsPanel() {
                 <div className="flex flex-col items-end gap-xxs shrink-0">
                   <StatusBadge variant={tierVariant[o.tier]}>{o.tier}</StatusBadge>
                   <StatusBadge variant={statusVariant[o.status]}>{t(`accts.status.${o.status}`)}</StatusBadge>
+                  {/* how far this account's distributor file has got — scannable across the directory */}
+                  <StatusBadge variant={file.variant}>{file.label}</StatusBadge>
                 </div>
               </div>
               <div className="flex flex-col gap-xxs">
@@ -80,6 +95,87 @@ export function AccountsPanel() {
         onClose={() => setDetail(null)}
         onRequest={(app) => setRequests((p) => [app, ...p])}
       />
+    </div>
+  )
+}
+
+/**
+ * What a reviewer at Jaz needs from an account's distributor file without opening the
+ * partner's portal: how complete it is, what is still owed, the handful of answers that
+ * decide whether the account can be served — and the whole file as a document.
+ * Read-only on purpose: the answers belong to the account, not to us.
+ */
+function DistributorFileReview({ account }: { account: OrgSummary }) {
+  const { pick, locale } = useLocale()
+  const channel = account.fileChannel
+
+  if (!channel) {
+    return (
+      <div className="rounded-lg border border-hairline p-md flex items-start gap-sm">
+        <ClipboardList size={16} className="text-ink-subtle mt-0.5 shrink-0" />
+        <div>
+          <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Distributor file', ar: 'ملف الموزّع' })}</h4>
+          <p className="font-sans text-caption text-ink-subtle">
+            {pick({ en: 'Not started — the account fills this in from its own portal during onboarding.', ar: 'لم يبدأ — تعبّئه المنشأة من بوابتها أثناء التأهيل.' })}
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  const values = distributorProfileSeed[channel]
+  const done = completeness(values, channel)
+  // the answers a reviewer actually reads before serving the account
+  const headline = ['markets', 'annual_commitment', 'incoterm_pref', 'temp_range'] as const
+  const fields = profileFields(channel)
+
+  return (
+    <div className="rounded-lg border border-hairline p-md flex flex-col gap-sm">
+      <div className="flex flex-wrap items-center justify-between gap-sm">
+        <h4 className="font-serif text-card-title text-ink inline-flex items-center gap-sm">
+          <ClipboardList size={16} className="text-primary-hover" /> {pick({ en: 'Distributor file', ar: 'ملف الموزّع' })}
+        </h4>
+        <div className="flex items-center gap-xs">
+          <StatusBadge variant={done.missing.length === 0 ? 'success' : 'gold'}>
+            {done.pct}% · {done.filled}/{done.total}
+          </StatusBadge>
+          <button
+            onClick={() => openDistributorFilePdf({
+              channel, values, accountName: account.name,
+              entity: [
+                { label: { en: 'Account type', ar: 'نوع الحساب' }, value: pick(account.type) },
+                { label: { en: 'Tier', ar: 'الفئة' }, value: account.tier.toUpperCase() },
+              ],
+            }, { locale, pick })}
+            className={buttonClass('secondary', 'sm')}
+          >
+            <FileText size={15} /> {pick({ en: 'Open the file (PDF)', ar: 'فتح الملف (PDF)' })}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-x-md gap-y-sm">
+        {headline.map((id) => {
+          const f = fields.find((x) => x.id === id)
+          if (!f) return null
+          const shown = displayValue(f, values[id], channel, pick)
+          return (
+            <div key={id} className="flex flex-col gap-xxs">
+              <span className="font-sans text-caption uppercase tracking-[0.08em] text-ink-subtle">{pick(packValue(f.label, channel))}</span>
+              <span className={cn('font-sans text-data', shown ? 'text-ink' : 'text-ink-subtle italic')}>
+                {shown ?? pick({ en: 'Not answered yet', ar: 'لم يُجب بعد' })}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      {done.missing.length > 0 && (
+        <p className="font-sans text-caption text-ink-muted">
+          <span className="text-primary-hover">{done.missing.length} {pick({ en: 'required answers outstanding', ar: 'إجابة مطلوبة معلّقة' })}:</span>{' '}
+          {done.missing.map((f) => pick(packValue(f.label, channel))).join(' · ')}
+        </p>
+      )}
     </div>
   )
 }
@@ -140,6 +236,9 @@ function AccountDetailModal({ account, requests, onClose, onRequest }: {
             <Mini label={t('credit.limit')} value={money(account.limitMinor)} />
           </div>
         </div>
+
+        {/* the account's distributor file — read-only here; the account owns the answers */}
+        <DistributorFileReview account={account} />
 
         {/* credit-increase request (segregation of duties → finance approves) */}
         <div className="rounded-lg border border-hairline p-md flex flex-col gap-sm">

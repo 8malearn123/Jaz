@@ -249,8 +249,18 @@ function Company() {
 
       <ComplianceSnapshot />
 
-      {/* the inbound half of the distributor pack — what this partner declares back */}
-      <DistributorProfile channel="export" />
+      {/* every term of the account, and this partner's answer to it */}
+      <DistributorProfile
+        channel="export"
+        accountName={megaAccount.legalName}
+        entity={[
+          { label: { en: 'Account contact', ar: 'جهة الاتصال' }, value: pick(megaAccount.contact) },
+          { label: { en: 'Market', ar: 'السوق' }, value: pick(megaAccount.market) },
+          { label: { en: 'Commercial registration', ar: 'السجل التجاري' }, value: megaAccount.crNumber },
+          { label: { en: 'VAT', ar: 'الرقم الضريبي' }, value: megaAccount.vatNumber },
+          { label: { en: 'Standing incoterm', ar: 'شرط التسليم المعتمد' }, value: megaAccount.incoterm },
+        ]}
+      />
     </div>
   )
 }

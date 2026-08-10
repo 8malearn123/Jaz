@@ -1,4 +1,5 @@
 import type { Bilingual } from './types'
+import type { PackChannel } from './distributorPack'
 
 // ── Credit applications (segregation of duties: sales requests, finance approves) ──
 export interface CreditApplication {
@@ -257,11 +258,15 @@ export interface OrgSummary {
   availableMinor: number
   limitMinor: number
   status: 'active' | 'pending' | 'suspended'
+  /** Which distributor file this account holds — absent while it has not started one,
+   *  which is what a pending account looks like before onboarding completes. */
+  fileChannel?: PackChannel
 }
 
 export const orgDirectory: OrgSummary[] = [
-  { id: 'o-1', name: { en: 'Najd Hospitality Group', ar: 'مجموعة نجد للضيافة' }, type: { en: 'Hospitality', ar: 'ضيافة' }, tier: 'gold', availableMinor: 6040000, limitMinor: 15000000, status: 'active' },
+  { id: 'o-1', name: { en: 'Najd Hospitality Group', ar: 'مجموعة نجد للضيافة' }, type: { en: 'Hospitality', ar: 'ضيافة' }, tier: 'gold', availableMinor: 6040000, limitMinor: 15000000, status: 'active', fileChannel: 'horeca' },
   { id: 'o-2', name: { en: 'Rawabi Catering Co.', ar: 'شركة روابي للتموين' }, type: { en: 'Reseller', ar: 'موزّع' }, tier: 'silver', availableMinor: 2200000, limitMinor: 5000000, status: 'pending' },
   { id: 'o-3', name: { en: 'Aseer Events LLC', ar: 'عسير للفعاليات' }, type: { en: 'Events', ar: 'فعاليات' }, tier: 'bronze', availableMinor: 1800000, limitMinor: 6000000, status: 'active' },
   { id: 'o-4', name: { en: 'Jeddah Grand Hotel', ar: 'فندق جدة الكبير' }, type: { en: 'Hospitality', ar: 'ضيافة' }, tier: 'platinum', availableMinor: 18400000, limitMinor: 30000000, status: 'active' },
+  { id: 'o-5', name: { en: 'Gulf Export Partners', ar: 'شركاء الخليج للتصدير' }, type: { en: 'Export distributor', ar: 'موزّع تصدير' }, tier: 'platinum', availableMinor: 273600000, limitMinor: 500000000, status: 'active', fileChannel: 'export' },
 ]

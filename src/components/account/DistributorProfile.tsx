@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertCircle, Check, ClipboardList, Container, Megaphone, Pencil, Percent, Send, Store } from 'lucide-react'
+import { AlertCircle, Check, ClipboardList, Container, Download, Megaphone, Pencil, Percent, Send, Store } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
@@ -7,6 +7,8 @@ import { StatusBadge } from '@/components/ui/Misc'
 import { UtilizationGauge } from '@/components/charts/Charts'
 import { useToast } from '@/components/account/Toast'
 import { cn } from '@/lib/cn'
+import { openDistributorFilePdf } from '@/lib/distributorFilePdf'
+import type { Bilingual } from '@/data/types'
 import {
   distributorPack, loadingColumns, loadingRows, packRevision, packValue,
   PALLET, CONTAINER, type PackChannel, type PackSection, type PackSectionId,
@@ -31,8 +33,14 @@ const sectionIcon: Record<PackSectionId, typeof Percent> = {
  * `channel` decides which side of a per-channel term is shown, which questions get
  * asked, and which catalogue the loading table is built from.
  */
-export function DistributorProfile({ channel }: { channel: PackChannel }) {
-  const { pick } = useLocale()
+export function DistributorProfile({ channel, accountName, entity = [] }: {
+  channel: PackChannel
+  /** Whose file this is — printed on the PDF. */
+  accountName: Bilingual
+  /** Legal-entity lines the portal already holds, carried onto the PDF. */
+  entity?: { label: Bilingual; value: string }[]
+}) {
+  const { pick, locale } = useLocale()
   const { flash } = useToast()
   const [values, setValues] = useState<ProfileValues>(distributorProfileSeed[channel])
   const [editing, setEditing] = useState<PackSection | null>(null)
@@ -117,6 +125,13 @@ export function DistributorProfile({ channel }: { channel: PackChannel }) {
               className={buttonClass('primary', 'sm')}
             >
               <Send size={15} /> {pick({ en: 'Send for review', ar: 'إرسال للمراجعة' })}
+            </button>
+            {/* the whole file as a document — both columns, the loading table, and what is still owed */}
+            <button
+              onClick={() => openDistributorFilePdf({ channel, values, accountName, entity }, { locale, pick })}
+              className={buttonClass('secondary', 'sm')}
+            >
+              <Download size={15} /> {pick({ en: 'Download the file (PDF)', ar: 'تنزيل ملف المنشأة (PDF)' })}
             </button>
             {!complete && (
               <span className="font-sans text-caption text-ink-subtle">

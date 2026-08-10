@@ -48,6 +48,17 @@ try {
   setup({ role: 'owner', mfa: true }); check('owner ?section=users clamp', renderAdmin('/admin?section=users'), { hasnt: ['Users &amp; roles'] })
   setup({ role: 'support_agent' }); check('support ?section=owner_orders clamp', renderAdmin('/admin?section=owner_orders'), { hasnt: ['Orders inbox'] })
 
+  // Accounts directory — every account's distributor file is reviewable from its record
+  console.log('\n— Accounts · distributor file (admin + MFA) —')
+  setup({ role: 'admin', mfa: true, locale: 'en' })
+  check('en /accounts', renderAdmin('/admin?section=accounts'), {
+    has: ['Najd Hospitality Group', 'Gulf Export Partners', 'file 72%', 'file 78%', 'not started'],
+  })
+  setup({ role: 'admin', mfa: true, locale: 'ar' })
+  check('ar /accounts', renderAdmin('/admin?section=accounts'), {
+    has: ['شركاء الخليج للتصدير', 'لم يبدأ'],
+  })
+
   console.log('\n— Owner panels · English (owner + MFA) —')
   for (const [sec, has] of OWNER_EN) { setup({ role: 'owner', mfa: true, locale: 'en' }); check(`en /${sec}`, renderAdmin(`/admin?section=${sec}`), { has }) }
 

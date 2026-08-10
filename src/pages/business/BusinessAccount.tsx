@@ -427,8 +427,18 @@ function Account() {
         </ul>
       </div>
 
-      {/* the inbound half of the distributor pack — what this account declares back */}
-      <DistributorProfile channel="horeca" />
+      {/* every term of the account, and this account's answer to it */}
+      <DistributorProfile
+        channel="horeca"
+        accountName={org.legalName}
+        entity={[
+          { label: { en: 'Account type', ar: 'نوع الحساب' }, value: pick(org.accountType) },
+          { label: { en: 'Commercial registration', ar: 'السجل التجاري' }, value: org.crNumber },
+          { label: { en: 'VAT', ar: 'الرقم الضريبي' }, value: org.vatNumber },
+          { label: { en: 'Tier', ar: 'الفئة' }, value: org.tier.toUpperCase() },
+          { label: { en: 'Account manager', ar: 'مدير الحساب' }, value: pick(org.salesRep) },
+        ]}
+      />
 
       <AddAddressModal open={addOpen} onClose={() => setAddOpen(false)} onAdd={(a) => setAddresses((p) => [...p, a])} />
     </div>
