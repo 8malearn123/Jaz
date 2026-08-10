@@ -91,6 +91,7 @@ const VENDOR_VIEWS: SubView[] = [
   { id: 'accounts', label: { en: 'Accounts', ar: 'الحسابات' } },
   { id: 'collection', label: { en: 'Collection', ar: 'التحصيل' } },
   { id: 'statements', label: { en: 'Statements', ar: 'كشوف الحساب' } },
+  { id: 'files', label: { en: 'Distributor files', ar: 'ملفات الموزّعين' } },
   { id: 'forecast', label: { en: 'Order forecasts', ar: 'تنبؤات الطلبات' } },
   { id: 'credit', label: { en: 'Join requests', ar: 'طلبات الانضمام' } },
 ]

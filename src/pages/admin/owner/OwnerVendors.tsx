@@ -2,13 +2,14 @@ import { useState, useEffect, type ReactNode } from 'react'
 import { ShieldCheck, Check, X, Send, UserPlus, HandCoins, Upload, CheckCircle2, Eye, Search, FileText, Download, ClipboardList, MessageSquare } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
-import { DistributorProfile } from '@/components/account/DistributorProfile'
+import { DistributorProfile, DistributorFileSummary } from '@/components/account/DistributorProfile'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import { RowActions, type RowAction } from '@/components/ui/RowActions'
 import type { Bilingual } from '@/data/types'
 import { poByVendor, onboardingStages, vendorDocMeta, type PoPayStatus, type OwnerVendor, type VendorDoc, type VendorDocKind } from '@/data/ownerVendors'
 import { countries, countryOf, type CountryCode } from '@/data/countries'
+import { completeness } from '@/data/distributorProfile'
 import { collectionRows, receivables, type ReceivableRow } from '@/data/ownerFinance'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { useStatements } from '@/state/StatementsContext'
@@ -41,7 +42,7 @@ const stMeta: Record<StatementStatus, { label: { en: string; ar: string }; short
   confirmed: { label: { en: 'Approved by partner', ar: 'اعتمده الشريك' }, short: { en: 'Approved', ar: 'معتمد' }, color: '#3f7d4e', bg: '#e9f4ec' },
 }
 
-export type VendorView = 'accounts' | 'collection' | 'statements' | 'forecast' | 'credit'
+export type VendorView = 'accounts' | 'collection' | 'statements' | 'files' | 'forecast' | 'credit'
 
 export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
   const { pick, money, locale } = useLocale()
@@ -61,6 +62,8 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
   const [viewRec, setViewRec] = useState<ReceivableRow | null>(null)
   const [stId, setStId] = useState<string | null>(null)
   const [inviteOpen, setInviteOpen] = useState(false)
+  // which partner's distributor file the Files view is showing
+  const [fileVendorId, setFileVendorId] = useState<string | null>(null)
 
   const activeVendors = vendors.filter((v) => v.status === 'active')
   const requests = vendors.filter((v) => v.status === 'pending')
@@ -75,6 +78,13 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
 
   const profileVendor = vendors.find((v) => v.id === profileId) ?? null
   const payVendor = vendors.find((v) => v.id === payId) ?? null
+
+  // Every partner that trades under a file. The first one is shown by default, so the
+  // view opens on a file rather than on an empty picker.
+  const fileVendors = vendors.filter((v) => v.fileChannel)
+  const fileVendor = fileVendors.find((v) => v.id === fileVendorId) ?? fileVendors[0] ?? null
+  // Open a partner's file from anywhere else in this panel.
+  const openFile = (id: string) => { setFileVendorId(id); setProfileId(null); setSubTab('files') }
 
   // ── statements: the rows of the selected month, and the actions each one carries.
   // The table folds them under the three-dot button; the detail view spells them out.
@@ -210,6 +220,8 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
             </div>
           </div>
         </div>
+      ) : subTab === 'files' ? (
+        <DistributorFilesView vendors={fileVendors} selected={fileVendor} onSelect={setFileVendorId} />
       ) : subTab === 'forecast' ? (
         <OwnerForecastPanel />
       ) : subTab === 'statements' ? (
@@ -421,6 +433,7 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
           limitMinor={limits[profileVendor.id] ?? profileVendor.limitMinor}
           docs={vendorDocs[profileVendor.id] ?? {}}
           onClose={() => setProfileId(null)}
+          onOpenFile={() => openFile(profileVendor.id)}
           onSaveLimit={(minor) => {
             const current = limits[profileVendor.id] ?? profileVendor.limitMinor
             // Only a raise is a decision — the increase itself is what is being risked.
@@ -572,7 +585,7 @@ function StatementDetailModal({ statement: s, sm, onClose, onPdf, onApprove }: {
 
 /** Comprehensive vendor profile: identity & contact, verification data (CR, VAT,
  *  address), attached documents (contract + certificates), credit account and POs. */
-function VendorProfileModal({ vendor, limitMinor, docs, onClose, onSaveLimit, onAttachDoc, onPay }: {
+function VendorProfileModal({ vendor, limitMinor, docs, onClose, onSaveLimit, onAttachDoc, onPay, onOpenFile }: {
   vendor: OwnerVendor
   limitMinor: number
   docs: Partial<Record<VendorDocKind, VendorDoc>>
@@ -580,6 +593,8 @@ function VendorProfileModal({ vendor, limitMinor, docs, onClose, onSaveLimit, on
   onSaveLimit: (minor: number) => void
   onAttachDoc: (kind: VendorDocKind, doc: VendorDoc) => void
   onPay?: () => void
+  /** Leave the dialog for this partner's file on its own screen. */
+  onOpenFile: () => void
 }) {
   const { pick, money: sarMoney } = useLocale()
   // Everything on this profile is stated in what the partner is billed in.
@@ -674,7 +689,7 @@ function VendorProfileModal({ vendor, limitMinor, docs, onClose, onSaveLimit, on
         </div>
 
         {/* the terms this partner trades under — Jaz writes them, the partner reads them */}
-        <VendorDistributorFile vendor={vendor} />
+        <VendorDistributorFile vendor={vendor} onOpenFull={onOpenFile} />
 
         {/* credit account */}
         {active && (
@@ -735,7 +750,7 @@ function VendorProfileModal({ vendor, limitMinor, docs, onClose, onSaveLimit, on
  * the partner's portal reads it. A delegated employee session reads it too, but does
  * not write, so a granted permission never becomes authority over the contract.
  */
-function VendorDistributorFile({ vendor }: { vendor: OwnerVendor }) {
+function VendorDistributorFile({ vendor, onOpenFull }: { vendor: OwnerVendor; onOpenFull?: () => void }) {
   const { pick } = useLocale()
   const { flash } = useToast()
   const { role } = useChannel()
@@ -759,12 +774,20 @@ function VendorDistributorFile({ vendor }: { vendor: OwnerVendor }) {
   }
 
   const pending = changeRequests[channel]
+  // the legal-entity lines the console already holds, carried onto the PDF
+  const entity = [
+    ...(vendor.contact ? [{ label: { en: 'Contact person', ar: 'جهة الاتصال' }, value: pick(vendor.contact) }] : []),
+    ...(vendor.crNumber ? [{ label: { en: 'Commercial registration', ar: 'السجل التجاري' }, value: vendor.crNumber }] : []),
+    ...(vendor.vatNumber ? [{ label: { en: 'VAT', ar: 'الرقم الضريبي' }, value: vendor.vatNumber }] : []),
+    ...(vendor.country && countryOf(vendor.country) ? [{ label: { en: 'Country', ar: 'الدولة' }, value: pick(countryOf(vendor.country)!.label) }] : []),
+  ]
 
   return (
     <div className="flex flex-col gap-sm">
       <div className="flex flex-wrap items-center justify-between gap-sm">
         <h4 className="font-serif text-card-title text-ink inline-flex items-center gap-sm">
           <ClipboardList size={16} className="text-primary-hover" /> {pick({ en: 'Distributor file', ar: 'ملف الموزّع' })}
+          <span className="font-sans text-caption text-ink-subtle">· {pick(vendor.name)}</span>
         </h4>
         <span className="font-sans text-caption text-ink-subtle">
           {canEdit
@@ -792,17 +815,77 @@ function VendorDistributorFile({ vendor }: { vendor: OwnerVendor }) {
         </div>
       )}
 
-      <DistributorProfile
-        channel={channel}
-        editable={canEdit}
-        accountName={vendor.name}
-        entity={[
-          ...(vendor.contact ? [{ label: { en: 'Contact person', ar: 'جهة الاتصال' }, value: pick(vendor.contact) }] : []),
-          ...(vendor.crNumber ? [{ label: { en: 'Commercial registration', ar: 'السجل التجاري' }, value: vendor.crNumber }] : []),
-          ...(vendor.vatNumber ? [{ label: { en: 'VAT', ar: 'الرقم الضريبي' }, value: vendor.vatNumber }] : []),
-          ...(vendor.country && countryOf(vendor.country) ? [{ label: { en: 'Country', ar: 'الدولة' }, value: pick(countryOf(vendor.country)!.label) }] : []),
-        ]}
-      />
+      {/* Inside the profile modal the file is summarised and opened on its own screen —
+          four sections and a loading table do not belong in a dialog. */}
+      {onOpenFull ? (
+        <>
+          <DistributorFileSummary channel={channel} accountName={vendor.name} entity={entity} />
+          <button onClick={onOpenFull} className={buttonClass('secondary', 'sm', 'self-start')}>
+            <ClipboardList size={14} /> {canEdit
+              ? pick({ en: 'Open the file to edit it', ar: 'فتح الملف للتعديل' })
+              : pick({ en: 'Open the full file', ar: 'فتح الملف الكامل' })}
+          </button>
+        </>
+      ) : (
+        <DistributorProfile channel={channel} editable={canEdit} accountName={vendor.name} entity={entity} />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Distributor files, as a screen of its own in the owner's console — pick a partner,
+ * read the terms they trade under, and edit them in place. The vendor profile links
+ * here rather than carrying the whole document inside a dialog.
+ */
+function DistributorFilesView({ vendors, selected, onSelect }: {
+  vendors: OwnerVendor[]
+  selected: OwnerVendor | null
+  onSelect: (id: string) => void
+}) {
+  const { pick } = useLocale()
+  const { role } = useChannel()
+  const { activeEmployee } = useTeam()
+  const { values } = useDistributorFile()
+  const canEdit = role === 'owner' && !activeEmployee
+
+  if (!selected) {
+    return (
+      <div className="card p-lg flex items-start gap-sm">
+        <ClipboardList size={18} className="text-ink-subtle mt-0.5 shrink-0" />
+        <p className="font-sans text-data text-ink-muted">
+          {pick({ en: 'No partner trades under a distributor file yet — a file opens once onboarding settles whether the account buys in-Kingdom or exports.', ar: 'لا يوجد شريك يتعامل بملف موزّع بعد — يُفتح الملف بعد أن يحسم التأهيل ما إذا كان الحساب يشتري داخل المملكة أم يصدّر.' })}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-lg">
+      <div className="rounded-lg bg-primary/[0.05] border border-primary/20 p-md flex items-start gap-sm">
+        <ClipboardList size={18} className="text-primary-hover shrink-0 mt-0.5" />
+        <p className="font-sans text-data text-ink-muted">
+          {canEdit
+            ? pick({ en: 'These are the terms Jaz trades under with each partner — what they earn, how the goods travel, and what support comes with the account. You write this file; the partner reads it in their own portal and asks here for a change.', ar: 'هذه هي الشروط التي تتعامل بها جاز مع كل شريك — ما يكسبونه، وكيف تُنقل البضاعة، وما الدعم المرافق للحساب. أنتم من يكتب هذا الملف، والشريك يقرأه في بوابته ويطلب التعديل منكم.' })
+            : pick({ en: 'The terms Jaz trades under with each partner. Only the owner edits this file.', ar: 'الشروط التي تتعامل بها جاز مع كل شريك. المالك وحده يعدّل هذا الملف.' })}
+        </p>
+      </div>
+
+      {/* One chip per partner that has a file — the list is short by nature. The number
+          is what that file still owes, so a stalled one is visible before it is opened. */}
+      <div className="flex flex-col gap-xs">
+        <FilterChips
+          chips={vendors.map((v) => ({ id: v.id, label: pick(v.name), count: completeness(values[v.fileChannel!], v.fileChannel!).missing.length }))}
+          active={selected.id}
+          onChange={onSelect}
+          label={pick({ en: 'Partner', ar: 'الشريك' })}
+        />
+        <span className="font-sans text-caption text-ink-subtle">
+          {pick({ en: 'The number beside each partner is how many required answers their file still owes.', ar: 'الرقم بجانب كل شريك هو عدد الإجابات المطلوبة التي ما زال ملفه مدينًا بها.' })}
+        </span>
+      </div>
+
+      <VendorDistributorFile key={selected.id} vendor={selected} />
     </div>
   )
 }

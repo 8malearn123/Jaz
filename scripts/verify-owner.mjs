@@ -70,6 +70,16 @@ try {
     check(`${ch} · read-only`, renderFile(ch, false), { has: ['Jaz declares'], hasnt: ['>Edit<'] })
   }
 
+  // The owner's own way in: a Distributor files screen under Vendors, editable in place.
+  setup({ role: 'owner', mfa: true, locale: 'en' })
+  check('en owner files screen', renderAdmin('/admin?section=owner_vendors&sub=files'), {
+    has: ['Distributor files', 'Najd Hospitality Group', 'Gulf Export Partners', 'Jaz declares', 'Distributor margin structure', 'Loading table', '>Edit<'],
+  })
+  setup({ role: 'owner', mfa: true, locale: 'ar' })
+  check('ar owner files screen', renderAdmin('/admin?section=owner_vendors&sub=files'), {
+    has: ['ملفات الموزّعين', 'تُعلن جاز', 'هيكل هامش الموزّع', 'جدول التحميل', 'تعديل'],
+  })
+
   console.log('\n— Owner panels · English (owner + MFA) —')
   for (const [sec, has] of OWNER_EN) { setup({ role: 'owner', mfa: true, locale: 'en' }); check(`en /${sec}`, renderAdmin(`/admin?section=${sec}`), { has }) }
 
