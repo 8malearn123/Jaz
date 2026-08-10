@@ -1,7 +1,8 @@
 import { useState, useEffect, type ReactNode } from 'react'
-import { ShieldCheck, Check, X, Send, UserPlus, HandCoins, Upload, CheckCircle2, Eye, Search, FileText, Download } from 'lucide-react'
+import { ShieldCheck, Check, X, Send, UserPlus, HandCoins, Upload, CheckCircle2, Eye, Search, FileText, Download, ClipboardList, MessageSquare } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
+import { DistributorProfile } from '@/components/account/DistributorProfile'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
 import { RowActions, type RowAction } from '@/components/ui/RowActions'
@@ -11,7 +12,10 @@ import { countries, countryOf, type CountryCode } from '@/data/countries'
 import { collectionRows, receivables, type ReceivableRow } from '@/data/ownerFinance'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { useStatements } from '@/state/StatementsContext'
+import { useDistributorFile } from '@/state/DistributorFileContext'
 import { useGovernance } from '@/state/GovernanceContext'
+import { useChannel } from '@/state/ChannelContext'
+import { useTeam } from '@/state/TeamContext'
 import { statementMonths, type StatementStatus, type VendorStatement } from '@/data/vendorStatements'
 import { openStatementPdf } from '@/lib/statementPdf'
 import { makeSellingMoney, useSellingMoney, type SellingMoney } from '@/lib/useSellingMoney'
@@ -669,6 +673,9 @@ function VendorProfileModal({ vendor, limitMinor, docs, onClose, onSaveLimit, on
           <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'The signed contract and verification papers live on the vendor profile — attach or replace them here any time.', ar: 'العقد الموقّع وأوراق التوثيق محفوظة في ملف المورّد — يمكن إرفاقها أو استبدالها هنا في أي وقت.' })}</p>
         </div>
 
+        {/* the terms this partner trades under — Jaz writes them, the partner reads them */}
+        <VendorDistributorFile vendor={vendor} />
+
         {/* credit account */}
         {active && (
           <div className="flex flex-col gap-sm">
@@ -719,6 +726,84 @@ function VendorProfileModal({ vendor, limitMinor, docs, onClose, onSaveLimit, on
         )}
       </div>
     </Modal>
+  )
+}
+
+/**
+ * The partner's distributor file, inside their profile — every term Jaz declares and
+ * the answer that settles it. This is where the file is authored: the owner writes it,
+ * the partner's portal reads it. A delegated employee session reads it too, but does
+ * not write, so a granted permission never becomes authority over the contract.
+ */
+function VendorDistributorFile({ vendor }: { vendor: OwnerVendor }) {
+  const { pick } = useLocale()
+  const { flash } = useToast()
+  const { role } = useChannel()
+  const { activeEmployee } = useTeam()
+  const { changeRequests, resolveChange } = useDistributorFile()
+  const channel = vendor.fileChannel
+  const canEdit = role === 'owner' && !activeEmployee
+
+  if (!channel) {
+    return (
+      <div className="rounded-lg border border-hairline p-md flex items-start gap-sm">
+        <ClipboardList size={16} className="text-ink-subtle mt-0.5 shrink-0" />
+        <div>
+          <h4 className="font-serif text-card-title text-ink">{pick({ en: 'Distributor file', ar: 'ملف الموزّع' })}</h4>
+          <p className="font-sans text-caption text-ink-subtle">
+            {pick({ en: 'Not started — the file opens once onboarding settles whether this partner buys in-Kingdom or exports.', ar: 'لم يبدأ — يُفتح الملف بعد أن يحسم التأهيل ما إذا كان الشريك يشتري داخل المملكة أم يصدّر.' })}
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  const pending = changeRequests[channel]
+
+  return (
+    <div className="flex flex-col gap-sm">
+      <div className="flex flex-wrap items-center justify-between gap-sm">
+        <h4 className="font-serif text-card-title text-ink inline-flex items-center gap-sm">
+          <ClipboardList size={16} className="text-primary-hover" /> {pick({ en: 'Distributor file', ar: 'ملف الموزّع' })}
+        </h4>
+        <span className="font-sans text-caption text-ink-subtle">
+          {canEdit
+            ? pick({ en: 'Yours to edit — the partner reads it', ar: 'التعديل من حقّكم — والشريك يقرأ فقط' })
+            : pick({ en: 'Read-only — only the owner edits this file', ar: 'للاطّلاع فقط — المالك وحده يعدّل هذا الملف' })}
+        </span>
+      </div>
+
+      {/* what the partner has asked to have changed, and clearing it once it is done */}
+      {pending && (
+        <div className="rounded-lg border border-primary/25 bg-primary/8 p-md flex flex-wrap items-start gap-sm">
+          <MessageSquare size={15} className="text-primary-hover mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-[180px]">
+            <p className="font-sans text-data text-ink">{pick({ en: 'The account requested a change', ar: 'طلبت المنشأة تعديلًا' })} · {pick(pending.at)}</p>
+            <p className="font-sans text-caption text-ink-muted">{pending.note}</p>
+          </div>
+          {canEdit && (
+            <button
+              onClick={() => { resolveChange(channel); flash(pick({ en: 'Change request cleared', ar: 'أُغلق طلب التعديل' })) }}
+              className={buttonClass('secondary', 'sm')}
+            >
+              <Check size={14} /> {pick({ en: 'Mark handled', ar: 'تمّت المعالجة' })}
+            </button>
+          )}
+        </div>
+      )}
+
+      <DistributorProfile
+        channel={channel}
+        editable={canEdit}
+        accountName={vendor.name}
+        entity={[
+          ...(vendor.contact ? [{ label: { en: 'Contact person', ar: 'جهة الاتصال' }, value: pick(vendor.contact) }] : []),
+          ...(vendor.crNumber ? [{ label: { en: 'Commercial registration', ar: 'السجل التجاري' }, value: vendor.crNumber }] : []),
+          ...(vendor.vatNumber ? [{ label: { en: 'VAT', ar: 'الرقم الضريبي' }, value: vendor.vatNumber }] : []),
+          ...(vendor.country && countryOf(vendor.country) ? [{ label: { en: 'Country', ar: 'الدولة' }, value: pick(countryOf(vendor.country)!.label) }] : []),
+        ]}
+      />
+    </div>
   )
 }
 

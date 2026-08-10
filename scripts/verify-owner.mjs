@@ -27,7 +27,9 @@ const OWNER_EN = [
   ['owner_products', ['Production', 'buildable', 'Dark 70% bar']],
   ['owner_customers', ['Customers &amp; loyalty', 'Loyalty members', 'Najd Hospitality Group']],
   ['owner_catalog', ['Products', 'Dark 70% bar', 'New product']],
-  ['owner_vendors', ['Vendors &amp; credit', 'Outstanding', 'Payment']],
+  // The export partner is in the directory too — otherwise the export distributor
+  // file has no profile to be maintained from.
+  ['owner_vendors', ['Vendors &amp; credit', 'Outstanding', 'Payment', 'Gulf Export Partners']],
   ['owner_export', ['Export clients', 'EX-3081', 'Dubai']],
 ]
 const OWNER_AR = [
@@ -37,7 +39,7 @@ const OWNER_AR = [
   ['owner_customers', ['العملاء والولاء']],
 ]
 try {
-  const { renderAdmin } = await vite.ssrLoadModule('/scripts/owner-harness.tsx')
+  const { renderAdmin, renderFile } = await vite.ssrLoadModule('/scripts/owner-harness.tsx')
 
   console.log('— Security gates —')
   setup({ role: 'customer' }); check('customer → Restricted', renderAdmin('/admin'), { has: ['does not have access'], hasnt: ['Executive', 'Credit approvals'] })
@@ -58,6 +60,15 @@ try {
   check('ar /accounts', renderAdmin('/admin?section=accounts'), {
     has: ['شركاء الخليج للتصدير', 'لم يبدأ'],
   })
+
+  // Who may rewrite the distributor file. One component, one flag: the owner's copy
+  // carries the section editor, everyone else's carries the same terms without it.
+  console.log('\n— Distributor file · edit rights —')
+  setup({ role: 'owner', mfa: true, locale: 'en' })
+  for (const ch of ['horeca', 'export']) {
+    check(`${ch} · owner may edit`, renderFile(ch, true), { has: ['Jaz declares', '>Edit<'] })
+    check(`${ch} · read-only`, renderFile(ch, false), { has: ['Jaz declares'], hasnt: ['>Edit<'] })
+  }
 
   console.log('\n— Owner panels · English (owner + MFA) —')
   for (const [sec, has] of OWNER_EN) { setup({ role: 'owner', mfa: true, locale: 'en' }); check(`en /${sec}`, renderAdmin(`/admin?section=${sec}`), { has }) }

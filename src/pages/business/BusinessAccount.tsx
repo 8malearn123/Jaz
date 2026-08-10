@@ -2,7 +2,7 @@ import { useState } from 'react'
 import {
   LayoutGrid, Landmark, Package, Building2, ShieldCheck, BadgeCheck, Download,
   ArrowUpRight, ArrowDownRight, MapPin, Plus, Lock, FileText, TrendingUp,
-  Store, Bell, Phone, Check, CheckCircle2,
+  Store, Bell, Phone, Check, CheckCircle2, ClipboardList,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { WholesaleOrderProvider } from '@/state/WholesaleOrderContext'
@@ -18,7 +18,7 @@ import {
   type OrgMember, type OrgAddress,
 } from '@/data/business'
 import { AccountShell, type TabDef } from '@/components/account/AccountShell'
-import { DistributorProfile } from '@/components/account/DistributorProfile'
+import { DistributorFileSummary, DistributorFileSections } from '@/components/account/DistributorProfile'
 import { ToastProvider, useToast } from '@/components/account/Toast'
 import { AreaTrend, UtilizationGauge, TrendPill } from '@/components/charts/Charts'
 import { Modal } from '@/components/ui/Modal'
@@ -38,7 +38,7 @@ const VENDOR_ID = 'V-01'
 const org = organization
 const roleAccent: Record<OrgMember['role'], 'gold' | 'success' | 'neutral'> = { b2b_admin: 'gold', approver: 'success', buyer: 'neutral', viewer: 'neutral' }
 
-const TABS = ['overview', 'catalog', 'orders', 'credit', 'company'] as const
+const TABS = ['overview', 'catalog', 'orders', 'credit', 'company', 'file'] as const
 type Tab = (typeof TABS)[number]
 
 export function BusinessAccount() {
@@ -64,6 +64,7 @@ function BusinessContent() {
     { id: 'orders', label: t('business.tab.orders'), icon: Package },
     { id: 'credit', label: t('biz.tab.finance'), icon: Landmark },
     { id: 'company', label: t('biz.tab.company'), icon: Building2 },
+    { id: 'file', label: t('biz.tab.file'), icon: ClipboardList },
   ]
 
   return (
@@ -86,7 +87,9 @@ function BusinessContent() {
       {active === 'catalog' && <CatalogPanel />}
       {active === 'orders' && <OrgOrdersPanel />}
       {active === 'credit' && <Credit />}
-      {active === 'company' && <Account />}
+      {active === 'company' && <Account onTab={setActive} />}
+      {/* Jaz's terms with this account — read here, written from the console */}
+      {active === 'file' && <DistributorFileSections channel="horeca" />}
     </AccountShell>
   )
 }
@@ -325,7 +328,7 @@ function Credit() {
 /* ═══════════════ Gifting ═══════════════ */
 
 /* ═══════════════ Account — legal entity, verification, addresses, integrations ═══════════════ */
-function Account() {
+function Account({ onTab }: { onTab: (id: string) => void }) {
   const { t, pick, locale } = useLocale()
   const [addresses, setAddresses] = useState<OrgAddress[]>(addressData)
   const [addOpen, setAddOpen] = useState(false)
@@ -427,9 +430,11 @@ function Account() {
         </ul>
       </div>
 
-      {/* every term of the account, and this account's answer to it */}
-      <DistributorProfile
+      {/* how complete this account's file is — the file itself has its own tab */}
+      <DistributorFileSummary
         channel="horeca"
+        onOpen={() => onTab('file')}
+        canRequestChange
         accountName={org.legalName}
         entity={[
           { label: { en: 'Account type', ar: 'نوع الحساب' }, value: pick(org.accountType) },

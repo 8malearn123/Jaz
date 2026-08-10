@@ -1,7 +1,10 @@
 import { useState } from 'react'
-import { Building2, ArrowUpRight, CheckCircle2, Lock, FileText, Briefcase, ClipboardList } from 'lucide-react'
+import { Building2, ArrowUpRight, CheckCircle2, Lock, FileText, Briefcase, ClipboardList, ChevronDown, MessageSquare } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useChannel } from '@/state/ChannelContext'
+import { useTeam } from '@/state/TeamContext'
+import { useDistributorFile } from '@/state/DistributorFileContext'
+import { DistributorFileSections } from '@/components/account/DistributorProfile'
 import { orgDirectory, salesPipeline, creditApplications, type OrgSummary, type CreditApplication } from '@/data/staff'
 import type { Bilingual } from '@/data/types'
 import { UtilizationGauge } from '@/components/charts/Charts'
@@ -10,23 +13,25 @@ import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
 import { cn } from '@/lib/cn'
 import { openDistributorFilePdf } from '@/lib/distributorFilePdf'
-import { packValue } from '@/data/distributorPack'
-import { completeness, displayValue, distributorProfileSeed, profileFields } from '@/data/distributorProfile'
+import { packValue, type PackChannel } from '@/data/distributorPack'
+import type { ProfileValues } from '@/data/distributorProfile'
+import { completeness, displayValue, profileFields } from '@/data/distributorProfile'
 
 const tierVariant = { platinum: 'gold', gold: 'gold', silver: 'neutral', bronze: 'neutral' } as const
 const statusVariant = { active: 'success', pending: 'gold', suspended: 'danger' } as const
 const stageVariant: Record<string, 'gold' | 'success' | 'neutral' | 'danger'> = { draft: 'neutral', sent: 'gold', accepted: 'gold', won: 'success', lost: 'danger' }
 
 /** The directory chip for an account's distributor file — not started, or how far along. */
-function fileState(o: OrgSummary, pick: (b: Bilingual) => string): { variant: 'neutral' | 'gold' | 'success'; label: string } {
+function fileState(o: OrgSummary, values: Record<PackChannel, ProfileValues>, pick: (b: Bilingual) => string): { variant: 'neutral' | 'gold' | 'success'; label: string } {
   const word = pick({ en: 'file', ar: 'الملف' })
   if (!o.fileChannel) return { variant: 'neutral', label: `${word} — ${pick({ en: 'not started', ar: 'لم يبدأ' })}` }
-  const done = completeness(distributorProfileSeed[o.fileChannel], o.fileChannel)
+  const done = completeness(values[o.fileChannel], o.fileChannel)
   return { variant: done.missing.length === 0 ? 'success' : 'gold', label: `${word} ${done.pct}%` }
 }
 
 export function AccountsPanel() {
   const { t, pick, money } = useLocale()
+  const { values } = useDistributorFile()
   const [requests, setRequests] = useState<CreditApplication[]>(creditApplications)
   const [detail, setDetail] = useState<OrgSummary | null>(null)
   const [filter, setFilter] = useState<'all' | OrgSummary['status']>('all')
@@ -52,7 +57,7 @@ export function AccountsPanel() {
         {shown.map((o) => {
           const pct = Math.round((o.availableMinor / o.limitMinor) * 100)
           const deals = salesPipeline.filter((q) => q.accountId === o.id && q.stage !== 'lost')
-          const file = fileState(o, pick)
+          const file = fileState(o, values, pick)
           const pipelineValue = deals.reduce((s, q) => s + q.valueMinor, 0)
           return (
             <button key={o.id} onClick={() => setDetail(o)} className="card card-hover p-lg flex flex-col gap-sm text-start">
@@ -102,11 +107,21 @@ export function AccountsPanel() {
 /**
  * What a reviewer at Jaz needs from an account's distributor file without opening the
  * partner's portal: how complete it is, what is still owed, the handful of answers that
- * decide whether the account can be served — and the whole file as a document.
- * Read-only on purpose: the answers belong to the account, not to us.
+ * decide whether the account can be served — and the whole file, as a document or in
+ * full below.
+ *
+ * Editing is the owner's alone, which is why this reads read-only for everyone who
+ * reaches this panel: the section list is the same component the owner writes in, told
+ * whether the signed-in role may write. The owner's own route to it is the vendor
+ * profile in their console.
  */
 function DistributorFileReview({ account }: { account: OrgSummary }) {
   const { pick, locale } = useLocale()
+  const { role } = useChannel()
+  const { activeEmployee } = useTeam()
+  const { values: fileValues, changeRequests } = useDistributorFile()
+  const [openFile, setOpenFile] = useState(false)
+  const canEdit = role === 'owner' && !activeEmployee
   const channel = account.fileChannel
 
   if (!channel) {
@@ -123,11 +138,12 @@ function DistributorFileReview({ account }: { account: OrgSummary }) {
     )
   }
 
-  const values = distributorProfileSeed[channel]
+  const values = fileValues[channel]
   const done = completeness(values, channel)
   // the answers a reviewer actually reads before serving the account
   const headline = ['markets', 'annual_commitment', 'incoterm_pref', 'temp_range'] as const
   const fields = profileFields(channel)
+  const pending = changeRequests[channel]
 
   return (
     <div className="rounded-lg border border-hairline p-md flex flex-col gap-sm">
@@ -176,6 +192,32 @@ function DistributorFileReview({ account }: { account: OrgSummary }) {
           {done.missing.map((f) => pick(packValue(f.label, channel))).join(' · ')}
         </p>
       )}
+
+      {/* a change the account has asked Jaz for — the owner clears it from their console */}
+      {pending && (
+        <p className="inline-flex items-start gap-xs font-sans text-caption text-ink-muted">
+          <MessageSquare size={13} className="mt-0.5 shrink-0 text-primary-hover" />
+          <span><span className="text-ink">{pick({ en: 'Change requested', ar: 'طُلب تعديل' })} · {pick(pending.at)}</span> — {pending.note}</span>
+        </p>
+      )}
+
+      {/* the whole file, on the same component the owner edits in */}
+      <div className="flex flex-col gap-sm border-t border-hairline pt-sm">
+        <button onClick={() => setOpenFile((v) => !v)} className="inline-flex items-center gap-xs self-start font-sans text-caption uppercase tracking-[0.08em] text-primary-hover hover:text-ink">
+          <ChevronDown size={14} className={cn('transition-transform', openFile && 'rotate-180')} />
+          {openFile ? pick({ en: 'Hide the full file', ar: 'إخفاء الملف الكامل' }) : pick({ en: 'Read the full file', ar: 'قراءة الملف الكامل' })}
+        </button>
+        {openFile && (
+          <>
+            {!canEdit && (
+              <p className="font-sans text-caption text-ink-subtle">
+                {pick({ en: 'Read-only — the owner maintains this file.', ar: 'للاطّلاع فقط — المالك هو من يحفظ هذا الملف.' })}
+              </p>
+            )}
+            <DistributorFileSections channel={channel} editable={canEdit} />
+          </>
+        )}
+      </div>
     </div>
   )
 }

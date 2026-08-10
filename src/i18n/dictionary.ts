@@ -616,6 +616,7 @@ export const dict: Dict = {
   'biz.tab.credit': { en: 'Credit & statements', ar: 'الائتمان والكشوف' },
   'biz.tab.finance': { en: 'Finance', ar: 'المالية' },
   'biz.tab.company': { en: 'Company', ar: 'المنشأة' },
+  'biz.tab.file': { en: 'Distributor file', ar: 'ملف الموزّع' },
   'business.priceList': { en: 'Price list', ar: 'قائمة الأسعار' },
   'business.tier': { en: 'tier', ar: 'فئة' },
   'business.recentActivity': { en: 'Recent activity', ar: 'النشاط الأخير' },

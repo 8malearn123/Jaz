@@ -8,6 +8,7 @@ import { ChannelProvider } from '@/state/ChannelContext'
 import { CartProvider } from '@/state/CartContext'
 import { BillingProvider } from '@/state/BillingContext'
 import { StatementsProvider } from '@/state/StatementsContext'
+import { DistributorFileProvider } from '@/state/DistributorFileContext'
 import { ForecastProvider } from '@/state/ForecastContext'
 import { TeamProvider } from '@/state/TeamContext'
 import { GovernanceProvider } from '@/state/GovernanceContext'
@@ -20,6 +21,9 @@ createRoot(document.getElementById('root')!).render(
         <CartProvider>
           <BillingProvider>
            <StatementsProvider>
+           {/* The distributor file is authored in the console and read in the
+               partner portals — one state above both. */}
+           <DistributorFileProvider>
            <ForecastProvider>
             <TeamProvider>
               {/* Governance sits above the console: it needs to know who is signed in. */}
@@ -32,6 +36,7 @@ createRoot(document.getElementById('root')!).render(
               </GovernanceProvider>
             </TeamProvider>
            </ForecastProvider>
+           </DistributorFileProvider>
            </StatementsProvider>
           </BillingProvider>
         </CartProvider>
