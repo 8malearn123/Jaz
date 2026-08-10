@@ -130,6 +130,7 @@ function OrderDetailModal({ order, open, onClose, onCancel }: { order: AccountOr
   // (and the tax invoice the admin attaches shows up here immediately).
   const { billingFor, attachReceipt } = useBilling()
   const [now, setNow] = useState(() => Date.now())
+  const [confirmCancel, setConfirmCancel] = useState(false)
   const canCancel = !!order && !order.cancelled && CANCELLABLE.has(order.status) && order.placedTs != null && (order.placedTs + CANCEL_WINDOW_MS - now) > 0
   // Tick the countdown while the window is open.
   useEffect(() => {
@@ -137,6 +138,8 @@ function OrderDetailModal({ order, open, onClose, onCancel }: { order: AccountOr
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [canCancel])
+  // The confirm closes with the modal, so reopening an order never lands mid-question.
+  useEffect(() => { if (!open) setConfirmCancel(false) }, [open])
   if (!order) return null
 
   const remaining = order.placedTs != null ? order.placedTs + CANCEL_WINDOW_MS - now : -1
@@ -144,7 +147,6 @@ function OrderDetailModal({ order, open, onClose, onCancel }: { order: AccountOr
   const ss = String(Math.max(0, Math.floor((remaining % 60000) / 1000))).padStart(2, '0')
   const windowClosed = !order.cancelled && CANCELLABLE.has(order.status) && !canCancel
   const doCancel = () => { onCancel(order.orderNo); onClose() }
-  const [confirmCancel, setConfirmCancel] = useState(false)
 
   const approver = members.find((m) => m.role === 'approver')
   const lines = (accountOrderItems[order.orderNo] ?? [])
