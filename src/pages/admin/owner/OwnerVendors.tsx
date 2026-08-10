@@ -4,6 +4,7 @@ import { useLocale } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
+import { RowActions, type RowAction } from '@/components/ui/RowActions'
 import type { Bilingual } from '@/data/types'
 import { poByVendor, onboardingStages, vendorDocMeta, type PoPayStatus, type OwnerVendor, type VendorDoc, type VendorDocKind } from '@/data/ownerVendors'
 import { countries, countryOf, type CountryCode } from '@/data/countries'
@@ -11,9 +12,9 @@ import { collectionRows, receivables, type ReceivableRow } from '@/data/ownerFin
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { useStatements } from '@/state/StatementsContext'
 import { useGovernance } from '@/state/GovernanceContext'
-import { statementMonths, type StatementStatus } from '@/data/vendorStatements'
+import { statementMonths, type StatementStatus, type VendorStatement } from '@/data/vendorStatements'
 import { openStatementPdf } from '@/lib/statementPdf'
-import { makeSellingMoney, useSellingMoney } from '@/lib/useSellingMoney'
+import { makeSellingMoney, useSellingMoney, type SellingMoney } from '@/lib/useSellingMoney'
 import { cn } from '@/lib/cn'
 import { PanelHead, Pill, UtilBar, FilterChips } from './_shared'
 import { OwnerForecastPanel } from './OwnerForecast'
@@ -27,11 +28,13 @@ const poMeta: Record<PoPayStatus, { label: { en: string; ar: string }; color: st
 
 const utilColor = (pct: number) => (pct >= 100 ? '#b5403b' : pct >= 85 ? '#b08a57' : '#355c4b')
 
-// monthly statement lifecycle: accountant review → sent to partner → partner approved
-const stMeta: Record<StatementStatus, { label: { en: string; ar: string }; color: string; bg: string }> = {
-  review: { label: { en: 'Awaiting accountant review', ar: 'بانتظار مراجعة المحاسب' }, color: '#8a6b3f', bg: '#f6edde' },
-  sent: { label: { en: 'Sent — awaiting partner', ar: 'أُرسل — بانتظار الشريك' }, color: '#2e5f8a', bg: '#e7f0f8' },
-  confirmed: { label: { en: 'Approved by partner', ar: 'اعتمده الشريك' }, color: '#3f7d4e', bg: '#e9f4ec' },
+// monthly statement lifecycle: accountant review → sent to partner → partner approved.
+// `short` is what the table column carries; `label` is the full sentence, kept for
+// the tooltip and the statement detail view.
+const stMeta: Record<StatementStatus, { label: { en: string; ar: string }; short: { en: string; ar: string }; color: string; bg: string }> = {
+  review: { label: { en: 'Awaiting accountant review', ar: 'بانتظار مراجعة المحاسب' }, short: { en: 'Awaiting review', ar: 'بانتظار المراجعة' }, color: '#8a6b3f', bg: '#f6edde' },
+  sent: { label: { en: 'Sent — awaiting partner', ar: 'أُرسل — بانتظار الشريك' }, short: { en: 'Awaiting partner', ar: 'بانتظار الشريك' }, color: '#2e5f8a', bg: '#e7f0f8' },
+  confirmed: { label: { en: 'Approved by partner', ar: 'اعتمده الشريك' }, short: { en: 'Approved', ar: 'معتمد' }, color: '#3f7d4e', bg: '#e9f4ec' },
 }
 
 export type VendorView = 'accounts' | 'collection' | 'statements' | 'forecast' | 'credit'
@@ -52,6 +55,7 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
   const [profileId, setProfileId] = useState<string | null>(null)
   const [payId, setPayId] = useState<string | null>(null)
   const [viewRec, setViewRec] = useState<ReceivableRow | null>(null)
+  const [stId, setStId] = useState<string | null>(null)
   const [inviteOpen, setInviteOpen] = useState(false)
 
   const activeVendors = vendors.filter((v) => v.status === 'active')
@@ -67,6 +71,25 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
 
   const profileVendor = vendors.find((v) => v.id === profileId) ?? null
   const payVendor = vendors.find((v) => v.id === payId) ?? null
+
+  // ── statements: the rows of the selected month, and the actions each one carries.
+  // The table folds them under the three-dot button; the detail view spells them out.
+  const monthStatements = statements.filter((s) => s.month === stMonth)
+  const pendingReview = monthStatements.filter((s) => s.status === 'review').length
+  const stDetail = statements.find((s) => s.id === stId) ?? null
+  const statementMoney = (s: VendorStatement) => makeSellingMoney(money, vendors.find((v) => v.id === s.vendorId)?.country)
+  const approveStatement = (s: VendorStatement) => { accountantApprove(s.id); flash(`${pick({ en: 'Approved & sent to', ar: 'اعتُمد وأُرسل إلى' })} ${pick(s.vendor)}`) }
+  const statementPdf = (s: VendorStatement) => openStatementPdf(s, { locale, pick, money: statementMoney(s).money })
+  const statementActions = (s: VendorStatement): RowAction[] => [
+    ...(s.status === 'review'
+      ? [{ id: 'approve', label: pick({ en: 'Approve & send', ar: 'اعتماد وإرسال' }), hint: pick({ en: 'Sends the statement to the partner', ar: 'يُرسل الكشف إلى الشريك لاعتماده' }), icon: Check, tone: 'primary' as const, onSelect: () => approveStatement(s) }]
+      : []),
+    { id: 'view', label: pick({ en: 'View statement', ar: 'عرض الكشف' }), icon: Eye, onSelect: () => setStId(s.id) },
+    { id: 'pdf', label: pick({ en: 'Download PDF', ar: 'تنزيل نسخة PDF' }), icon: Download, onSelect: () => statementPdf(s) },
+    ...(s.status === 'sent'
+      ? [{ id: 'remind', label: pick({ en: 'Remind the partner', ar: 'تذكير الشريك' }), hint: pick({ en: 'They have not approved it yet', ar: 'لم يعتمدوا الكشف بعد' }), icon: Send, onSelect: () => flash(`${pick({ en: 'Reminder sent to', ar: 'أُرسل تذكير إلى' })} ${pick(s.vendor)}`) }]
+      : []),
+  ]
 
   return (
     <div className="flex flex-col gap-lg">
@@ -199,44 +222,60 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
 
           <div className="card overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse min-w-[860px]">
+              <table className="w-full border-collapse min-w-[760px]">
                 <thead>
                   <tr className="bg-surface-2 border-b border-hairline">
-                    {[{ h: { en: 'Partner', ar: 'الشريك' }, a: 'text-start' }, { h: { en: 'Covered period', ar: 'الفترة المغطاة' }, a: 'text-start' }, { h: { en: 'Total purchases', ar: 'إجمالي المشتريات' }, a: 'text-end' }, { h: { en: 'Total payments', ar: 'إجمالي المدفوعات' }, a: 'text-end' }, { h: { en: 'Balance', ar: 'الرصيد' }, a: 'text-end' }, { h: { en: 'Status', ar: 'الحالة' }, a: 'text-start' }, { h: { en: 'Actions', ar: 'إجراءات' }, a: 'text-end' }].map((c, i) => (
-                      <th key={i} className={cn('font-sans text-caption uppercase tracking-wide text-ink-subtle px-lg py-2.5', c.a)}>{pick(c.h)}</th>
+                    {[{ h: { en: 'Partner', ar: 'الشريك' }, a: 'text-start', w: 'w-[24%]' }, { h: { en: 'Covered period', ar: 'الفترة المغطاة' }, a: 'text-start', w: 'w-[20%]' }, { h: { en: 'Total purchases', ar: 'إجمالي المشتريات' }, a: 'text-end', w: 'w-[13%]' }, { h: { en: 'Total payments', ar: 'إجمالي المدفوعات' }, a: 'text-end', w: 'w-[13%]' }, { h: { en: 'Balance', ar: 'الرصيد' }, a: 'text-end', w: 'w-[13%]' }, { h: { en: 'Status', ar: 'الحالة' }, a: 'text-start', w: 'w-[17%]' }].map((c, i) => (
+                      <th key={i} className={cn('align-bottom font-sans text-caption uppercase tracking-wide text-ink-subtle px-lg py-2.5', c.a, c.w)}>{pick(c.h)}</th>
                     ))}
+                    {/* the actions column is a single icon — its header stays for screen readers only */}
+                    <th className="w-[68px] px-xs py-2.5"><span className="sr-only">{pick({ en: 'Actions', ar: 'إجراءات' })}</span></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {statements.filter((s) => s.month === stMonth).map((s) => {
+                  {monthStatements.length === 0 && (
+                    <tr><td colSpan={7} className="px-lg py-lg text-center font-sans text-data text-ink-subtle">{pick({ en: 'No statements issued for this month.', ar: 'لا توجد كشوف صادرة لهذا الشهر.' })}</td></tr>
+                  )}
+                  {monthStatements.map((s) => {
                     const m = stMeta[s.status]
                     // A statement is stated in the currency its partner is billed in.
                     const sm = makeSellingMoney(money, vendors.find((v) => v.id === s.vendorId)?.country)
                     return (
-                      <tr key={s.id} className="border-b border-hairline last:border-0 align-middle">
+                      <tr key={s.id} className="border-b border-hairline last:border-0 align-middle transition-colors hover:bg-surface-2/40">
                         <td className="px-lg py-md">
-                          <p className="font-sans text-data text-ink truncate max-w-[200px]">{pick(s.vendor)}</p>
-                          <p className="font-sans text-caption text-ink-subtle tabular-nums">{s.id} · {pick({ en: 'Issued', ar: 'صدر' })} {pick(s.issuedOn)}{sm.isExport && ` · ${sm.currency}`}</p>
+                          <p className="font-sans text-data text-ink truncate max-w-[220px]">{pick(s.vendor)}</p>
+                          <p className="font-sans text-caption text-ink-subtle tabular-nums truncate max-w-[220px]">{s.id} · {pick({ en: 'Issued', ar: 'صدر' })} {pick(s.issuedOn)}{sm.isExport && ` · ${sm.currency}`}</p>
                         </td>
                         <td className="px-lg py-md">
-                          <p className="font-sans text-caption text-ink-muted max-w-[170px]">{pick(s.periodLabel)}</p>
-                          <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Partner since', ar: 'بداية التعامل' })} {pick(s.sinceLabel)}</p>
+                          {/* the full sentence lives in the tooltip and the detail view — the
+                              column carries the range itself, on one line */}
+                          <p className="font-sans text-data text-ink-muted whitespace-nowrap" title={pick(s.periodLabel)}>{pick(s.sinceLabel)} — {pick(s.toLabel)}</p>
+                          <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Cumulative since account opening', ar: 'تراكمي منذ بداية التعامل' })}</p>
                         </td>
                         <td className="px-lg py-md text-end font-sans text-data text-ink tabular-nums whitespace-nowrap">{sm.money(s.chargesMinor, { withSymbol: false })}</td>
                         <td className="px-lg py-md text-end font-sans text-data text-success tabular-nums whitespace-nowrap">−{sm.money(s.paymentsMinor, { withSymbol: false })}</td>
                         <td className="px-lg py-md text-end font-serif text-card-title text-ink tabular-nums whitespace-nowrap">{sm.money(s.closingMinor)}</td>
                         <td className="px-lg py-md">
-                          <Pill color={m.color} bg={m.bg}>{pick(m.label)}</Pill>
-                          {s.partnerAt && <p className="font-sans text-caption text-ink-subtle mt-xxs">{pick({ en: 'Partner approved', ar: 'اعتماد الشريك' })} · {pick(s.partnerAt)}</p>}
+                          <Pill color={m.color} bg={m.bg} className="whitespace-nowrap" title={pick(m.label)}>
+                            <span className="w-1.5 h-1.5 rounded-pill shrink-0" style={{ backgroundColor: m.color }} />
+                            {pick(m.short)}
+                          </Pill>
+                          {(s.partnerAt || s.accountantAt) && (
+                            <p className="font-sans text-caption text-ink-subtle mt-xxs whitespace-nowrap">
+                              {s.partnerAt
+                                ? `${pick({ en: 'Partner', ar: 'الشريك' })} · ${pick(s.partnerAt)}`
+                                : `${pick({ en: 'Sent', ar: 'أُرسل' })} · ${pick(s.accountantAt!)}`}
+                            </p>
+                          )}
                         </td>
-                        <td className="px-lg py-md">
-                          <div className="flex items-center justify-end gap-xs">
-                            <button onClick={() => openStatementPdf(s, { locale, pick, money: sm.money })} className={buttonClass('secondary', 'sm')}><Download size={14} /> PDF</button>
-                            {s.status === 'review' && (
-                              <button onClick={() => { accountantApprove(s.id); flash(`${pick({ en: 'Approved & sent to', ar: 'اعتُمد وأُرسل إلى' })} ${pick(s.vendor)}`) }} className={buttonClass('primary', 'sm')}>
-                                <Check size={14} /> {pick({ en: 'Approve & send', ar: 'اعتماد وإرسال' })}
-                              </button>
-                            )}
+                        {/* every row action folds under the three-dot button */}
+                        <td className="ps-xs pe-lg py-md">
+                          <div className="flex justify-end">
+                            <RowActions
+                              label={`${pick({ en: 'Statement actions', ar: 'إجراءات الكشف' })} · ${s.id}`}
+                              flagged={s.status === 'review'}
+                              actions={statementActions(s)}
+                            />
                           </div>
                         </td>
                       </tr>
@@ -245,7 +284,18 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
                 </tbody>
               </table>
             </div>
-            <div className="px-lg py-sm bg-surface-2 border-t border-hairline font-sans text-caption text-ink-subtle">
+            {monthStatements.length > 0 && (
+              <div className="px-lg py-sm bg-surface-2 border-t border-hairline flex flex-wrap items-center justify-between gap-sm">
+                {/* Totals stay in riyals: partners are billed in their own currency, the books are the company's. */}
+                <span className="font-sans text-caption text-ink-muted tabular-nums">
+                  {pick({ en: 'Statements', ar: 'عدد الكشوف' })}: {monthStatements.length} · {pick({ en: 'Total balance (books)', ar: 'إجمالي الأرصدة (بدفاتر الشركة)' })}: {money(monthStatements.reduce((a, s) => a + s.closingMinor, 0))}
+                </span>
+                {pendingReview > 0 && (
+                  <span className="font-sans text-caption tabular-nums" style={{ color: '#8a6b3f' }}>{pendingReview} {pick({ en: 'awaiting your approval', ar: 'بانتظار اعتمادك' })}</span>
+                )}
+              </div>
+            )}
+            <div className="px-lg py-sm border-t border-hairline font-sans text-caption text-ink-subtle">
               {pick({ en: 'The PDF covers the entire period since the relationship began, with both approval states. The partner approves from their business portal.', ar: 'ملف الـ PDF يغطي كامل الفترة منذ بداية التعامل ويتضمن حالتي الاعتماد. الشريك يعتمد الكشف من بوابة أعماله.' })}
             </div>
           </div>
@@ -407,6 +457,17 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
         />
       )}
 
+      {/* the statement itself — opened from the row's three-dot menu */}
+      {stDetail && (
+        <StatementDetailModal
+          statement={stDetail}
+          sm={statementMoney(stDetail)}
+          onClose={() => setStId(null)}
+          onPdf={() => statementPdf(stDetail)}
+          onApprove={stDetail.status === 'review' ? () => approveStatement(stDetail) : undefined}
+        />
+      )}
+
       {/* receivable inspection — opened from the eye button */}
       {viewRec && (
         <Modal open onClose={() => setViewRec(null)} size="sm" eyebrow={pick({ en: 'Receivable', ar: 'مستحق تحصيل' })} title={pick(viewRec.account)}
@@ -436,6 +497,72 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
         </Modal>
       )}
     </div>
+  )
+}
+
+/** One monthly statement in full: the figures behind the row, the period it
+ *  covers, and where it stands in the two-step approval chain. */
+function StatementDetailModal({ statement: s, sm, onClose, onPdf, onApprove }: {
+  statement: VendorStatement
+  sm: SellingMoney
+  onClose: () => void
+  onPdf: () => void
+  onApprove?: () => void
+}) {
+  const { pick, money: sarMoney } = useLocale()
+  const m = stMeta[s.status]
+  const row = (k: string, v: ReactNode) => (
+    <div className="flex items-start justify-between gap-sm px-md py-2">
+      <span className="font-sans text-caption text-ink-subtle shrink-0">{k}</span>
+      <span className="font-sans text-data text-ink text-end">{v}</span>
+    </div>
+  )
+  const approval = (label: string, at?: Bilingual) => (
+    <div className={cn('rounded-lg border p-md flex flex-col gap-xxs', at ? 'border-success/25 bg-success/[0.06]' : 'border-hairline bg-surface-2/60')}>
+      <span className="label !mb-0">{label}</span>
+      <span className={cn('inline-flex items-center gap-xs font-sans text-data', at ? 'text-success' : 'text-ink-subtle')}>
+        {at ? <><CheckCircle2 size={14} /> {pick({ en: 'Approved', ar: 'معتمد' })} · {pick(at)}</> : pick({ en: 'Pending', ar: 'بانتظار الاعتماد' })}
+      </span>
+    </div>
+  )
+  return (
+    <Modal open onClose={onClose} size="md" eyebrow={s.id} title={pick(s.vendor)}
+      footer={<>
+        <button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Close', ar: 'إغلاق' })}</button>
+        <button onClick={onPdf} className={buttonClass('secondary', 'sm')}><Download size={14} /> PDF</button>
+        {onApprove && <button onClick={() => { onApprove(); onClose() }} className={buttonClass('primary', 'sm')}><Check size={14} /> {pick({ en: 'Approve & send', ar: 'اعتماد وإرسال' })}</button>}
+      </>}>
+      <div className="flex flex-col gap-md">
+        <Pill color={m.color} bg={m.bg} className="self-start whitespace-nowrap">
+          <span className="w-1.5 h-1.5 rounded-pill shrink-0" style={{ backgroundColor: m.color }} />
+          {pick(m.label)}
+        </Pill>
+
+        {/* the three figures, cumulative since the relationship began */}
+        <div className="rounded-lg border border-hairline divide-y divide-hairline">
+          {row(pick({ en: 'Total purchases', ar: 'إجمالي المشتريات' }), <span className="tabular-nums">{sm.money(s.chargesMinor)}</span>)}
+          {row(pick({ en: 'Total payments', ar: 'إجمالي المدفوعات' }), <span className="tabular-nums text-success">−{sm.money(s.paymentsMinor)}</span>)}
+          <div className="flex items-center justify-between gap-sm px-md py-sm bg-surface-2/60">
+            <span className="font-sans text-caption uppercase tracking-[0.1em] text-ink-muted">{pick({ en: 'Balance at period end', ar: 'الرصيد الختامي' })}</span>
+            <span className="font-serif text-card-title text-ink tabular-nums">{sm.money(s.closingMinor)}</span>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-hairline divide-y divide-hairline">
+          {row(pick({ en: 'Covered period', ar: 'الفترة المغطاة' }), pick(s.periodLabel))}
+          {row(pick({ en: 'Partner since', ar: 'بداية التعامل' }), pick(s.sinceLabel))}
+          {row(pick({ en: 'Issued on', ar: 'تاريخ الإصدار' }), pick(s.issuedOn))}
+          {row(pick({ en: 'Billed in', ar: 'عملة الفوترة' }), sm.isExport ? `${sm.currency} · ${pick({ en: 'in the books', ar: 'بالدفاتر' })} ${sarMoney(s.closingMinor)}` : sm.currency)}
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-sm">
+          {approval(pick({ en: 'Accountant approval — Jaz', ar: 'اعتماد المحاسب — جاز' }), s.accountantAt)}
+          {approval(pick({ en: 'Partner approval', ar: 'اعتماد الشريك' }), s.partnerAt)}
+        </div>
+
+        <p className="font-sans text-caption text-ink-subtle">{pick({ en: 'Approving sends the statement to the partner, who approves it back from their business portal.', ar: 'الاعتماد يرسل الكشف إلى الشريك ليعتمده بدوره من بوابة أعماله.' })}</p>
+      </div>
+    </Modal>
   )
 }
 
