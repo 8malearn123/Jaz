@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react'
 import {
   LayoutGrid, Boxes, Package, Ship, Landmark, Plus, Minus, ArrowRight, Check, X,
   MapPin, Download, ShieldCheck, Snowflake, PackageCheck, Truck, Globe, FileText, Container, Clock,
-  Upload, CheckCircle2, CalendarRange, Lock, BookOpen,
+  Upload, CheckCircle2, CalendarRange, Lock, BookOpen, Building2,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { AccountShell, type TabDef } from '@/components/account/AccountShell'
 import { DistributorPack } from '@/components/account/DistributorPack'
+import { DistributorProfile } from '@/components/account/DistributorProfile'
 import { ToastProvider, useToast } from '@/components/account/Toast'
 import { MegaStateProvider, useMegaState } from '@/state/MegaStateContext'
 import { useBilling } from '@/state/BillingContext'
@@ -29,7 +30,7 @@ import {
   megaMarkets, megaExportTrend, type MegaOrder, type ShipStage,
 } from '@/data/mega'
 
-const TABS = ['overview', 'catalog', 'orders', 'forecast', 'finance', 'distributor'] as const
+const TABS = ['overview', 'catalog', 'orders', 'forecast', 'finance', 'distributor', 'company'] as const
 type Tab = (typeof TABS)[number]
 
 // This partner is an export account, so every figure it is quoted, invoiced and
@@ -75,6 +76,7 @@ function MegaContent() {
     { id: 'forecast', label: pick({ en: 'Order forecasts', ar: 'تنبؤات الطلبات' }), icon: CalendarRange },
     { id: 'finance', label: pick({ en: 'Finance', ar: 'المالية' }), icon: Landmark },
     { id: 'distributor', label: pick({ en: 'Distributor pack', ar: 'حقيبة الموزّع' }), icon: BookOpen },
+    { id: 'company', label: pick({ en: 'Company', ar: 'المنشأة' }), icon: Building2 },
   ]
 
   return (
@@ -99,6 +101,7 @@ function MegaContent() {
       {active === 'finance' && <Finance />}
       {/* This partner distributes abroad, so the pack shows the export side of every term. */}
       {active === 'distributor' && <DistributorPack channel="export" />}
+      {active === 'company' && <Company />}
     </AccountShell>
   )
 }
@@ -222,6 +225,36 @@ function DraftCard({ onTab }: { onTab: (id: string) => void }) {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+/* ═══════════ Company — the partner's own entity file ═══════════ */
+// The export portal had nowhere to hold the partner's own details: the legal entity
+// only ever appeared in the page title, and nothing asked what markets, licences or
+// cold storage sat behind the account. This is that surface.
+function Company() {
+  const { pick } = useLocale()
+  return (
+    <div className="flex flex-col gap-lg">
+      <div className="card p-lg flex flex-col gap-md">
+        <h3 className="font-serif text-card-title text-ink inline-flex items-center gap-sm">
+          <Building2 size={18} className="text-primary-hover" /> {pick({ en: 'Legal entity', ar: 'الكيان القانوني' })}
+        </h3>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-md">
+          <Detail label={pick({ en: 'Legal name', ar: 'الاسم النظامي' })} value={pick(megaAccount.legalName)} />
+          <Detail label={pick({ en: 'Account contact', ar: 'جهة الاتصال' })} value={pick(megaAccount.contact)} />
+          <Detail label={pick({ en: 'Market', ar: 'السوق' })} value={pick(megaAccount.market)} />
+          <Detail label="CR" value={megaAccount.crNumber} />
+          <Detail label="VAT" value={megaAccount.vatNumber} />
+          <Detail label={pick({ en: 'Standing incoterm', ar: 'شرط التسليم المعتمد' })} value={megaAccount.incoterm} />
+        </div>
+      </div>
+
+      <ComplianceSnapshot />
+
+      {/* the inbound half of the distributor pack — what this partner declares back */}
+      <DistributorProfile channel="export" />
     </div>
   )
 }

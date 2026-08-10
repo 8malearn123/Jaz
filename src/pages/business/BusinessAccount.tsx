@@ -19,6 +19,7 @@ import {
 } from '@/data/business'
 import { AccountShell, type TabDef } from '@/components/account/AccountShell'
 import { DistributorPack } from '@/components/account/DistributorPack'
+import { DistributorProfile } from '@/components/account/DistributorProfile'
 import { ToastProvider, useToast } from '@/components/account/Toast'
 import { AreaTrend, UtilizationGauge, TrendPill } from '@/components/charts/Charts'
 import { Modal } from '@/components/ui/Modal'
@@ -429,6 +430,9 @@ function Account() {
           ))}
         </ul>
       </div>
+
+      {/* the inbound half of the distributor pack — what this account declares back */}
+      <DistributorProfile channel="horeca" />
 
       <AddAddressModal open={addOpen} onClose={() => setAddOpen(false)} onAdd={(a) => setAddresses((p) => [...p, a])} />
     </div>

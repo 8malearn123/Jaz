@@ -10,6 +10,8 @@ const EN = [
   ['finance', ['Available', 'Outstanding', 'Statements', 'Export invoices', 'Export compliance']],
   // Distributor pack = the standing terms, on the export side of every per-channel line
   ['distributor', ['Distributor information pack', 'Export distributor terms', 'Distributor margin structure', 'Territory exclusivity model', 'Loading table', 'HS codes', 'Duty-free merchandising', 'PLT-ASSORTED']],
+  // Company = the partner's own entity file, which this portal had no surface for at all
+  ['company', ['Legal entity', 'Gulf Export Partners', 'Export compliance', 'Importer profile', 'Markets covered', 'Food import licence no.', 'Port of entry', 'required answers still missing', 'Pack term']],
 ]
 
 const AR = [
@@ -18,6 +20,7 @@ const AR = [
   ['orders', ['هامبورغ', 'الوجهة']],
   ['finance', ['كشوف الحساب', 'فواتير التصدير', 'المتاح']],
   ['distributor', ['حقيبة معلومات الموزّع', 'هيكل هامش الموزّع', 'جدول التحميل', 'الرموز الجمركية', 'العرض في الأسواق الحرّة']],
+  ['company', ['الكيان القانوني', 'ملف المستورد', 'الأسواق المغطّاة', 'ميناء الوصول', 'بند الحقيبة']],
 ]
 
 const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' })

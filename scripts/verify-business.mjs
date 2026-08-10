@@ -13,7 +13,8 @@ const EN = [
   ['credit', ['Spend', 'Latest invoices', 'ZATCA', 'This month', 'INV-2026']],
   // Distributor pack = the standing terms, on the in-Kingdom side of every per-channel line
   ['distributor', ['Distributor information pack', 'HORECA operator terms', 'Distributor margin structure', 'Territory exclusivity model', 'Loading table', 'HS codes', 'Coffee pairing recommendations', 'CHV70']],
-  ['company', ['Legal entity', 'Notification preferences', 'Low-stock alerts', 'Central warehouse']],
+  // Company = the entity file, now carrying the importer profile the pack mirrors
+  ['company', ['Legal entity', 'Notification preferences', 'Low-stock alerts', 'Central warehouse', 'Importer profile', 'Commercial commitment', 'Logistics capability', 'Annual purchase commitment', 'required answers still missing', 'Pack term']],
 ]
 
 const AR = [
@@ -22,7 +23,7 @@ const AR = [
   ['delivery', ['التوصيل', 'سلسلة التبريد', 'الطلبات المجدولة']],
   ['credit', ['أحدث الفواتير', 'متوافقة ZATCA', 'ملخّص الشهر']],
   ['distributor', ['حقيبة معلومات الموزّع', 'هيكل هامش الموزّع', 'جدول التحميل', 'الرموز الجمركية', 'توصيات إقران القهوة']],
-  ['company', ['تفضيلات الإشعارات', 'تنبيهات المخزون المنخفض']],
+  ['company', ['تفضيلات الإشعارات', 'تنبيهات المخزون المنخفض', 'ملف المستورد', 'الالتزام التجاري', 'القدرات اللوجستية', 'بند الحقيبة']],
 ]
 
 const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' })
