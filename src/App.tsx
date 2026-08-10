@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import { Layout } from '@/components/layout/Layout'
+import { ScrollToTop } from '@/components/layout/ScrollToTop'
 import { HomePage } from '@/pages/HomePage'
 import { ShopPage } from '@/pages/ShopPage'
 import { ProductPage } from '@/pages/ProductPage'
@@ -20,33 +21,37 @@ import { RequireAuth } from '@/components/account/RequireAuth'
 
 export default function App() {
   return (
-    <Routes>
-      {/* Standalone launcher — no storefront chrome */}
-      <Route path="roles" element={<RolePicker />} />
-      <Route element={<Layout />}>
-        <Route index element={<HomePage />} />
-        <Route path="shop" element={<ShopPage />} />
-        <Route path="product/:slug" element={<ProductPage />} />
-        <Route path="collections" element={<CollectionsPage />} />
-        <Route path="corporate" element={<CorporatePage />} />
-        <Route path="heritage" element={<HeritagePage />} />
-        <Route path="cart" element={<CartPage />} />
-        <Route
-          path="checkout"
-          element={
-            <RequireAuth titleKey="auth.gate.checkoutTitle" bodyKey="auth.gate.checkoutBody" explore={false}>
-              <CheckoutPage />
-            </RequireAuth>
-          }
-        />
-        <Route path="account" element={<RequireAuth><AccountPage /></RequireAuth>} />
-        <Route path="business" element={<RequireAuth><BusinessPage /></RequireAuth>} />
-        <Route path="mega" element={<RequireAuth><MegaPage /></RequireAuth>} />
-        <Route path="admin" element={<RequireAuth><AdminConsole /></RequireAuth>} />
-        <Route path="signin" element={<SignInPage />} />
-        <Route path="signup" element={<SignUpPage />} />
-        <Route path="*" element={<NotFoundPage />} />
-      </Route>
-    </Routes>
+    <>
+      {/* Above the routes so the standalone launcher gets the reset too */}
+      <ScrollToTop />
+      <Routes>
+        {/* Standalone launcher — no storefront chrome */}
+        <Route path="roles" element={<RolePicker />} />
+        <Route element={<Layout />}>
+          <Route index element={<HomePage />} />
+          <Route path="shop" element={<ShopPage />} />
+          <Route path="product/:slug" element={<ProductPage />} />
+          <Route path="collections" element={<CollectionsPage />} />
+          <Route path="corporate" element={<CorporatePage />} />
+          <Route path="heritage" element={<HeritagePage />} />
+          <Route path="cart" element={<CartPage />} />
+          <Route
+            path="checkout"
+            element={
+              <RequireAuth titleKey="auth.gate.checkoutTitle" bodyKey="auth.gate.checkoutBody" explore={false}>
+                <CheckoutPage />
+              </RequireAuth>
+            }
+          />
+          <Route path="account" element={<RequireAuth><AccountPage /></RequireAuth>} />
+          <Route path="business" element={<RequireAuth><BusinessPage /></RequireAuth>} />
+          <Route path="mega" element={<RequireAuth><MegaPage /></RequireAuth>} />
+          <Route path="admin" element={<RequireAuth><AdminConsole /></RequireAuth>} />
+          <Route path="signin" element={<SignInPage />} />
+          <Route path="signup" element={<SignUpPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+      </Routes>
+    </>
   )
 }
