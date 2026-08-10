@@ -36,8 +36,8 @@ export function StatCard({ label, value, unit, sub, tone = 'plain' }: { label: s
 }
 
 /** Colored status pill (owner statuses carry their own palette). */
-export function Pill({ color, bg, children }: { color: string; bg: string; children: ReactNode }) {
-  return <span className="inline-flex items-center gap-xxs rounded-pill px-2.5 py-1 font-sans text-caption font-medium" style={{ color, backgroundColor: bg }}>{children}</span>
+export function Pill({ color, bg, children, className, title }: { color: string; bg: string; children: ReactNode; className?: string; title?: string }) {
+  return <span title={title} className={cn('inline-flex items-center gap-xxs rounded-pill px-2.5 py-1 font-sans text-caption font-medium', className)} style={{ color, backgroundColor: bg }}>{children}</span>
 }
 
 /** Segmented tab control. */
