@@ -1,6 +1,7 @@
 // Signed-in B2B portal verification: renders each tab's real panel (bypassing the
 // auth gate) in English and Arabic, asserting expected content.
 import { createServer } from 'vite'
+import { checkPdfCoverage } from './pdf-items.mjs'
 
 const EN = [
   // Overview = ordering command center: build zone (matrix + reorder) | order rail (summary + tier ladder + next delivery + account manager)
@@ -11,10 +12,13 @@ const EN = [
   ['delivery', ['Delivery', 'Cold chain', 'Scheduled', 'Central warehouse']],
   // Finance = single money home (gauge + spend trend + ledger + statements + invoices + month)
   ['credit', ['Spend', 'Latest invoices', 'ZATCA', 'This month', 'INV-2026']],
-  // Distributor pack = the standing terms, on the in-Kingdom side of every per-channel line
-  ['distributor', ['Distributor information pack', 'HORECA operator terms', 'Distributor margin structure', 'Territory exclusivity model', 'Loading table', 'HS codes', 'Coffee pairing recommendations', 'CHV70']],
-  // Company = the entity file, now carrying the importer profile the pack mirrors
-  ['company', ['Legal entity', 'Notification preferences', 'Low-stock alerts', 'Central warehouse', 'Importer profile', 'Commercial commitment', 'Logistics capability', 'Annual purchase commitment', 'required answers still missing', 'Pack term']],
+  // Company = the entity file carrying the whole distributor file: every term Jaz
+  // declares, paired with this account's answer, on the in-Kingdom side
+  ['company', ['Legal entity', 'Notification preferences', 'Low-stock alerts', 'Central warehouse',
+    'Distributor file', 'HORECA operator', 'Jaz declares',
+    'Distributor margin structure', 'Territory exclusivity model', 'HS codes', 'Coffee pairing recommendations',
+    'Cities and regions served', 'Annual purchase commitment', 'Range your store holds',
+    'Loading table', 'CHV70', 'required answers still missing']],
 ]
 
 const AR = [
@@ -22,8 +26,8 @@ const AR = [
   ['catalog', ['كوفرتور داكن ٧٠٪', 'سعر الكمية', 'مراجعة الطلب']],
   ['delivery', ['التوصيل', 'سلسلة التبريد', 'الطلبات المجدولة']],
   ['credit', ['أحدث الفواتير', 'متوافقة ZATCA', 'ملخّص الشهر']],
-  ['distributor', ['حقيبة معلومات الموزّع', 'هيكل هامش الموزّع', 'جدول التحميل', 'الرموز الجمركية', 'توصيات إقران القهوة']],
-  ['company', ['تفضيلات الإشعارات', 'تنبيهات المخزون المنخفض', 'ملف المستورد', 'الالتزام التجاري', 'القدرات اللوجستية', 'بند الحقيبة']],
+  ['company', ['تفضيلات الإشعارات', 'تنبيهات المخزون المنخفض', 'ملف الموزّع', 'تُعلن جاز',
+    'هيكل هامش الموزّع', 'الرموز الجمركية', 'توصيات إقران القهوة', 'المدن والمناطق المخدومة', 'جدول التحميل']],
 ]
 
 const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' })
@@ -45,6 +49,9 @@ try {
     catch (err) { failures++; console.log(`✗  en /${tab} THREW: ${err?.message ?? err}`) }
   }
 
+  // every distributor requirement from the brief must be on the Company tab
+  failures += checkPdfCoverage('en /company coverage', renderBusiness('/business?tab=company'))
+
   globalThis.window = {
     localStorage: {
       store: { 'jaz.locale': 'ar', 'jaz.role': 'b2b', 'jaz.authed': '1' },
@@ -58,6 +65,7 @@ try {
     try { check(`ar /${tab}`, renderBusiness(`/business?tab=${tab}`), markers) }
     catch (err) { failures++; console.log(`✗  ar /${tab} THREW: ${err?.message ?? err}`) }
   }
+  failures += checkPdfCoverage('ar /company coverage', renderBusiness('/business?tab=company'), 'ar')
 } finally {
   await vite.close()
 }

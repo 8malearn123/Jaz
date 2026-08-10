@@ -1,6 +1,7 @@
 // Mega Business · Export workspace verification: renders each tab's real panel
 // (bypassing the auth gate) in English and Arabic, asserting expected content.
 import { createServer } from 'vite'
+import { checkPdfCoverage } from './pdf-items.mjs'
 
 const EN = [
   ['overview', ['Gulf Export Partners', 'Open shipments', 'Export by market', 'Order draft', 'Export compliance']],
@@ -8,10 +9,13 @@ const EN = [
   ['orders', ['MEX-4021', 'Hamburg', 'Incoterm', 'export orders']],
   ['shipments', ['MEX-4021', 'In cold transit', 'pallets']],
   ['finance', ['Available', 'Outstanding', 'Statements', 'Export invoices', 'Export compliance']],
-  // Distributor pack = the standing terms, on the export side of every per-channel line
-  ['distributor', ['Distributor information pack', 'Export distributor terms', 'Distributor margin structure', 'Territory exclusivity model', 'Loading table', 'HS codes', 'Duty-free merchandising', 'PLT-ASSORTED']],
-  // Company = the partner's own entity file, which this portal had no surface for at all
-  ['company', ['Legal entity', 'Gulf Export Partners', 'Export compliance', 'Importer profile', 'Markets covered', 'Food import licence no.', 'Port of entry', 'required answers still missing', 'Pack term']],
+  // Company = the partner's entity file (this portal had no surface for it at all),
+  // carrying every term Jaz declares paired with the partner's answer
+  ['company', ['Legal entity', 'Gulf Export Partners', 'Export compliance',
+    'Distributor file', 'Export distributor', 'Jaz declares',
+    'Distributor margin structure', 'Territory exclusivity model', 'HS codes', 'Duty-free merchandising',
+    'Markets covered', 'Food import licence no.', 'Port of entry',
+    'Loading table', 'PLT-ASSORTED', 'required answers still missing']],
 ]
 
 const AR = [
@@ -19,8 +23,8 @@ const AR = [
   ['catalog', ['تسعير الكمية', 'طبلية ألواح مشكّلة']],
   ['orders', ['هامبورغ', 'الوجهة']],
   ['finance', ['كشوف الحساب', 'فواتير التصدير', 'المتاح']],
-  ['distributor', ['حقيبة معلومات الموزّع', 'هيكل هامش الموزّع', 'جدول التحميل', 'الرموز الجمركية', 'العرض في الأسواق الحرّة']],
-  ['company', ['الكيان القانوني', 'ملف المستورد', 'الأسواق المغطّاة', 'ميناء الوصول', 'بند الحقيبة']],
+  ['company', ['الكيان القانوني', 'ملف الموزّع', 'تُعلن جاز', 'هيكل هامش الموزّع',
+    'الرموز الجمركية', 'العرض في الأسواق الحرّة', 'الأسواق المغطّاة', 'ميناء الوصول', 'جدول التحميل']],
 ]
 
 const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' })
@@ -43,6 +47,9 @@ try {
   }
 
   // Force Arabic by stubbing a window/localStorage the providers read at render time.
+  // every distributor requirement from the brief must be on the Company tab
+  failures += checkPdfCoverage('en /company coverage', renderMega('/mega?tab=company'))
+
   globalThis.window = {
     localStorage: {
       store: { 'jaz.locale': 'ar', 'jaz.role': 'mega_business', 'jaz.authed': '1' },
@@ -56,6 +63,7 @@ try {
     try { check(`ar /${tab}`, renderMega(`/mega?tab=${tab}`), markers) }
     catch (err) { failures++; console.log(`✗  ar /${tab} THREW: ${err?.message ?? err}`) }
   }
+  failures += checkPdfCoverage('ar /company coverage', renderMega('/mega?tab=company'), 'ar')
 } finally {
   await vite.close()
 }

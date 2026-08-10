@@ -1,26 +1,28 @@
 import type { Bilingual } from './types'
-import { packValue, type PackChannel, type PackValue } from './distributorPack'
+import { distributorPack, packValue, type PackChannel, type PackValue } from './distributorPack'
 
-// ── The importer's own file ─────────────────────────────────────────────────
-// The distributor pack is what Jaz declares to a partner. This is the other half:
-// what the partner declares back. Every field here answers a term in the pack, so
-// a clause stops being prose and becomes a figure that can be checked.
+// ── The importer's file ─────────────────────────────────────────────────────
+// One surface, two columns. Every term Jaz declares in the distributor pack sits
+// in the partner's own company file, and beside it — where the term calls for one —
+// the partner's answer:
 //
-//   pack: "exclusive by market"        → profile: which markets
-//   pack: "annual target"              → profile: the number this partner committed to
-//   pack: "store at 16–18 °C"          → profile: the range their warehouse holds
-//   pack: "SFDA + halal travel with it" → profile: their import licence and registrations
+//   Jaz: "exclusive by market"          → partner: which markets
+//   Jaz: "annual target USD 1,050,000"  → partner: the figure they committed to
+//   Jaz: "store at 16–18 °C"            → partner: the range their warehouse holds
+//   Jaz: "SFDA + halal travel with it"  → partner: licence and destination registration
 //
-// Which questions are asked depends on the channel: an operator inside the Kingdom
-// is not asked for a port of entry, and an exporter is not asked for receiving hours.
+// A field hangs off a pack item by its key, so a clause can never appear without
+// its answer, nor an answer without the clause it settles. Which questions get
+// asked follows the channel: an operator inside the Kingdom is not asked for a
+// port of entry, and an exporter is not asked for collection hours.
 
 export type ProfileFieldKind = 'text' | 'number' | 'select' | 'tags'
 
 export interface ProfileField {
   id: string
+  /** The pack item this answers — `PackItem.key`. */
+  for: string
   label: PackValue
-  /** The pack term this field answers — shown under the value so the pairing is visible. */
-  mirrors: PackValue
   kind: ProfileFieldKind
   /** Blocks completion while empty. */
   required: boolean
@@ -32,41 +34,63 @@ export interface ProfileField {
   only?: PackChannel
 }
 
-export type ProfileGroupId = 'commercial' | 'legal' | 'logistics' | 'market'
-
-export interface ProfileGroup {
-  id: ProfileGroupId
-  label: Bilingual
-  blurb: Bilingual
-  fields: ProfileField[]
-}
-
 const yesNo = (yes: Bilingual, no: Bilingual) => [
   { value: 'yes', label: yes },
   { value: 'no', label: no },
 ]
 
-/* ═══════════ 1 · Commercial commitment ═══════════ */
-const commercial: ProfileField[] = [
+/* ═══════════ What the partner answers, term by term ═══════════ */
+export const partnerFields: ProfileField[] = [
+  /* ── Commercial ── */
   {
-    id: 'markets', kind: 'tags', required: true,
+    id: 'resale_margin', for: 'margin', kind: 'number', required: false,
+    label: { en: 'Resale margin you apply', ar: 'هامش إعادة البيع المطبّق لديكم' },
+    unit: { en: '% off your selling price', ar: '٪ من سعر بيعكم' },
+  },
+  {
+    id: 'resale_channels', for: 'msrp', kind: 'tags', required: true,
+    label: { en: 'Resale channels', ar: 'قنوات إعادة البيع' },
+    placeholder: { horeca: { en: 'Hotels, Restaurants, Banqueting', ar: 'فنادق، مطاعم، ضيافة مناسبات' }, export: { en: 'Modern trade, Travel retail, Specialty', ar: 'التجزئة الحديثة، التجزئة السفرية، المتاجر المتخصّصة' } },
+  },
+  {
+    id: 'monthly_value', for: 'pricing_policy', kind: 'number', required: false,
+    label: { en: 'Expected monthly order value', ar: 'قيمة الطلب الشهري المتوقّعة' },
+    unit: { horeca: { en: 'SAR', ar: '﷼' }, export: { en: 'USD', ar: 'دولار' } },
+  },
+  {
+    id: 'markets', for: 'territory', kind: 'tags', required: true,
     label: {
       horeca: { en: 'Cities and regions served', ar: 'المدن والمناطق المخدومة' },
       export: { en: 'Markets covered', ar: 'الأسواق المغطّاة' },
     },
-    mirrors: { en: 'Territory exclusivity model', ar: 'نموذج حصرية الإقليم' },
-    placeholder: { en: 'Riyadh, Jeddah, Dammam', ar: 'الرياض، جدة، الدمام' },
+    placeholder: { horeca: { en: 'Riyadh, Jeddah, Dammam', ar: 'الرياض، جدة، الدمام' }, export: { en: 'United Arab Emirates, Germany', ar: 'الإمارات، ألمانيا' } },
   },
   {
-    id: 'annual_commitment', kind: 'number', required: true,
+    id: 'annual_commitment', for: 'targets', kind: 'number', required: true,
     label: { en: 'Annual purchase commitment', ar: 'الالتزام الشرائي السنوي' },
-    mirrors: { en: 'Annual sales targets', ar: 'أهداف المبيعات السنوية' },
     unit: { horeca: { en: 'SAR', ar: '﷼' }, export: { en: 'USD', ar: 'دولار' } },
   },
   {
-    id: 'incoterm_pref', kind: 'select', required: true,
+    id: 'payment_method', for: 'payment_terms', kind: 'select', required: true,
+    label: { en: 'Settlement method', ar: 'طريقة السداد' },
+    options: [
+      { value: 'transfer', label: { en: 'Bank transfer', ar: 'تحويل بنكي' } },
+      { value: 'lc', label: { en: 'Documentary credit (L/C)', ar: 'اعتماد مستندي' } },
+      { value: 'cheque', label: { en: 'Cheque', ar: 'شيك' } },
+    ],
+  },
+  {
+    id: 'security', for: 'credit_policy', kind: 'select', required: true,
+    label: { en: 'Security offered against the limit', ar: 'الضمان المقدَّم مقابل الحد' },
+    options: [
+      { value: 'lc', label: { en: 'Documentary credit', ar: 'اعتماد مستندي' } },
+      { value: 'bank_guarantee', label: { en: 'Bank guarantee', ar: 'ضمان بنكي' } },
+      { value: 'prepaid', label: { en: 'Prepayment — no limit needed', ar: 'دفع مسبق — لا حاجة لحدّ' } },
+    ],
+  },
+  {
+    id: 'incoterm_pref', for: 'incoterms', kind: 'select', required: true,
     label: { en: 'Preferred incoterm', ar: 'شرط التسليم المفضّل' },
-    mirrors: { en: 'Incoterms', ar: 'شروط التسليم' },
     options: [
       { value: 'EXW', label: { en: 'EXW — collect at Jazan', ar: 'EXW — الاستلام من جيزان' } },
       { value: 'FOB', label: { en: 'FOB Jeddah', ar: 'FOB جدة' } },
@@ -74,88 +98,50 @@ const commercial: ProfileField[] = [
       { value: 'DDP', label: { en: 'DDP delivered', ar: 'DDP تسليم واصل' } },
     ],
   },
+
+  /* ── Logistics ── */
   {
-    id: 'resale_channels', kind: 'tags', required: true,
-    label: { en: 'Resale channels', ar: 'قنوات إعادة البيع' },
-    mirrors: { en: 'MSRP guidance', ar: 'إرشادات السعر الاستهلاكي' },
-    placeholder: { en: 'Modern trade, HORECA, travel retail', ar: 'التجزئة الحديثة، الضيافة، التجزئة السفرية' },
+    id: 'recurring_skus', for: 'moq', kind: 'tags', required: false,
+    label: { en: 'Lines you reorder regularly', ar: 'الأصناف التي تُعيدون طلبها بانتظام' },
+    placeholder: { horeca: { en: 'CHV70, PWD22, TRF', ar: 'CHV70، PWD22، TRF' }, export: { en: 'PLT-ASSORTED, BULK-COCOA', ar: 'PLT-ASSORTED، BULK-COCOA' } },
   },
   {
-    id: 'sub_distributors', kind: 'number', required: false, only: 'export',
-    label: { en: 'Sub-distributors in the network', ar: 'الموزّعون الفرعيون في الشبكة' },
-    mirrors: { en: 'Distributor margin structure', ar: 'هيكل هامش الموزّع' },
+    id: 'repacks_locally', for: 'carton', kind: 'select', required: false,
+    label: { en: 'Repacked locally before resale', ar: 'يُعاد التعبئة محليًا قبل البيع' },
+    options: yesNo({ en: 'Yes — under our own licence', ar: 'نعم — تحت رخصتنا' }, { en: 'No — sold as received', ar: 'لا — يُباع كما يُستلم' }),
   },
   {
-    id: 'payment_method', kind: 'select', required: true,
-    label: { en: 'Settlement method', ar: 'طريقة السداد' },
-    mirrors: { en: 'Payment terms · Credit policy', ar: 'شروط السداد · سياسة الائتمان' },
+    id: 'handling_limit', for: 'carton_dims', kind: 'text', required: false,
+    label: { en: 'Warehouse handling limits', ar: 'قيود المناولة في المستودع' },
+    placeholder: { en: 'Forklift only · no ramp', ar: 'رافعة شوكية فقط · بلا منحدر' },
+  },
+  {
+    id: 'pallet_standard', for: 'pallet', kind: 'select', required: true,
+    label: { en: 'Pallet standard you accept', ar: 'مقاس الطبلية المقبول لديكم' },
     options: [
-      { value: 'transfer', label: { en: 'Bank transfer', ar: 'تحويل بنكي' } },
-      { value: 'lc', label: { en: 'Documentary credit (L/C)', ar: 'اعتماد مستندي' } },
-      { value: 'cheque', label: { en: 'Cheque', ar: 'شيك' } },
+      { value: 'iso', label: { en: 'ISO 1,200 × 1,000 mm', ar: 'أيزو ١٬٢٠٠ × ١٬٠٠٠ مم' } },
+      { value: 'euro', label: { en: 'EUR 1,200 × 800 mm', ar: 'يورو ١٬٢٠٠ × ٨٠٠ مم' } },
+      { value: 'either', label: { en: 'Either', ar: 'كلاهما' } },
     ],
   },
-]
-
-/* ═══════════ 2 · Legal & licensing ═══════════ */
-const legal: ProfileField[] = [
   {
-    id: 'cr', kind: 'text', required: true,
-    label: { en: 'Commercial registration', ar: 'السجل التجاري' },
-    mirrors: { en: 'Account verification', ar: 'توثيق الحساب' },
+    id: 'port_of_entry', for: 'container', kind: 'text', required: true, only: 'export',
+    label: { en: 'Port of entry', ar: 'ميناء الوصول' },
+    placeholder: { en: 'Jebel Ali · Hamburg', ar: 'جبل علي · هامبورغ' },
   },
   {
-    id: 'vat', kind: 'text', required: true,
-    label: { en: 'Tax registration number', ar: 'الرقم الضريبي' },
-    mirrors: { en: 'Payment terms', ar: 'شروط السداد' },
+    id: 'collection_site', for: 'container', kind: 'text', required: true, only: 'horeca',
+    label: { en: 'Where the collected order is stored', ar: 'أين يُخزَّن الطلب بعد الاستلام' },
+    placeholder: { en: 'Central warehouse, Riyadh', ar: 'المستودع المركزي، الرياض' },
   },
   {
-    id: 'signatory', kind: 'text', required: true,
-    label: { en: 'Authorized signatory', ar: 'المفوّض بالتوقيع' },
-    mirrors: { en: 'Contract signing', ar: 'توقيع العقود' },
+    id: 'min_remaining_life', for: 'shelf_life', kind: 'number', required: true,
+    label: { en: 'Minimum life remaining on receipt', ar: 'أقل عمر متبقٍّ مقبول عند الاستلام' },
+    unit: { en: 'months', ar: 'شهر' },
   },
   {
-    id: 'import_licence', kind: 'text', required: true, only: 'export',
-    label: { en: 'Food import licence no.', ar: 'رقم رخصة استيراد الأغذية' },
-    mirrors: { en: 'Export documentation', ar: 'مستندات التصدير' },
-  },
-  {
-    id: 'food_authority_reg', kind: 'text', required: true, only: 'export',
-    label: { en: 'Destination food-authority registration', ar: 'تسجيل الجهة الغذائية في بلد الوصول' },
-    mirrors: { en: 'Export documentation', ar: 'مستندات التصدير' },
-    placeholder: { en: 'Authority · registration no.', ar: 'الجهة · رقم التسجيل' },
-  },
-  {
-    id: 'halal_required', kind: 'select', required: true, only: 'export',
-    label: { en: 'Halal certificate required at destination', ar: 'شهادة الحلال مطلوبة في بلد الوصول' },
-    mirrors: { en: 'Export documentation', ar: 'مستندات التصدير' },
-    options: yesNo({ en: 'Required', ar: 'مطلوبة' }, { en: 'Not required', ar: 'غير مطلوبة' }),
-  },
-  {
-    id: 'label_language', kind: 'text', required: true, only: 'export',
-    label: { en: 'Mandatory label languages', ar: 'لغات الملصق الإلزامية' },
-    mirrors: { en: 'Barcode (GS1) · Country of origin', ar: 'الباركود (GS1) · بلد المنشأ' },
-    placeholder: { en: 'Arabic, English, German', ar: 'العربية، الإنجليزية، الألمانية' },
-  },
-]
-
-/* ═══════════ 3 · Logistics capability ═══════════ */
-const logistics: ProfileField[] = [
-  {
-    id: 'warehouses', kind: 'number', required: true,
-    label: { en: 'Warehouses', ar: 'عدد المستودعات' },
-    mirrors: { en: 'Pallet configuration', ar: 'تكوين الطبلية' },
-  },
-  {
-    id: 'cold_capacity', kind: 'number', required: true,
-    label: { en: 'Temperature-controlled capacity', ar: 'السعة المبرّدة المتحكَّم بها' },
-    mirrors: { en: 'Storage temperature', ar: 'حرارة التخزين' },
-    unit: { horeca: { en: 'cartons', ar: 'كرتون' }, export: { en: 'pallets', ar: 'طبلية' } },
-  },
-  {
-    id: 'temp_range', kind: 'select', required: true,
-    label: { en: 'Range the store holds', ar: 'النطاق الحراري المتاح' },
-    mirrors: { en: 'Storage temperature', ar: 'حرارة التخزين' },
+    id: 'temp_range', for: 'storage', kind: 'select', required: true,
+    label: { en: 'Range your store holds', ar: 'النطاق الحراري الذي يحفظه مستودعكم' },
     options: [
       { value: '16_18', label: { en: '16–18 °C — to spec', ar: '١٦–١٨°م — مطابق' } },
       { value: '18_22', label: { en: '18–22 °C', ar: '١٨–٢٢°م' } },
@@ -163,112 +149,149 @@ const logistics: ProfileField[] = [
     ],
   },
   {
-    id: 'fleet', kind: 'select', required: true,
-    label: { en: 'Onward transport', ar: 'النقل اللاحق' },
-    mirrors: { en: 'Incoterms', ar: 'شروط التسليم' },
-    options: [
-      { value: 'own', label: { en: 'Own refrigerated fleet', ar: 'أسطول مبرّد مملوك' } },
-      { value: '3pl', label: { en: 'Third-party logistics', ar: 'مزوّد لوجستي خارجي' } },
-      { value: 'mixed', label: { en: 'Mixed', ar: 'مختلط' } },
-    ],
+    id: 'cold_capacity', for: 'storage', kind: 'number', required: true,
+    label: { en: 'Temperature-controlled capacity', ar: 'السعة المبرّدة المتحكَّم بها' },
+    unit: { horeca: { en: 'cartons', ar: 'كرتون' }, export: { en: 'pallets', ar: 'طبلية' } },
   },
   {
-    id: 'customs_broker', kind: 'text', required: true, only: 'export',
+    id: 'order_notice', for: 'production_lead', kind: 'number', required: false,
+    label: { en: 'Notice you normally give before an order', ar: 'المهلة التي تمنحونها عادةً قبل الطلب' },
+    unit: { en: 'working days', ar: 'يوم عمل' },
+  },
+  {
+    id: 'customs_broker', for: 'export_lead', kind: 'text', required: true, only: 'export',
     label: { en: 'Customs broker', ar: 'المخلّص الجمركي' },
-    mirrors: { en: 'Export documentation', ar: 'مستندات التصدير' },
   },
   {
-    id: 'port_of_entry', kind: 'text', required: true, only: 'export',
-    label: { en: 'Port of entry', ar: 'ميناء الوصول' },
-    mirrors: { en: "Container loading (20'/40')", ar: 'تحميل الحاوية (٢٠/٤٠ قدم)' },
-  },
-  {
-    id: 'receiving_hours', kind: 'text', required: true, only: 'horeca',
+    id: 'receiving_contact', for: 'export_lead', kind: 'text', required: true, only: 'horeca',
     label: { en: 'Collection contact & hours', ar: 'جهة الاستلام وساعاته' },
-    mirrors: { en: 'Export lead time', ar: 'مدة التصدير' },
     placeholder: { en: 'Name · 7:00 AM – 3:00 PM', ar: 'الاسم · ٧:٠٠ ص – ٣:٠٠ م' },
   },
   {
-    id: 'gs1_prefix', kind: 'text', required: false,
-    label: { en: 'Own GS1 company prefix', ar: 'بادئة GS1 الخاصة بالمنشأة' },
-    mirrors: { en: 'Barcode (GS1)', ar: 'الباركود (GS1)' },
+    id: 'label_language', for: 'origin', kind: 'text', required: true, only: 'export',
+    label: { en: 'Mandatory label languages', ar: 'لغات الملصق الإلزامية' },
+    placeholder: { en: 'Arabic, English, German', ar: 'العربية، الإنجليزية، الألمانية' },
   },
-]
-
-/* ═══════════ 4 · Market & merchandising capability ═══════════ */
-const market: ProfileField[] = [
   {
-    id: 'doors', kind: 'number', required: true,
+    id: 'import_duty', for: 'hs', kind: 'number', required: false, only: 'export',
+    label: { en: 'Import duty at destination', ar: 'الرسوم الجمركية في بلد الوصول' },
+    unit: { en: '%', ar: '٪' },
+  },
+  {
+    id: 'gs1_prefix', for: 'gs1', kind: 'text', required: false,
+    label: { en: 'Your own GS1 company prefix', ar: 'بادئة GS1 الخاصة بمنشأتكم' },
+  },
+  {
+    id: 'import_licence', for: 'export_docs', kind: 'text', required: true, only: 'export',
+    label: { en: 'Food import licence no.', ar: 'رقم رخصة استيراد الأغذية' },
+  },
+  {
+    id: 'food_authority_reg', for: 'export_docs', kind: 'text', required: true, only: 'export',
+    label: { en: 'Destination food-authority registration', ar: 'تسجيل الجهة الغذائية في بلد الوصول' },
+    placeholder: { en: 'Authority · registration no.', ar: 'الجهة · رقم التسجيل' },
+  },
+  {
+    id: 'halal_required', for: 'export_docs', kind: 'select', required: true, only: 'export',
+    label: { en: 'Halal certificate required at destination', ar: 'شهادة الحلال مطلوبة في بلد الوصول' },
+    options: yesNo({ en: 'Required', ar: 'مطلوبة' }, { en: 'Not required', ar: 'غير مطلوبة' }),
+  },
+  {
+    id: 'doc_recipient', for: 'export_docs', kind: 'text', required: true, only: 'horeca',
+    label: { en: 'Who receives the invoice and batch sheet', ar: 'من يستلم الفاتورة وورقة الدفعة' },
+  },
+
+  /* ── Marketing ── */
+  {
+    id: 'priority_seasons', for: 'calendar', kind: 'tags', required: false,
+    label: { en: 'Seasons you prioritise', ar: 'المواسم ذات الأولوية لديكم' },
+    placeholder: { en: 'Ramadan, National Day, year-end', ar: 'رمضان، اليوم الوطني، نهاية العام' },
+  },
+  {
+    id: 'launch_date', for: 'launch_kit', kind: 'text', required: false,
+    label: { en: 'Target launch date', ar: 'تاريخ الإطلاق المستهدف' },
+    placeholder: { en: 'Q4 2026', ar: 'الربع الرابع ٢٠٢٦' },
+  },
+  {
+    id: 'posm_needed', for: 'posm', kind: 'tags', required: false,
+    label: { en: 'POSM you need', ar: 'مواد نقاط البيع المطلوبة' },
+    placeholder: { en: 'Counter units, tasting trays', ar: 'وحدات كاونتر، صواني تذوّق' },
+  },
+  {
+    id: 'asset_languages', for: 'assets', kind: 'text', required: false,
+    label: { en: 'Languages you need assets in', ar: 'لغات الأصول المطلوبة' },
+  },
+  {
+    id: 'social_handles', for: 'social', kind: 'text', required: false,
+    label: { en: 'Accounts that will carry the brand', ar: 'الحسابات التي ستحمل العلامة' },
+  },
+  {
+    id: 'sampling_volume', for: 'sampling', kind: 'number', required: false,
+    label: { en: 'Sampling volume expected a year', ar: 'كمية العيّنات المتوقّعة سنويًا' },
+    unit: { horeca: { en: 'cartons', ar: 'كرتون' }, export: { en: 'kg', ar: 'كجم' } },
+  },
+  {
+    id: 'exhibitions', for: 'exhibitions', kind: 'tags', required: false,
+    label: { en: 'Exhibitions you attend', ar: 'المعارض التي تشاركون فيها' },
+    placeholder: { en: 'Gulfood, ISM', ar: 'جلفود، ISM' },
+  },
+  {
+    id: 'sales_team', for: 'training', kind: 'number', required: true,
+    label: { en: 'Sales team size', ar: 'حجم فريق المبيعات' },
+  },
+  {
+    id: 'trainees', for: 'training', kind: 'number', required: false,
+    label: { en: 'Staff nominated for training', ar: 'الموظفون المرشّحون للتدريب' },
+  },
+
+  /* ── Merchandising ── */
+  {
+    id: 'doors', for: 'planograms', kind: 'number', required: true,
     label: {
       horeca: { en: 'Outlets served', ar: 'المنافذ المخدومة' },
       export: { en: 'Retail doors covered', ar: 'منافذ التجزئة المغطّاة' },
     },
-    mirrors: { en: 'Shelf planograms', ar: 'مخططات الرفوف' },
   },
   {
-    id: 'sales_team', kind: 'number', required: true,
-    label: { en: 'Sales team size', ar: 'حجم فريق المبيعات' },
-    mirrors: { en: 'Distributor training program', ar: 'برنامج تدريب الموزّعين' },
+    id: 'display_units', for: 'premium_display', kind: 'number', required: false,
+    label: { en: 'Display units you want built', ar: 'وحدات العرض المطلوب تنفيذها' },
   },
   {
-    id: 'merchandisers', kind: 'number', required: false,
+    id: 'merchandisers', for: 'premium_display', kind: 'number', required: false,
     label: { en: 'Merchandisers on the ground', ar: 'مروّجون ميدانيون' },
-    mirrors: { en: 'Premium display concepts', ar: 'مفاهيم العرض الفاخر' },
   },
   {
-    id: 'marketing_budget_pct', kind: 'number', required: true,
-    label: { en: 'Marketing spend committed', ar: 'الإنفاق التسويقي الملتزم به' },
-    mirrors: { en: 'Annual marketing calendar', ar: 'التقويم التسويقي السنوي' },
-    unit: { en: '% of purchases', ar: '٪ من المشتريات' },
+    id: 'travel_doors', for: 'duty_free', kind: 'number', required: false, only: 'export',
+    label: { en: 'Travel-retail doors', ar: 'منافذ التجزئة السفرية' },
   },
   {
-    id: 'exhibitions', kind: 'tags', required: false,
-    label: { en: 'Exhibitions attended', ar: 'المعارض المشارَك فيها' },
-    mirrors: { en: 'Trade exhibition participation', ar: 'المشاركة في المعارض التجارية' },
-    placeholder: { en: 'Gulfood, ISM', ar: 'جلفود، ISM' },
+    id: 'lobby_retail', for: 'duty_free', kind: 'select', required: false, only: 'horeca',
+    label: { en: 'Lobby or lounge retail corner', ar: 'ركن بيع في اللوبي أو الصالة' },
+    options: yesNo({ en: 'Yes', ar: 'نعم' }, { en: 'Not yet', ar: 'ليس بعد' }),
   },
   {
-    id: 'trained_staff', kind: 'number', required: false,
-    label: { en: 'Staff trained by JAZ', ar: 'الموظفون المدرَّبون من جاز' },
-    mirrors: { en: 'Distributor training program', ar: 'برنامج تدريب الموزّعين' },
-  },
-]
-
-export const distributorProfileGroups: ProfileGroup[] = [
-  {
-    id: 'commercial',
-    label: { en: 'Commercial commitment', ar: 'الالتزام التجاري' },
-    blurb: { en: 'What you sell, where, and how much of it you commit to.', ar: 'ماذا تبيعون، وأين، وبأي حجم تلتزمون.' },
-    fields: commercial,
+    id: 'gift_counter', for: 'gift_display', kind: 'select', required: false,
+    label: { en: 'Made-to-order gift counter', ar: 'ركن إهداء بالتجميع حسب الطلب' },
+    options: yesNo({ en: 'Yes — staffed', ar: 'نعم — بموظف مخصّص' }, { en: 'Not yet', ar: 'ليس بعد' }),
   },
   {
-    id: 'legal',
-    label: { en: 'Legal & licensing', ar: 'القانوني والتراخيص' },
-    blurb: { en: 'The registrations that let the goods clear and be sold.', ar: 'التسجيلات التي تُخلِّص البضاعة وتُجيز بيعها.' },
-    fields: legal,
+    id: 'coffee_partner', for: 'coffee_pairing', kind: 'text', required: false,
+    label: { en: 'Coffee partner or in-house roast', ar: 'شريك القهوة أو التحميص الداخلي' },
   },
   {
-    id: 'logistics',
-    label: { en: 'Logistics capability', ar: 'القدرات اللوجستية' },
-    blurb: { en: 'Whether you can hold the chocolate the way the pack says it must be held.', ar: 'هل تستطيعون حفظ الشوكولاتة بالشروط التي تنصّ عليها الحقيبة.' },
-    fields: logistics,
-  },
-  {
-    id: 'market',
-    label: { en: 'Market & merchandising', ar: 'السوق والعرض' },
-    blurb: { en: 'The reach and the people behind the shelf.', ar: 'الانتشار والفريق خلف الرفّ.' },
-    fields: market,
+    id: 'adjacent_categories', for: 'cross_merch', kind: 'tags', required: false,
+    label: { en: 'Categories placed next to the range', ar: 'الفئات المجاورة للتشكيلة' },
+    placeholder: { en: 'Premium dates, Arabic coffee', ar: 'تمور فاخرة، قهوة عربية' },
   },
 ]
 
 /** The questions this channel is actually asked. */
 export function profileFields(channel: PackChannel): ProfileField[] {
-  return distributorProfileGroups.flatMap((g) => g.fields).filter((f) => !f.only || f.only === channel)
+  return partnerFields.filter((f) => !f.only || f.only === channel)
 }
 
-/** The fields of one group, for the channel being asked. */
-export function groupFields(group: ProfileGroup, channel: PackChannel): ProfileField[] {
-  return group.fields.filter((f) => !f.only || f.only === channel)
+/** The answers hanging off one pack term, for this channel. */
+export function fieldsForItem(itemKey: string, channel: PackChannel): ProfileField[] {
+  return partnerFields.filter((f) => f.for === itemKey && (!f.only || f.only === channel))
 }
 
 export type ProfileValues = Record<string, string>
@@ -291,9 +314,11 @@ export function completeness(values: ProfileValues, channel: PackChannel): Compl
   return { filled, total: fields.length, pct: Math.round((filled / fields.length) * 100), missing }
 }
 
-/** Completion of a single group — drives the per-card counter. */
-export function groupCompleteness(group: ProfileGroup, values: ProfileValues, channel: PackChannel) {
-  const fields = groupFields(group, channel)
+/** Completion of one pack section — drives the per-card counter. */
+export function sectionCompleteness(sectionId: string, values: ProfileValues, channel: PackChannel) {
+  const section = distributorPack.find((s) => s.id === sectionId)
+  const keys = new Set(section?.items.map((i) => i.key) ?? [])
+  const fields = profileFields(channel).filter((f) => keys.has(f.for))
   return { filled: fields.filter((f) => isFilled(values[f.id])).length, total: fields.length }
 }
 
@@ -315,56 +340,86 @@ export function displayValue(field: ProfileField, value: string | undefined, cha
 
 /* ── Seeded files ──
  * What each account has already declared. Both are deliberately short of complete:
- * an importer file that starts at 100% would never show what it is for. */
+ * a file that opens at 100% never shows what it is for. */
 export const distributorProfileSeed: Record<PackChannel, ProfileValues> = {
   horeca: {
+    resale_margin: '',
+    resale_channels: 'Hotels, Restaurants, Banqueting',
+    monthly_value: '60000',
     markets: 'Riyadh, Jeddah, Dammam, Khobar',
     annual_commitment: '720000',
-    incoterm_pref: 'EXW',
-    resale_channels: 'Hotels, Restaurants, Banqueting',
     payment_method: 'transfer',
-    cr: '1010256744',
-    vat: '300012345600003',
-    signatory: 'Khalid Al-Otaibi',
-    warehouses: '2',
-    cold_capacity: '1800',
+    security: 'bank_guarantee',
+    incoterm_pref: 'EXW',
+    recurring_skus: 'CHV70, CHM45, PWD22, TRF',
+    repacks_locally: 'no',
+    handling_limit: '',
+    pallet_standard: 'iso',
+    collection_site: 'Central warehouse, Riyadh',
+    min_remaining_life: '8',
     temp_range: '16_18',
-    fleet: 'own',
-    receiving_hours: '',
+    cold_capacity: '1800',
+    order_notice: '14',
+    receiving_contact: '',
+    doc_recipient: 'finance@najd-hg.sa',
     gs1_prefix: '',
-    doors: '34',
-    sales_team: '',
-    merchandisers: '6',
-    marketing_budget_pct: '',
+    priority_seasons: 'Ramadan, National Day',
+    launch_date: '',
+    posm_needed: 'Tasting trays, Counter units',
+    asset_languages: '',
+    social_handles: '',
+    sampling_volume: '40',
     exhibitions: 'Saudi Food Show',
-    trained_staff: '12',
+    sales_team: '',
+    trainees: '12',
+    doors: '34',
+    display_units: '',
+    merchandisers: '6',
+    lobby_retail: 'yes',
+    gift_counter: '',
+    coffee_partner: 'In-house roast · Najd Coffee',
+    adjacent_categories: 'Premium dates, Arabic coffee',
   },
   export: {
+    resale_margin: '25',
+    resale_channels: 'Modern trade, Travel retail, Specialty',
+    monthly_value: '88000',
     markets: 'United Arab Emirates, Germany, Netherlands',
     annual_commitment: '1050000',
-    incoterm_pref: 'CIF',
-    resale_channels: 'Modern trade, Travel retail, Specialty',
-    sub_distributors: '4',
     payment_method: 'lc',
-    cr: '1010 554 921',
-    vat: '3115 0092 8800 003',
-    signatory: 'Sofia Bauer',
+    security: 'lc',
+    incoterm_pref: 'CIF',
+    recurring_skus: 'PLT-ASSORTED, PLT-GIFTBOX',
+    repacks_locally: 'no',
+    handling_limit: '',
+    pallet_standard: 'euro',
+    port_of_entry: 'Jebel Ali · Hamburg',
+    min_remaining_life: '9',
+    temp_range: '16_18',
+    cold_capacity: '640',
+    order_notice: '21',
+    customs_broker: 'Bahri Logistics',
+    label_language: '',
+    import_duty: '5',
+    gs1_prefix: '',
     import_licence: '',
     food_authority_reg: 'ESMA · UAE-FI-88214',
     halal_required: 'yes',
-    label_language: '',
-    warehouses: '3',
-    cold_capacity: '640',
-    temp_range: '16_18',
-    fleet: '3pl',
-    customs_broker: 'Bahri Logistics',
-    port_of_entry: 'Jebel Ali · Hamburg',
-    gs1_prefix: '',
-    doors: '410',
-    sales_team: '22',
-    merchandisers: '',
-    marketing_budget_pct: '3',
+    priority_seasons: 'Ramadan, Christmas gifting',
+    launch_date: 'Q4 2026',
+    posm_needed: 'Gondola ends, Multi-pack facings',
+    asset_languages: 'English, German, Arabic',
+    social_handles: '',
+    sampling_volume: '',
     exhibitions: 'Gulfood, ISM Cologne',
-    trained_staff: '',
+    sales_team: '22',
+    trainees: '',
+    doors: '410',
+    display_units: '60',
+    merchandisers: '',
+    travel_doors: '18',
+    gift_counter: 'yes',
+    coffee_partner: '',
+    adjacent_categories: 'Premium dates, Arabic coffee, Luxury gifting',
   },
 }
