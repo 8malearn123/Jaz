@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertCircle, Check, ClipboardList, Container, Download, Megaphone, Pencil, Percent, Send, Store } from 'lucide-react'
+import { AlertCircle, ArrowRight, Check, ClipboardList, Container, Download, Megaphone, MessageSquare, Pencil, Percent, Store } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { Modal } from '@/components/ui/Modal'
 import { buttonClass } from '@/components/ui/Button'
@@ -8,13 +8,14 @@ import { UtilizationGauge } from '@/components/charts/Charts'
 import { useToast } from '@/components/account/Toast'
 import { cn } from '@/lib/cn'
 import { openDistributorFilePdf } from '@/lib/distributorFilePdf'
+import { useDistributorFile } from '@/state/DistributorFileContext'
 import type { Bilingual } from '@/data/types'
 import {
   distributorPack, loadingColumns, loadingRows, packRevision, packValue,
   PALLET, CONTAINER, type PackChannel, type PackSection, type PackSectionId,
 } from '@/data/distributorPack'
 import {
-  completeness, displayValue, distributorProfileSeed, fieldsForItem, sectionCompleteness,
+  completeness, displayValue, fieldsForItem, sectionCompleteness,
   type ProfileField, type ProfileValues,
 } from '@/data/distributorProfile'
 
@@ -26,125 +27,167 @@ const sectionIcon: Record<PackSectionId, typeof Percent> = {
 }
 
 /**
- * The importer's file — every term Jaz declares, with the partner's answer beside it.
- * Commercial, logistics, marketing and merchandising in one place, so a clause and
- * the figure that settles it are never on two different screens.
+ * The importer's file — every term of the account, and the answer that settles it.
+ *
+ * Jaz owns this document: the owner writes it from the console, the account reads it
+ * from its own portal and asks for a change rather than making one. The file is split
+ * in two so each side can sit where it belongs — a summary that says how complete the
+ * file is and how to reach it, and the sections that are the file itself.
  *
  * `channel` decides which side of a per-channel term is shown, which questions get
  * asked, and which catalogue the loading table is built from.
  */
-export function DistributorProfile({ channel, accountName, entity = [] }: {
+
+/* ═══════════════ Summary — how complete the file is, and how to open it ═══════════════ */
+export function DistributorFileSummary({ channel, accountName, entity = [], onOpen, canRequestChange = false }: {
   channel: PackChannel
   /** Whose file this is — printed on the PDF. */
   accountName: Bilingual
   /** Legal-entity lines the portal already holds, carried onto the PDF. */
   entity?: { label: Bilingual; value: string }[]
+  /** Where the file itself lives — rendered as a link out when given. */
+  onOpen?: () => void
+  /** The account cannot edit the file, so it may ask Jaz to change it. */
+  canRequestChange?: boolean
 }) {
   const { pick, locale } = useLocale()
   const { flash } = useToast()
-  const [values, setValues] = useState<ProfileValues>(distributorProfileSeed[channel])
-  const [editing, setEditing] = useState<PackSection | null>(null)
-  const [submitted, setSubmitted] = useState(false)
+  const { values, changeRequests, requestChange } = useDistributorFile()
+  const [askOpen, setAskOpen] = useState(false)
 
-  const done = completeness(values, channel)
+  const fileValues = values[channel]
+  const done = completeness(fileValues, channel)
   const complete = done.missing.length === 0
+  const pending = changeRequests[channel]
+
+  return (
+    <div className="card p-lg grid lg:grid-cols-[auto_1fr] gap-lg items-center">
+      <div className="grid place-items-center">
+        <UtilizationGauge
+          segments={[
+            { value: done.filled, color: '#355c4b' },
+            { value: Math.max(0, done.total - done.filled), color: '#e3ddd2' },
+          ]}
+          centerValue={`${done.pct}%`}
+          centerLabel={pick({ en: 'complete', ar: 'مكتمل' })}
+        />
+      </div>
+      <div className="flex flex-col gap-sm min-w-0">
+        <div className="flex flex-wrap items-center gap-sm">
+          <h3 className="font-serif text-card-title text-ink inline-flex items-center gap-xs">
+            <ClipboardList size={18} className="text-primary-hover" />
+            {pick({ en: 'Distributor file', ar: 'ملف الموزّع' })}
+          </h3>
+          <StatusBadge variant={complete ? 'success' : 'gold'}>
+            {done.filled}/{done.total} {pick({ en: 'answered', ar: 'مُجاب' })}
+          </StatusBadge>
+          <StatusBadge variant="neutral">
+            {channel === 'export'
+              ? pick({ en: 'Export distributor', ar: 'موزّع تصدير' })
+              : pick({ en: 'HORECA operator', ar: 'منشأة ضيافة' })}
+          </StatusBadge>
+        </div>
+        <p className="font-sans text-data text-ink-muted max-w-prose">
+          {pick({
+            en: 'Every term of the account, and the answer to it: what you earn and where you may sell, how the goods are packed and how you hold them, the marketing calendar and the shelf. Jaz maintains this file — ask for a change and it is made on our side.',
+            ar: 'كل بند في الحساب، والردّ عليه: ما تكسبونه وأين تبيعون، وكيف تُعبَّأ البضاعة وكيف تحفظونها، والتقويم التسويقي والرفّ. جاز هي من تحفظ هذا الملف — اطلبوا التعديل ويُنفَّذ من طرفنا.',
+          })}
+        </p>
+        <span className="font-sans text-caption text-ink-subtle">{pick(packRevision)}</span>
+
+        {done.missing.length > 0 ? (
+          <div className="rounded-lg border border-primary/25 bg-primary/8 p-md flex flex-col gap-xs">
+            <span className="inline-flex items-center gap-xs font-sans text-data font-medium text-ink">
+              <AlertCircle size={15} className="text-primary-hover" />
+              {done.missing.length} {pick({ en: 'required answers still missing', ar: 'إجابة مطلوبة ما زالت ناقصة' })}
+            </span>
+            <ul className="flex flex-wrap gap-xs">
+              {done.missing.map((f) => (
+                <li key={f.id} className="rounded-pill border border-hairline bg-surface-1 px-3 py-1 font-sans text-caption text-ink-muted">
+                  {pick(packValue(f.label, channel))}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-success/25 bg-success/8 p-md flex items-start gap-sm">
+            <Check size={16} className="text-success mt-0.5 shrink-0" />
+            <p className="font-sans text-data text-ink">
+              {pick({ en: 'Every required answer is in.', ar: 'كل الإجابات المطلوبة مكتملة.' })}
+            </p>
+          </div>
+        )}
+
+        {/* a change the account has already asked for — it stands until Jaz clears it */}
+        {pending && (
+          <div className="rounded-lg border border-hairline bg-surface-2 p-md flex items-start gap-sm">
+            <MessageSquare size={15} className="text-primary-hover mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <p className="font-sans text-data text-ink">{pick({ en: 'Change requested — with Jaz', ar: 'طُلب تعديل — لدى جاز' })} · {pick(pending.at)}</p>
+              <p className="font-sans text-caption text-ink-muted">{pending.note}</p>
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-sm">
+          {onOpen && (
+            <button onClick={onOpen} className={buttonClass('primary', 'sm')}>
+              {pick({ en: 'Open the file', ar: 'فتح الملف' })} <ArrowRight size={15} className="rtl:rotate-180" />
+            </button>
+          )}
+          {/* the whole file as a document — both columns, the loading table, and what is still owed */}
+          <button
+            onClick={() => openDistributorFilePdf({ channel, values: fileValues, accountName, entity }, { locale, pick })}
+            className={buttonClass('secondary', 'sm')}
+          >
+            <Download size={15} /> {pick({ en: 'Download the file (PDF)', ar: 'تنزيل ملف المنشأة (PDF)' })}
+          </button>
+          {canRequestChange && !pending && (
+            <button onClick={() => setAskOpen(true)} className={buttonClass('ghost', 'sm')}>
+              <MessageSquare size={15} /> {pick({ en: 'Request a change', ar: 'طلب تعديل' })}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {askOpen && (
+        <RequestChangeModal
+          onClose={() => setAskOpen(false)}
+          onSubmit={(note) => {
+            requestChange(channel, note)
+            setAskOpen(false)
+            flash(pick({ en: 'Change requested', ar: 'أُرسل طلب التعديل' }))
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+/* ═══════════════ The file itself — every term, section by section ═══════════════ */
+export function DistributorFileSections({ channel, editable = false }: {
+  channel: PackChannel
+  /** Only Jaz writes this document; everyone else reads it. */
+  editable?: boolean
+}) {
+  const { pick } = useLocale()
+  const { flash } = useToast()
+  const { values, saveValues } = useDistributorFile()
+  const [editing, setEditing] = useState<PackSection | null>(null)
+
+  const fileValues = values[channel]
 
   const save = (next: ProfileValues) => {
-    setValues(next)
-    setSubmitted(false)
+    saveValues(channel, next)
     setEditing(null)
-    flash(pick({ en: 'Profile updated', ar: 'حُدِّث ملف المنشأة' }))
+    flash(pick({ en: 'Distributor file updated', ar: 'حُدِّث ملف الموزّع' }))
   }
 
   return (
     <div className="flex flex-col gap-lg">
-      {/* completeness — is this importer's file complete, and what is still owed */}
-      <div className="card p-lg grid lg:grid-cols-[auto_1fr] gap-lg items-center">
-        <div className="grid place-items-center">
-          <UtilizationGauge
-            segments={[
-              { value: done.filled, color: '#355c4b' },
-              { value: Math.max(0, done.total - done.filled), color: '#e3ddd2' },
-            ]}
-            centerValue={`${done.pct}%`}
-            centerLabel={pick({ en: 'complete', ar: 'مكتمل' })}
-          />
-        </div>
-        <div className="flex flex-col gap-sm min-w-0">
-          <div className="flex flex-wrap items-center gap-sm">
-            <h3 className="font-serif text-card-title text-ink inline-flex items-center gap-xs">
-              <ClipboardList size={18} className="text-primary-hover" />
-              {pick({ en: 'Distributor file', ar: 'ملف الموزّع' })}
-            </h3>
-            <StatusBadge variant={complete ? 'success' : 'gold'}>
-              {done.filled}/{done.total} {pick({ en: 'answered', ar: 'مُجاب' })}
-            </StatusBadge>
-            <StatusBadge variant="neutral">
-              {channel === 'export'
-                ? pick({ en: 'Export distributor', ar: 'موزّع تصدير' })
-                : pick({ en: 'HORECA operator', ar: 'منشأة ضيافة' })}
-            </StatusBadge>
-          </div>
-          <p className="font-sans text-data text-ink-muted max-w-prose">
-            {pick({
-              en: 'Every term of the account, and your answer to it: what you earn and where you may sell, how the goods are packed and how you hold them, the marketing calendar and the shelf. Jaz declares the left of each pair; you declare the right.',
-              ar: 'كل بند في الحساب، وردّكم عليه: ما تكسبونه وأين تبيعون، وكيف تُعبَّأ البضاعة وكيف تحفظونها، والتقويم التسويقي والرفّ. جاز تُعلن الطرف الأول من كل زوج، وأنتم تُعلنون الثاني.',
-            })}
-          </p>
-          <span className="font-sans text-caption text-ink-subtle">{pick(packRevision)}</span>
-
-          {done.missing.length > 0 ? (
-            <div className="rounded-lg border border-primary/25 bg-primary/8 p-md flex flex-col gap-xs">
-              <span className="inline-flex items-center gap-xs font-sans text-data font-medium text-ink">
-                <AlertCircle size={15} className="text-primary-hover" />
-                {done.missing.length} {pick({ en: 'required answers still missing', ar: 'إجابة مطلوبة ما زالت ناقصة' })}
-              </span>
-              <ul className="flex flex-wrap gap-xs">
-                {done.missing.map((f) => (
-                  <li key={f.id} className="rounded-pill border border-hairline bg-surface-1 px-3 py-1 font-sans text-caption text-ink-muted">
-                    {pick(packValue(f.label, channel))}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-success/25 bg-success/8 p-md flex items-start gap-sm">
-              <Check size={16} className="text-success mt-0.5 shrink-0" />
-              <p className="font-sans text-data text-ink">
-                {submitted
-                  ? pick({ en: 'Sent to Jaz for review — you will be notified when it is approved.', ar: 'أُرسل إلى جاز للمراجعة — ستصلكم الإفادة عند الاعتماد.' })
-                  : pick({ en: 'Every required answer is in. Send the file for review.', ar: 'كل الإجابات المطلوبة مكتملة. أرسلوا الملف للمراجعة.' })}
-              </p>
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-sm">
-            <button
-              onClick={() => { setSubmitted(true); flash(pick({ en: 'File sent for review', ar: 'أُرسل الملف للمراجعة' })) }}
-              disabled={!complete || submitted}
-              className={buttonClass('primary', 'sm')}
-            >
-              <Send size={15} /> {pick({ en: 'Send for review', ar: 'إرسال للمراجعة' })}
-            </button>
-            {/* the whole file as a document — both columns, the loading table, and what is still owed */}
-            <button
-              onClick={() => openDistributorFilePdf({ channel, values, accountName, entity }, { locale, pick })}
-              className={buttonClass('secondary', 'sm')}
-            >
-              <Download size={15} /> {pick({ en: 'Download the file (PDF)', ar: 'تنزيل ملف المنشأة (PDF)' })}
-            </button>
-            {!complete && (
-              <span className="font-sans text-caption text-ink-subtle">
-                {pick({ en: 'Answer what is missing above to enable this.', ar: 'أكملوا الناقص أعلاه لتفعيل الإرسال.' })}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
       {distributorPack.map((section) => {
         const Icon = sectionIcon[section.id]
-        const s = sectionCompleteness(section.id, values, channel)
+        const s = sectionCompleteness(section.id, fileValues, channel)
         return (
           <div key={section.id} className="card overflow-hidden">
             <div className="bg-surface-2 px-lg py-md border-b border-hairline flex flex-wrap items-center justify-between gap-sm">
@@ -157,9 +200,11 @@ export function DistributorProfile({ channel, accountName, entity = [] }: {
               {s.total > 0 && (
                 <div className="flex items-center gap-sm shrink-0">
                   <StatusBadge variant={s.filled === s.total ? 'success' : 'neutral'}>{s.filled}/{s.total}</StatusBadge>
-                  <button onClick={() => setEditing(section)} className={buttonClass('secondary', 'sm')}>
-                    <Pencil size={14} /> {pick({ en: 'Edit', ar: 'تعديل' })}
-                  </button>
+                  {editable && (
+                    <button onClick={() => setEditing(section)} className={buttonClass('secondary', 'sm')}>
+                      <Pencil size={14} /> {pick({ en: 'Edit', ar: 'تعديل' })}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -178,12 +223,12 @@ export function DistributorProfile({ channel, accountName, entity = [] }: {
                       {item.detail && <span className="font-sans text-caption text-ink-subtle">{pick(packValue(item.detail, channel))}</span>}
                     </div>
 
-                    {/* what the partner declares back */}
+                    {/* what the account's file records back */}
                     <div className="flex flex-col gap-sm min-w-0 lg:border-s lg:border-hairline lg:ps-md">
                       {answers.length === 0 ? (
                         <span className="font-sans text-caption text-ink-subtle italic">{pick({ en: 'No answer needed', ar: 'لا يتطلّب ردًّا' })}</span>
                       ) : answers.map((f) => {
-                        const shown = displayValue(f, values[f.id], channel, pick)
+                        const shown = displayValue(f, fileValues[f.id], channel, pick)
                         return (
                           <div key={f.id} className="flex flex-col gap-xxs">
                             <span className="font-sans text-caption text-ink-subtle">
@@ -209,8 +254,67 @@ export function DistributorProfile({ channel, accountName, entity = [] }: {
       })}
 
       {/* keyed by section, so an abandoned edit never leaks into the next one */}
-      {editing && <EditSectionModal key={editing.id} section={editing} channel={channel} values={values} onClose={() => setEditing(null)} onSave={save} />}
+      {editing && <EditSectionModal key={editing.id} section={editing} channel={channel} values={fileValues} onClose={() => setEditing(null)} onSave={save} />}
     </div>
+  )
+}
+
+/**
+ * Summary and file in one scroll — what a staff surface wants, where the file is
+ * read (and, for the owner, written) without leaving the account it belongs to.
+ */
+export function DistributorProfile({ channel, accountName, entity = [], editable = false }: {
+  channel: PackChannel
+  accountName: Bilingual
+  entity?: { label: Bilingual; value: string }[]
+  editable?: boolean
+}) {
+  return (
+    <div className="flex flex-col gap-lg">
+      <DistributorFileSummary channel={channel} accountName={accountName} entity={entity} />
+      <DistributorFileSections channel={channel} editable={editable} />
+    </div>
+  )
+}
+
+function RequestChangeModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (note: string) => void }) {
+  const { pick } = useLocale()
+  const [note, setNote] = useState('')
+  const valid = note.trim().length > 4
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="md"
+      eyebrow={pick({ en: 'Distributor file', ar: 'ملف الموزّع' })}
+      title={pick({ en: 'Request a change', ar: 'طلب تعديل' })}
+      footer={<>
+        <button onClick={onClose} className={buttonClass('ghost', 'sm')}>{pick({ en: 'Cancel', ar: 'إلغاء' })}</button>
+        <button onClick={() => onSubmit(note)} disabled={!valid} className={buttonClass('primary', 'sm')}>
+          {pick({ en: 'Send the request', ar: 'إرسال الطلب' })}
+        </button>
+      </>}
+    >
+      <div className="flex flex-col gap-md">
+        <p className="font-sans text-data text-ink-muted">
+          {pick({
+            en: 'Jaz maintains this file, so say which term is wrong and what it should read. Your account manager picks it up.',
+            ar: 'جاز هي من تحفظ هذا الملف، فاذكروا أي بند غير صحيح وما ينبغي أن يكون عليه. يتابعه مدير حسابكم.',
+          })}
+        </p>
+        <label className="flex flex-col gap-xs">
+          <span className="label">{pick({ en: 'What should change', ar: 'ما المطلوب تعديله' })}</span>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={4}
+            className="input resize-none"
+            placeholder={pick({ en: 'Cities served should include Abha and Jazan.', ar: 'المدن المخدومة ينبغي أن تشمل أبها وجيزان.' })}
+          />
+        </label>
+      </div>
+    </Modal>
   )
 }
 

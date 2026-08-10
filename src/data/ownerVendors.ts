@@ -1,5 +1,6 @@
 import type { Bilingual } from './types'
 import type { CountryCode } from './countries'
+import type { PackChannel } from './distributorPack'
 
 // ── Owner vendor credit accounts + export clients (isolated). Credit-limit edits
 // are LOCAL overlay only — never written back to organization.credit / OrgSummary.
@@ -21,16 +22,23 @@ export interface OwnerVendor {
   vatNumber?: string
   address?: Bilingual
   since?: Bilingual // partner since
+  // Which distributor file this partner trades under — the key its terms are held
+  // by. Absent until onboarding decides whether they buy in-Kingdom or export.
+  fileChannel?: PackChannel
 }
 
 export const ownerVendors: OwnerVendor[] = [
-  { id: 'V-01', name: { en: 'Najd Hospitality Group', ar: 'مجموعة نجد للضيافة' }, type: { en: 'Hospitality', ar: 'ضيافة' }, outstandingMinor: 8960000, limitMinor: 15000000, country: 'sa', status: 'active', email: 'finance@najd-hg.sa', contact: { en: 'Faisal Al-Otaibi', ar: 'فيصل العتيبي' }, phone: '+966 55 214 8890', crNumber: '1010584312', vatNumber: '300458712400003', address: { en: 'King Fahd Rd, Riyadh 12271', ar: 'طريق الملك فهد، الرياض ١٢٢٧١' }, since: { en: 'Mar 2024', ar: 'مارس ٢٠٢٤' } },
+  { id: 'V-01', name: { en: 'Najd Hospitality Group', ar: 'مجموعة نجد للضيافة' }, type: { en: 'Hospitality', ar: 'ضيافة' }, outstandingMinor: 8960000, limitMinor: 15000000, country: 'sa', status: 'active', email: 'finance@najd-hg.sa', contact: { en: 'Faisal Al-Otaibi', ar: 'فيصل العتيبي' }, phone: '+966 55 214 8890', crNumber: '1010584312', vatNumber: '300458712400003', address: { en: 'King Fahd Rd, Riyadh 12271', ar: 'طريق الملك فهد، الرياض ١٢٢٧١' }, since: { en: 'Mar 2024', ar: 'مارس ٢٠٢٤' }, fileChannel: 'horeca' },
   { id: 'V-02', name: { en: 'Jeddah Grand Hotel', ar: 'فندق جدة الكبير' }, type: { en: 'Hospitality', ar: 'ضيافة' }, outstandingMinor: 11600000, limitMinor: 30000000, country: 'sa', status: 'active', email: 'purchasing@jgh.sa', contact: { en: 'Reem Baeshen', ar: 'ريم باعشن' }, phone: '+966 54 903 2217', crNumber: '4030177845', vatNumber: '310079215800003', address: { en: 'Corniche Rd, Jeddah 23412', ar: 'طريق الكورنيش، جدة ٢٣٤١٢' }, since: { en: 'Jan 2024', ar: 'يناير ٢٠٢٤' } },
   { id: 'V-03', name: { en: 'Al-Dana Markets', ar: 'أسواق الدانة' }, type: { en: 'Retail chain', ar: 'سلسلة تجزئة' }, outstandingMinor: 26400000, limitMinor: 25000000, country: 'ae', status: 'active', email: 'supply@aldana.sa', contact: { en: 'Mansour Al-Harbi', ar: 'منصور الحربي' }, phone: '+966 50 671 4453', crNumber: '2050091236', vatNumber: '302214598700003', address: { en: 'Prince Sultan St, Dammam 32241', ar: 'شارع الأمير سلطان، الدمام ٣٢٢٤١' }, since: { en: 'Sep 2024', ar: 'سبتمبر ٢٠٢٤' } },
   { id: 'V-04', name: { en: 'Al-Tazaj Restaurants', ar: 'مطاعم الطازج' }, type: { en: 'Restaurants', ar: 'مطاعم' }, outstandingMinor: 4200000, limitMinor: 6000000, country: 'sa', status: 'active', email: 'ops@altazaj.sa', contact: { en: 'Khalid Fakieh', ar: 'خالد فقيه' }, phone: '+966 56 118 7702', crNumber: '4030022917', vatNumber: '300871345600003', address: { en: 'Al-Tahlia St, Jeddah 23321', ar: 'شارع التحلية، جدة ٢٣٣٢١' }, since: { en: 'Nov 2024', ar: 'نوفمبر ٢٠٢٤' } },
   { id: 'V-05', name: { en: 'Rawabi Catering Co.', ar: 'شركة روابي للتموين' }, type: { en: 'Reseller', ar: 'موزّع' }, outstandingMinor: 900000, limitMinor: 5000000, country: 'kw', status: 'pending', email: 'accounts@rawabi.sa', stage: 1, contact: { en: 'Sara Al-Dossari', ar: 'سارة الدوسري' }, phone: '+966 53 442 9018' },
   { id: 'V-06', name: { en: 'Al-Murjan Sweets', ar: 'حلويات المرجان' }, type: { en: 'Retail chain', ar: 'سلسلة تجزئة' }, outstandingMinor: 0, limitMinor: 0, country: 'sa', status: 'invited', email: 'buy@murjan.sa' },
   { id: 'V-07', name: { en: 'Basmah Gifting Co.', ar: 'شركة بسمة للهدايا' }, type: { en: 'Corporate gifting', ar: 'هدايا شركات' }, outstandingMinor: 0, limitMinor: 0, country: 'ae', status: 'pending', email: 'hello@basmah.sa', stage: 3, contact: { en: 'Nouf Al-Shehri', ar: 'نوف الشهري' }, phone: '+966 59 320 6641', crNumber: '1010773204', vatNumber: '311542880900003', address: { en: 'Olaya St, Riyadh 12213', ar: 'شارع العليا، الرياض ١٢٢١٣' } },
+  // The export partner behind /mega. It has always had a distributor file and a credit
+  // line, but was never in this directory — so the one export file had nowhere to be
+  // maintained from. Figures mirror megaAccount / megaCredit.
+  { id: 'V-08', name: { en: 'Gulf Export Partners', ar: 'شركاء الخليج للتصدير' }, type: { en: 'Export distributor', ar: 'موزّع تصدير' }, outstandingMinor: 182400000, limitMinor: 500000000, country: 'ae', status: 'active', email: 'sofia.bauer@gulfexport.ae', contact: { en: 'Sofia Bauer', ar: 'صوفيا باور' }, phone: '+971 50 774 3312', crNumber: '1010 554 921', vatNumber: '3115 0092 8800 003', address: { en: 'Jebel Ali Free Zone, Dubai', ar: 'المنطقة الحرة بجبل علي، دبي' }, since: { en: 'Feb 2025', ar: 'فبراير ٢٠٢٥' }, fileChannel: 'export' },
 ]
 
 // ── Vendor documents (contract + verification papers). Seeded for accounts

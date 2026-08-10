@@ -12,22 +12,30 @@ const EN = [
   ['delivery', ['Delivery', 'Cold chain', 'Scheduled', 'Central warehouse']],
   // Finance = single money home (gauge + spend trend + ledger + statements + invoices + month)
   ['credit', ['Spend', 'Latest invoices', 'ZATCA', 'This month', 'INV-2026']],
-  // Company = the entity file carrying the whole distributor file: every term Jaz
-  // declares, paired with this account's answer, on the in-Kingdom side
+  // Company = the account's own record, ending on a summary of its distributor file
   ['company', ['Legal entity', 'Notification preferences', 'Low-stock alerts', 'Central warehouse',
-    'Distributor file', 'HORECA operator', 'Jaz declares',
+    'Distributor file', 'HORECA operator', 'required answers still missing',
+    'Open the file', 'Request a change']],
+  // Distributor file = its own tab: every term Jaz declares, paired with this
+  // account's answer, on the in-Kingdom side. Jaz writes it; the account reads it.
+  ['file', ['Jaz declares',
     'Distributor margin structure', 'Territory exclusivity model', 'HS codes', 'Coffee pairing recommendations',
     'Cities and regions served', 'Annual purchase commitment', 'Range your store holds',
-    'Loading table', 'CHV70', 'required answers still missing']],
+    'Loading table', 'CHV70']],
 ]
+
+// The account may not rewrite its own trading terms — no section editor, and nothing
+// that submits the file, may reach the partner's render.
+const READ_ONLY_LEAKS = ['>Edit<', 'Send for review', 'تعديل<', 'إرسال للمراجعة']
 
 const AR = [
   ['overview', ['الائتمان المتاح', 'وفّرت بالجملة', 'مصفوفة الطلب السريع', 'المجموع الفرعي', 'الإجمالي شامل الضريبة', 'رحلة آخر طلب', 'التوصيل القادم', 'مدير الحساب']],
   ['catalog', ['كوفرتور داكن ٧٠٪', 'سعر الكمية', 'مراجعة الطلب']],
   ['delivery', ['التوصيل', 'سلسلة التبريد', 'الطلبات المجدولة']],
   ['credit', ['أحدث الفواتير', 'متوافقة ZATCA', 'ملخّص الشهر']],
-  ['company', ['تفضيلات الإشعارات', 'تنبيهات المخزون المنخفض', 'ملف الموزّع', 'تُعلن جاز',
-    'هيكل هامش الموزّع', 'الرموز الجمركية', 'توصيات إقران القهوة', 'المدن والمناطق المخدومة', 'جدول التحميل']],
+  ['company', ['تفضيلات الإشعارات', 'تنبيهات المخزون المنخفض', 'ملف الموزّع', 'فتح الملف', 'طلب تعديل']],
+  ['file', ['تُعلن جاز', 'هيكل هامش الموزّع', 'الرموز الجمركية', 'توصيات إقران القهوة',
+    'المدن والمناطق المخدومة', 'جدول التحميل']],
 ]
 
 const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' })
@@ -40,6 +48,13 @@ function check(label, html, markers) {
   if (!ok) failures++
 }
 
+function checkReadOnly(label, html) {
+  const leaks = READ_ONLY_LEAKS.filter((m) => html.includes(m))
+  const ok = leaks.length === 0
+  console.log(`${ok ? '✓' : '✗'}  ${label.padEnd(22)} read-only${ok ? '' : `  LEAKED: ${leaks.join(' | ')}`}`)
+  return ok ? 0 : 1
+}
+
 try {
   const { renderBusiness } = await vite.ssrLoadModule('/scripts/business-harness.tsx')
 
@@ -49,8 +64,9 @@ try {
     catch (err) { failures++; console.log(`✗  en /${tab} THREW: ${err?.message ?? err}`) }
   }
 
-  // every distributor requirement from the brief must be on the Company tab
-  failures += checkPdfCoverage('en /company coverage', renderBusiness('/business?tab=company'))
+  // every distributor requirement from the brief must be on the file tab
+  failures += checkPdfCoverage('en /file coverage', renderBusiness('/business?tab=file'))
+  failures += checkReadOnly('en /file', renderBusiness('/business?tab=file'))
 
   globalThis.window = {
     localStorage: {
@@ -65,7 +81,8 @@ try {
     try { check(`ar /${tab}`, renderBusiness(`/business?tab=${tab}`), markers) }
     catch (err) { failures++; console.log(`✗  ar /${tab} THREW: ${err?.message ?? err}`) }
   }
-  failures += checkPdfCoverage('ar /company coverage', renderBusiness('/business?tab=company'), 'ar')
+  failures += checkPdfCoverage('ar /file coverage', renderBusiness('/business?tab=file'), 'ar')
+  failures += checkReadOnly('ar /file', renderBusiness('/business?tab=file'))
 } finally {
   await vite.close()
 }

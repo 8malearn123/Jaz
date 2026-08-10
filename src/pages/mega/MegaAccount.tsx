@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react'
 import {
   LayoutGrid, Boxes, Package, Ship, Landmark, Plus, Minus, ArrowRight, Check, X,
   MapPin, Download, ShieldCheck, Snowflake, PackageCheck, Truck, Globe, FileText, Container, Clock,
-  Upload, CheckCircle2, CalendarRange, Lock, Building2,
+  Upload, CheckCircle2, CalendarRange, Lock, Building2, ClipboardList,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { AccountShell, type TabDef } from '@/components/account/AccountShell'
-import { DistributorProfile } from '@/components/account/DistributorProfile'
+import { DistributorFileSummary, DistributorFileSections } from '@/components/account/DistributorProfile'
 import { ToastProvider, useToast } from '@/components/account/Toast'
 import { MegaStateProvider, useMegaState } from '@/state/MegaStateContext'
 import { useBilling } from '@/state/BillingContext'
@@ -29,7 +29,7 @@ import {
   megaMarkets, megaExportTrend, type MegaOrder, type ShipStage,
 } from '@/data/mega'
 
-const TABS = ['overview', 'catalog', 'orders', 'forecast', 'finance', 'company'] as const
+const TABS = ['overview', 'catalog', 'orders', 'forecast', 'finance', 'company', 'file'] as const
 type Tab = (typeof TABS)[number]
 
 // This partner is an export account, so every figure it is quoted, invoiced and
@@ -75,6 +75,7 @@ function MegaContent() {
     { id: 'forecast', label: pick({ en: 'Order forecasts', ar: 'تنبؤات الطلبات' }), icon: CalendarRange },
     { id: 'finance', label: pick({ en: 'Finance', ar: 'المالية' }), icon: Landmark },
     { id: 'company', label: pick({ en: 'Company', ar: 'المنشأة' }), icon: Building2 },
+    { id: 'file', label: pick({ en: 'Distributor file', ar: 'ملف الموزّع' }), icon: ClipboardList },
   ]
 
   return (
@@ -97,7 +98,9 @@ function MegaContent() {
       {active === 'orders' && <Orders />}
       {active === 'forecast' && <Forecast />}
       {active === 'finance' && <Finance />}
-      {active === 'company' && <Company />}
+      {active === 'company' && <Company onTab={setActive} />}
+      {/* Jaz's terms with this partner — read here, written from the console */}
+      {active === 'file' && <DistributorFileSections channel="export" />}
     </AccountShell>
   )
 }
@@ -229,7 +232,7 @@ function DraftCard({ onTab }: { onTab: (id: string) => void }) {
 // The export portal had nowhere to hold the partner's own details: the legal entity
 // only ever appeared in the page title, and nothing asked what markets, licences or
 // cold storage sat behind the account. This is that surface.
-function Company() {
+function Company({ onTab }: { onTab: (id: string) => void }) {
   const { pick } = useLocale()
   return (
     <div className="flex flex-col gap-lg">
@@ -249,9 +252,11 @@ function Company() {
 
       <ComplianceSnapshot />
 
-      {/* every term of the account, and this partner's answer to it */}
-      <DistributorProfile
+      {/* how complete this partner's file is — the file itself has its own tab */}
+      <DistributorFileSummary
         channel="export"
+        onOpen={() => onTab('file')}
+        canRequestChange
         accountName={megaAccount.legalName}
         entity={[
           { label: { en: 'Account contact', ar: 'جهة الاتصال' }, value: pick(megaAccount.contact) },

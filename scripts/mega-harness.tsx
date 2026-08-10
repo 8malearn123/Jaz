@@ -2,6 +2,7 @@ import { renderToString } from 'react-dom/server'
 import { StaticRouter } from 'react-router-dom/server'
 import { LocaleProvider } from '../src/i18n/LocaleContext'
 import { ChannelProvider } from '../src/state/ChannelContext'
+import { DistributorFileProvider } from '../src/state/DistributorFileContext'
 import { MegaAccount } from '../src/pages/mega/MegaAccount'
 
 // Renders the Mega Business · Export workspace directly (bypassing RequireAuth)
@@ -10,9 +11,11 @@ export function renderMega(url: string): string {
   return renderToString(
     <LocaleProvider>
       <ChannelProvider>
-        <StaticRouter location={url}>
-          <MegaAccount />
-        </StaticRouter>
+        <DistributorFileProvider>
+          <StaticRouter location={url}>
+            <MegaAccount />
+          </StaticRouter>
+        </DistributorFileProvider>
       </ChannelProvider>
     </LocaleProvider>,
   )
