@@ -43,6 +43,7 @@ const COLD_CHAIN_MINOR = 1500 // SAR 15 handling
 // Demo promo codes: percentage off, or a fixed amount in halalas.
 const PROMOS: Record<string, { pct?: number; fixed?: number }> = {
   JAZ10: { pct: 0.1 },
+  RESALA10: { pct: 0.1 }, // the newsletter welcome letter's gift (رسالة = letter)
   RAMADAN15: { pct: 0.15 },
   WELCOME20: { fixed: 2000 },
 }

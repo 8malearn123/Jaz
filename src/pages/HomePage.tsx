@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, ArrowUpRight, Check, Leaf, Palette } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ArrowUpRight, Check, Copy, Leaf, Palette } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { products } from '@/data/products'
 import { collections } from '@/data/collections'
@@ -594,46 +594,294 @@ function ReviewCard({ review, product }: { review: ReviewProduct['reviews'][numb
   )
 }
 
-/* ─────────────────────────── Newsletter ─────────────────────────── */
-function NewsletterSection() {
-  const { t, pick } = useLocale()
-  const [sent, setSent] = useState(false)
+/* ─────────────────────────── Newsletter — Letter № 001 ─────────────────────────── */
+
+/** Circular Jazan postmark. Ring text stays Latin in both locales — a philatelic
+ *  artifact, and Arabic on an SVG textPath renders unreliably across browsers. */
+function Postmark({ label }: { label: string }) {
+  const id = useId().replace(/:/g, '')
   return (
-    <section className="container-jaz pt-section">
-      <Reveal>
-        <div className="relative rounded-xxl overflow-hidden bg-surface-1 border border-hairline px-lg py-xxl sm:px-xxl text-center">
-          <div className="absolute inset-x-0 top-0">
-            <PatternBand motif="jasmine" height={72} opacity={0.1} />
-          </div>
-          <div className="relative max-w-xl mx-auto flex flex-col items-center gap-md">
-            <MotifGlyph motif="jasmine" size={32} />
-            <h2 className="font-serif text-display-md text-ink text-balance">{t('home.newsletter.title')}</h2>
-            <p className="text-body text-ink-muted">{t('home.newsletter.body')}</p>
-            {sent ? (
-              <div className="mt-sm inline-flex items-center gap-sm rounded-pill bg-success/10 border border-success/30 px-5 py-3 animate-scale-in">
-                <Check size={18} className="text-success" />
-                <span className="font-serif text-body text-ink">{pick({ en: 'You are on the list — welcome to the maison.', ar: 'أنت على القائمة — أهلًا بك في المنزل.' })}</span>
-              </div>
-            ) : (
-              <form
-                onSubmit={(e) => { e.preventDefault(); setSent(true) }}
-                className="mt-sm w-full flex flex-col sm:flex-row gap-sm max-w-md mx-auto"
-              >
-                <input
-                  type="email"
-                  required
-                  placeholder={t('home.newsletter.placeholder')}
-                  className="input flex-1 text-center sm:text-start"
-                  aria-label={t('home.newsletter.placeholder')}
-                />
-                <button type="submit" className={buttonClass('primary')}>
-                  {t('home.newsletter.cta')}
-                </button>
-              </form>
-            )}
-          </div>
+    <div className="relative w-[84px] h-[84px] text-ink-subtle opacity-60 rotate-[-8deg] rtl:rotate-[8deg]" aria-hidden>
+      {/* direction pinned: under an inherited RTL base direction, Chromium renders
+          zero glyphs on a textPath — the ring would be blank in Arabic */}
+      <svg viewBox="0 0 84 84" className="w-full h-full" style={{ direction: 'ltr' }}>
+        <circle cx="42" cy="42" r="40" fill="none" stroke="currentColor" strokeWidth="1.2" />
+        <circle cx="42" cy="42" r="33" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="2 3" />
+        <defs>
+          <path id={`postmark-${id}`} d="M 42 5.5 a 36.5 36.5 0 1 1 -0.01 0" fill="none" />
+        </defs>
+        <text fontSize="7.5" letterSpacing="2" fill="currentColor" className="font-sans uppercase">
+          {/* label repeated so the ring is full; overflow past the path end clips */}
+          <textPath href={`#postmark-${id}`}>{label + label}</textPath>
+        </text>
+      </svg>
+      <MotifGlyph motif="mountain" size={26} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-ink-subtle" />
+    </div>
+  )
+}
+
+function NewsletterSection() {
+  const { t, locale } = useLocale()
+  const [stage, setStage] = useState<'idle' | 'sealing' | 'sent'>('idle')
+  const [email, setEmail] = useState('')
+  const [copied, setCopied] = useState(false)
+  const sealTimer = useRef<number>()
+  const copyTimer = useRef<number>()
+  useEffect(
+    () => () => {
+      window.clearTimeout(sealTimer.current)
+      window.clearTimeout(copyTimer.current)
+    },
+    [],
+  )
+
+  // Same source as the Hero trust row, so the number is consistent site-wide.
+  const readers = products.reduce((s, p) => s + p.reviewCount, 0)
+
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    if (stage !== 'idle') return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setStage('sent')
+      return
+    }
+    setStage('sealing') // seal holds pressed, envelope settles flat, teaser slips inside
+    sealTimer.current = window.setTimeout(() => setStage('sent'), 380)
+  }
+
+  // The seal disables itself on submit, which drops keyboard focus to <body>;
+  // hand it to the risen letter so Tab continues from the new content.
+  const letterRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (stage === 'sent') letterRef.current?.focus()
+  }, [stage])
+
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(t('home.letters.code'))
+    } catch {
+      return // no false "Copied" — the select-all span stays as the manual fallback
+    }
+    setCopied(true)
+    window.clearTimeout(copyTimer.current)
+    copyTimer.current = window.setTimeout(() => setCopied(false), 2000)
+  }
+
+  // ca-gregory is required: bare 'ar-SA' silently formats in the Hijri calendar.
+  // Keeping the ar-SA base restores Eastern-Arabic digits, matching the rest of the UI.
+  const dateline = t('home.letters.dateline').replace(
+    '{date}',
+    new Intl.DateTimeFormat(locale === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US', { dateStyle: 'long' }).format(new Date()),
+  )
+  const [welcomeStart, welcomeEnd] = t('home.letters.welcome').split('{email}')
+
+  return (
+    <section className="relative bg-canvas-dark text-ink-on-dark overflow-hidden">
+      <WaveDivider tone="gold" height={20} flip />
+      <div className="absolute inset-x-0 top-0 opacity-50 pointer-events-none">
+        <PatternBand motif="mountain" height={110} opacity={0.12} tone="on-dark" />
+      </div>
+
+      <div className="container-jaz relative py-section lg:py-xxl xl:py-section grid lg:grid-cols-[1fr_1.1fr] gap-xl xl:gap-xxl items-center">
+        {/* the pitch — every reason to subscribe, readable with zero interaction */}
+        <div className="flex flex-col gap-lg">
+          <Reveal>
+            <SectionHeader
+              number="06"
+              tone="on-dark"
+              eyebrow={t('home.letters.eyebrow')}
+              label={t('home.letters.label')}
+              title={t('home.newsletter.title')}
+              body={t('home.letters.body')}
+            />
+          </Reveal>
+          <Reveal delay={80}>
+            <div className="flex items-center gap-sm flex-wrap">
+              <p className="eyebrow text-primary-bright">{t('home.letters.manifestTitle')}</p>
+              <span className="badge font-sans uppercase tracking-[0.08em] bg-primary/15 text-primary-bright border border-primary/40">
+                {t('home.letters.nextBadge')}
+              </span>
+            </div>
+            <ul className="mt-xs">
+              {(['mango', 'jasmine', 'coffee'] as const).map((motif, i) => (
+                <li key={motif} className={cn('flex items-center gap-sm py-sm', i > 0 && 'border-t border-hairline-dark')}>
+                  <MotifGlyph motif={motif} size={20} className="shrink-0 text-primary-bright" />
+                  <span className="text-body-sm text-ink-on-dark-muted">{t(`home.letters.item${i + 1}`)}</span>
+                </li>
+              ))}
+            </ul>
+          </Reveal>
+          <Reveal delay={160}>
+            <p className="font-sans text-caption text-primary-bright">
+              {t('home.letters.readers').replace('{count}', readers.toLocaleString(locale === 'ar' ? 'ar-SA' : 'en-US'))}
+            </p>
+          </Reveal>
         </div>
-      </Reveal>
+
+        {/* the object — an envelope from the maison, addressed by the visitor.
+            No ancestor of this wrapper may clip: the tilted corners, the seal at
+            -bottom-9, and the risen letter all overflow their boxes. */}
+        <Reveal delay={120}>
+          <div className="group relative max-w-[560px] mx-auto lg:mx-0 pt-24">
+            {/* Letter № 001 peeking out, its opening line cut off by the envelope's edge */}
+            <div
+              aria-hidden
+              className={cn(
+                'absolute inset-x-6 sm:inset-x-10 top-4 z-0 rounded-sm bg-surface-2 text-ink shadow-soft-lg transition-all duration-500 ease-editorial',
+                stage === 'idle' ? 'translate-y-6 group-hover:translate-y-4' : 'translate-y-6 opacity-0',
+              )}
+            >
+              <WaveDivider tone="ink" unit={14} height={10} className="opacity-25" />
+              <div className="px-lg pt-sm pb-lg">
+                <p className="font-serif italic rtl:not-italic text-body text-ink-muted truncate">{t('home.letters.teaser')}</p>
+              </div>
+            </div>
+
+            {/* envelope face = the form */}
+            <form
+              onSubmit={onSubmit}
+              aria-hidden={stage === 'sent'}
+              className={cn(
+                'relative z-20 rounded-md bg-surface-2 bg-grain text-ink border border-hairline-strong shadow-soft-lg',
+                'p-lg pb-xxl sm:p-xl sm:pb-xxl',
+                'transition-transform duration-500 ease-editorial focus-within:rotate-0',
+                stage === 'idle' ? 'rotate-[-1.2deg] rtl:rotate-[1.2deg]' : 'rotate-0',
+              )}
+            >
+              {/* flap crease */}
+              <svg
+                aria-hidden
+                className="absolute inset-x-0 top-0 h-16 w-full text-hairline-strong pointer-events-none"
+                viewBox="0 0 100 24"
+                preserveAspectRatio="none"
+                fill="none"
+              >
+                <path d="M 0 0 L 50 24 L 100 0" stroke="currentColor" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+              </svg>
+
+              {/* postmark + stamp cluster */}
+              <div className="absolute top-4 end-4 flex items-start gap-sm">
+                <Postmark label={t('home.letters.postmark')} />
+                <span className="relative block w-[46px] h-[56px] bg-surface-1 p-[3px] rotate-2 shadow-lift" aria-hidden>
+                  <span className="grid place-items-center w-full h-full" style={{ backgroundColor: tint(flavors.jasmine.accent, 30) }}>
+                    <MotifGlyph motif="jasmine" size={34} className="text-primary-hover" />
+                  </span>
+                  <span className="absolute inset-0 border border-dashed border-hairline-strong" />
+                </span>
+              </div>
+
+              <p className="mt-md font-sans text-caption uppercase tracking-[0.12em] text-ink-muted max-w-[55%]">
+                {t('home.letters.from')}
+              </p>
+
+              <label className="mt-xl block">
+                <span className="font-serif italic rtl:not-italic text-subhead text-ink-muted">{t('home.letters.to')}</span>
+                <span className="relative block [&:focus-within_.pen]:opacity-100">
+                  <input
+                    type="email"
+                    required
+                    dir="ltr"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    readOnly={stage !== 'idle'}
+                    tabIndex={stage !== 'idle' ? -1 : undefined}
+                    placeholder={t('home.letters.placeholder')}
+                    aria-label={t('home.newsletter.placeholder')}
+                    className="mt-xs w-full bg-transparent font-serif italic rtl:not-italic rtl:text-right text-body-lg text-ink placeholder:text-ink-muted border-0 border-b border-hairline-strong focus:border-primary focus:outline-none pb-2 transition-colors duration-200"
+                  />
+                  <MotifGlyph motif="jasmine" size={16} className="pen absolute end-0 bottom-3 opacity-0 transition-opacity duration-200" />
+                </span>
+              </label>
+
+              {/* empty ruled line, for balance */}
+              <div className="mt-lg w-2/3 border-b border-hairline" aria-hidden />
+
+              {/* wax seal = submit; center-bottom, so RTL-neutral. Native submit keeps
+                  Enter-in-the-field working — the seal is the visible affordance. */}
+              <button
+                type="submit"
+                disabled={stage !== 'idle'}
+                aria-label={t('home.letters.sealAria')}
+                className="group/seal absolute left-1/2 -translate-x-1/2 -bottom-9"
+              >
+                <span
+                  className={cn(
+                    'relative grid place-items-center w-[72px] h-[72px] transition-transform duration-300 ease-editorial',
+                    stage === 'idle' ? 'group-hover/seal:-translate-y-0.5 group-active/seal:scale-90' : 'scale-90',
+                  )}
+                >
+                  <span className="absolute inset-0 rotate-12 bg-primary-hover rounded-[46%_54%_52%_48%]" aria-hidden />
+                  <span
+                    className="absolute inset-[6px] rounded-pill bg-primary shadow-[inset_0_2px_6px_rgba(42,26,18,0.45),inset_0_-1px_2px_rgba(255,255,255,0.25)]"
+                    aria-hidden
+                  />
+                  {stage === 'sent' ? (
+                    <Check size={26} className="relative text-on-primary/90" />
+                  ) : (
+                    <MotifGlyph motif="jasmine" size={30} className="relative text-on-primary/85" />
+                  )}
+                </span>
+              </button>
+            </form>
+
+            {/* Letter № 001, risen — crossfades in over the (now inert) envelope */}
+            {stage === 'sent' && (
+              <div
+                ref={letterRef}
+                tabIndex={-1}
+                className="absolute inset-x-2 sm:inset-x-8 top-0 z-30 rounded-sm bg-surface-2 text-ink shadow-soft-lg animate-fade-up"
+              >
+                <WaveDivider tone="ink" unit={14} height={10} className="opacity-25" />
+                <div className="px-lg pt-sm pb-lg flex flex-col gap-sm">
+                  <div className="flex items-baseline justify-between gap-sm flex-wrap">
+                    <span className="font-serif text-card-title text-primary-hover">{t('home.letters.letterNo')}</span>
+                    <span className="font-sans text-caption text-ink-muted">{dateline}</span>
+                  </div>
+                  <p className="font-serif italic rtl:not-italic text-body text-ink leading-relaxed">
+                    {welcomeStart}
+                    <bdi dir="ltr" className="font-sans text-body-sm">{email}</bdi>
+                    {welcomeEnd}
+                  </p>
+                  <div className="flex items-center gap-sm flex-wrap">
+                    <StatusBadge variant="gold" className="border-dashed">
+                      {t('home.letters.giftLabel')} ·{' '}
+                      <span dir="ltr" className="font-sans tabular-nums select-all">{t('home.letters.code')}</span>
+                    </StatusBadge>
+                    <button type="button" onClick={copyCode} className="link-gold text-caption inline-flex items-center gap-xs">
+                      {copied ? <Check size={13} className="animate-scale-in" /> : <Copy size={13} />}
+                      {t(copied ? 'home.letters.copied' : 'home.letters.copy')}
+                    </button>
+                  </div>
+                  <p className="font-serif italic rtl:not-italic text-body-sm text-ink-muted self-end">{t('home.letters.signature')}</p>
+                </div>
+              </div>
+            )}
+
+            {/* hint + reassurance, at the exact moment of hesitation */}
+            <p
+              className={cn(
+                'mt-xl text-center font-sans text-caption uppercase tracking-[0.15em] text-ink-on-dark-muted transition-opacity duration-300',
+                stage !== 'idle' && 'opacity-0',
+              )}
+              aria-hidden={stage !== 'idle'}
+            >
+              {t('home.letters.sealHint')}
+            </p>
+            <p
+              className={cn(
+                'mt-xs text-center font-sans text-caption text-ink-on-dark-muted/80 transition-opacity duration-300',
+                stage !== 'idle' && 'opacity-0',
+              )}
+              aria-hidden={stage !== 'idle'}
+            >
+              {t('home.letters.promise')}
+            </p>
+            <div aria-live="polite" className="sr-only">
+              {stage === 'sent' ? t('home.letters.successAria') : ''}
+            </div>
+          </div>
+        </Reveal>
+      </div>
     </section>
   )
 }

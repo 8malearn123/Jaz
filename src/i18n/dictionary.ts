@@ -92,12 +92,48 @@ export const dict: Dict = {
   },
   'home.corporate.cta': { en: 'Open a business account', ar: 'افتح حساب أعمال' },
   'home.newsletter.title': { en: 'Letters from the maison', ar: 'رسائل من المنزل' },
-  'home.newsletter.body': {
-    en: 'New harvests, limited art-cards, and seasonal boxes — first to your inbox.',
-    ar: 'حصادٌ جديد، وبطاقاتٌ فنية محدودة، وعلبٌ موسمية — تصلك أولًا.',
-  },
   'home.newsletter.placeholder': { en: 'Your email address', ar: 'بريدك الإلكتروني' },
-  'home.newsletter.cta': { en: 'Subscribe', ar: 'اشترك' },
+  // "Letter № 001" — the correspondence section. {count}/{date}/{email} are interpolated via String.replace.
+  'home.letters.eyebrow': { en: 'The Correspondence', ar: 'المُراسَلة' },
+  'home.letters.label': { en: 'One letter per harvest', ar: 'رسالةٌ لكل حصاد' },
+  'home.letters.body': {
+    en: 'Four letters a year — one for each harvest. Written at the maison in Jazan, posted to your inbox, and always carrying something you cannot buy yet.',
+    ar: 'أربع رسائل في السنة — واحدةٌ لكل حصاد. تُكتب في منزلنا بجازان، وتُرسل إلى بريدك، وتحمل دومًا شيئًا لا يُباع بعد.',
+  },
+  'home.letters.manifestTitle': { en: 'Inside every letter', ar: 'في كل رسالة' },
+  'home.letters.nextBadge': { en: 'Next letter · Sept 21', ar: 'الرسالة القادمة · ٢١ سبتمبر' },
+  'home.letters.item1': { en: 'The harvest note — what the season gave us', ar: 'خبر الحصاد — ما جادت به الفصول علينا' },
+  'home.letters.item2': { en: 'The next artist card, before it is printed', ar: 'بطاقة الفنان القادمة قبل أن تُطبع' },
+  'home.letters.item3': { en: 'First seats for the seasonal boxes', ar: 'أولوية الحجز للعلب الموسمية' },
+  'home.letters.promise': {
+    en: 'No noise, no weekly offers — and you may leave with one click.',
+    ar: 'لا ضجيج ولا عروض أسبوعية — وبنقرةٍ واحدة تغادر متى شئت.',
+  },
+  'home.letters.readers': { en: 'Read alongside {count} guests of the maison', ar: 'تُقرأ مع {count} من ضيوف المنزل' },
+  'home.letters.from': { en: 'From: JAZ — the maison, Jazan', ar: 'من: جاز — المنزل، جازان' },
+  'home.letters.to': { en: 'To:', ar: 'إلى:' },
+  'home.letters.placeholder': { en: 'write your email here', ar: 'اكتب بريدك هنا' },
+  'home.letters.sealHint': { en: 'Press the seal to receive Letter № 001', ar: 'اضغط الختم لتصلك الرسالة رقم ٠٠١' },
+  'home.letters.sealAria': { en: 'Seal the envelope and subscribe', ar: 'اختم الظرف واشترك' },
+  'home.letters.teaser': {
+    en: '“This season, the mango reached the coast before we did…”',
+    ar: '«هذا الموسم، بلغ المانجو الساحلَ قبل أن نبلغه…»',
+  },
+  'home.letters.letterNo': { en: 'Letter № 001', ar: 'الرسالة رقم ٠٠١' },
+  'home.letters.dateline': { en: 'Jazan, {date}', ar: 'جازان، {date}' },
+  'home.letters.welcome': {
+    en: 'Welcome to the correspondence. Your first letter is on its way to {email} — and it carries a small gift from the south.',
+    ar: 'أهلًا بك في المُراسَلة. رسالتك الأولى في طريقها إلى {email} — وتحمل معها هديةً صغيرة من الجنوب.',
+  },
+  'home.letters.giftLabel': { en: 'Your first-box gift', ar: 'هديّتك مع أول علبة' },
+  'home.letters.code': { en: 'RESALA10', ar: 'RESALA10' },
+  'home.letters.copy': { en: 'Copy', ar: 'انسخ' },
+  'home.letters.copied': { en: 'Copied', ar: 'نُسخت' },
+  'home.letters.signature': { en: '— The maison, Jazan', ar: '— المنزل، جازان' },
+  // Postmark ring text stays Latin in both locales: a philatelic artifact, and Arabic
+  // glyphs on an SVG textPath render unreliably across browsers.
+  'home.letters.postmark': { en: 'JAZAN · 45142 · KSA · ', ar: 'JAZAN · 45142 · KSA · ' },
+  'home.letters.successAria': { en: 'Subscribed — your first letter has been revealed', ar: 'تم الاشتراك — وظهرت رسالتك الأولى' },
   'home.reviews.eyebrow': { en: 'Loved by guests', ar: 'محبوبةٌ لدى العملاء' },
   'home.reviews.title': { en: 'Words from our table', ar: 'كلماتٌ من مائدتنا' },
 
