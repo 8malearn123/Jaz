@@ -365,7 +365,7 @@ export const dict: Dict = {
 
   // ── Heritage ───────────────────────────────────────────
   'heritage.hero.eyebrow': { en: 'The JAZ Story', ar: 'قصة جاز' },
-  'heritage.hero.title': { en: 'From the farms of\nthe far south', ar: 'من مزارع\nأقصى الجنوب' },
+  'heritage.hero.title': { en: 'We come down\nfrom Jazan', ar: 'ننحدرُ\nمن جازان' },
 
   // ── Footer ─────────────────────────────────────────────
   'footer.shop': { en: 'Shop', ar: 'تسوّق' },

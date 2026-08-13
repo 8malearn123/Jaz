@@ -22,7 +22,7 @@ const flavorMotif: Record<FlavorId, Motif> = {
 
 // Real product photography by flavor. When a bar has a photo it overrides the procedural
 // art below; boxes and any flavor without a photo keep the illustrated fallback.
-const flavorBarPhoto: Partial<Record<FlavorId, string>> = {
+export const flavorBarPhoto: Partial<Record<FlavorId, string>> = {
   milk: '/products/bar-milk.jpg',
   lavender: '/products/bar-dark-lavender.jpg',
   rose: '/products/bar-dark-rose.jpg',
