@@ -14,6 +14,8 @@ import { useOwnerState } from '@/state/OwnerStateContext'
 import { useGovernance } from '@/state/GovernanceContext'
 import { useBilling } from '@/state/BillingContext'
 import { useCostCenters } from '@/state/CostCenterContext'
+import { useLedger } from '@/state/LedgerContext'
+import { saleEntry, type SaleChannel } from '@/lib/postingRules'
 import { cn } from '@/lib/cn'
 import { PanelHead, StatCard, FilterChips, Pill } from './_shared'
 import { BillingDesk } from './OwnerBilling'
@@ -21,12 +23,17 @@ import { CostCenterField } from './OwnerAccounting'
 
 const LAST = (ownerOrderStatuses.length - 1) as OwnerOrderStage
 
+/** The board's channels, as the revenue accounts know them. */
+const saleChannelOf = (chan: OwnerChannel): SaleChannel =>
+  chan === 'B2C' ? 'b2c' : chan === 'B2B' ? 'b2b' : 'mega'
+
 export function OwnerOrders() {
   const { pick, money } = useLocale()
   const { flash } = useToast()
   const { orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pipelineValueMinor } = useOwnerState()
   const { submit } = useGovernance()
   const { post, entryForRef, centerOf } = useCostCenters()
+  const ledger = useLedger()
   const { billingFor, attachTaxInvoice } = useBilling()
   const [chan, setChan] = useState<OwnerChannel | 'all'>('all')
   const [status, setStatus] = useState<string>('all')
@@ -261,12 +268,22 @@ export function OwnerOrders() {
 
       <ManualOrderModal open={newOpen} onClose={() => setNewOpen(false)} onCreate={(o) => {
         const id = createOrder(o)
+        // The sale is accounted for the moment it exists: revenue is recognised net, the
+        // tax is held for ZATCA, and a business order goes to the account rather than the till.
+        const booked = ledger.post(saleEntry({
+          date: ledger.bookDate,
+          ref: id,
+          party: o.customer,
+          channel: saleChannelOf(o.chan),
+          grossMinor: o.amountMinor,
+          onCredit: o.chan !== 'B2C',
+          centerId: o.costCenterId,
+        }))
         // The sale is filed against its cost centre in the same breath it is created —
         // the centre's sale-side processes are valued on the order and frozen onto the entry.
         const e = o.costCenterId ? post({ side: 'sale', centerId: o.costCenterId, ref: id, party: o.customer, baseMinor: o.amountMinor, qty: o.qty }) : null
-        flash(e
-          ? `${pick({ en: 'Order created', ar: 'أُنشئ الطلب' })} ${id} · ${centerOf(e.centerId)?.code ?? ''} ${money(e.processMinor)}`
-          : `${pick({ en: 'Order created', ar: 'أُنشئ الطلب' })} ${id}`)
+        const centre = e ? ` · ${centerOf(e.centerId)?.code ?? ''} ${money(e.processMinor)}` : ''
+        flash(`${pick({ en: 'Order created', ar: 'أُنشئ الطلب' })} ${id}${booked.ok ? ` · ${booked.entry.no}` : ''}${centre}`)
       }} />
     </div>
   )

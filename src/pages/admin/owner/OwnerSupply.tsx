@@ -14,10 +14,20 @@ import { wasteReasons } from '@/data/ownerFinance'
 import { useOwnerState } from '@/state/OwnerStateContext'
 import { useGovernance } from '@/state/GovernanceContext'
 import { useCostCenters } from '@/state/CostCenterContext'
+import { useLedger } from '@/state/LedgerContext'
+import { purchaseEntry, wasteEntry, type PurchaseTarget } from '@/lib/postingRules'
 import { FX_MOVE_TOLERANCE } from '@/data/governance'
 import { cn } from '@/lib/cn'
 import { PanelHead, Pill, UtilBar } from './_shared'
 import { CostCenterField } from './OwnerAccounting'
+
+/**
+ * Which stock account an invoice is capitalised in. Wrapping foil is packaging; everything
+ * else the factory buys is raw material. An invoice that mixes the two is capitalised as raw,
+ * because that is where the bulk of its value sits.
+ */
+const purchaseTargetOf = (lines: { itemId: string }[]): PurchaseTarget =>
+  lines.length > 0 && lines.every((l) => l.itemId === 'foil') ? 'packaging' : 'raw'
 
 // Whole-number parser: normalize Arabic digits, take the integer part (so a stray "1500.50" can't concatenate to 150050).
 const parseNum = (s: string) => Math.max(0, parseInt(toAsciiDigits(s).replace(/[^\d.]/g, '').split('.')[0] || '0', 10) || 0)
@@ -41,6 +51,7 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
   const { invoices, receivePurchase } = useOwnerState()
   const { submit } = useGovernance()
   const { post, entryForRef, centerOf } = useCostCenters()
+  const ledger = useLedger()
   const [invoiceOpen, setInvoiceOpen] = useState(false)
   const [ratesOpen, setRatesOpen] = useState(false)
   const [viewInvoice, setViewInvoice] = useState<string | null>(null)
@@ -136,13 +147,22 @@ export function OwnerSupply({ view = 'po' }: { view?: 'po' | 'raw' | 'finished' 
             <EnterInvoiceModal onClose={() => setInvoiceOpen(false)}
               onSubmit={(payload) => {
                 const id = receivePurchase(payload)
+                // Stock in, recoverable tax out, and the balance owed to the supplier —
+                // booked from the invoice total, which is quoted VAT-inclusive.
+                const booked = ledger.post(purchaseEntry({
+                  date: ledger.bookDate,
+                  ref: id,
+                  supplier: payload.supplier,
+                  grossMinor: payload.totalMinor,
+                  target: purchaseTargetOf(payload.lines),
+                  centerId: payload.costCenterId,
+                }))
                 // The purchase is filed against its cost centre as it is booked: the centre's
                 // purchase-side processes are valued on the invoice and frozen onto the entry.
                 const qty = payload.lines.reduce((a, l) => a + l.qty, 0)
                 const e = payload.costCenterId ? post({ side: 'purchase', centerId: payload.costCenterId, ref: id, party: payload.supplier, baseMinor: payload.totalMinor, qty }) : null
-                flash(e
-                  ? `${pick({ en: 'Invoice entered · stock updated', ar: 'أُدخلت الفاتورة · حُدّث المخزون' })} · ${centerOf(e.centerId)?.code ?? ''} ${money(e.processMinor)}`
-                  : `${pick({ en: 'Invoice entered · stock updated', ar: 'أُدخلت الفاتورة · حُدّث المخزون' })}`)
+                const centre = e ? ` · ${centerOf(e.centerId)?.code ?? ''} ${money(e.processMinor)}` : ''
+                flash(`${pick({ en: 'Invoice entered · stock updated', ar: 'أُدخلت الفاتورة · حُدّث المخزون' })}${booked.ok ? ` · ${booked.entry.no}` : ''}${centre}`)
               }} />
           )}
 
@@ -370,6 +390,7 @@ export function RecordWasteModal({ flash, onClose }: { flash: (m: string) => voi
   const { pick, money } = useLocale()
   const { rawQty, extraRaws, finished, recordWaste } = useOwnerState()
   const { submit } = useGovernance()
+  const ledger = useLedger()
   const [scope, setScope] = useState<'raw' | 'finished'>('raw')
   const [itemId, setItemId] = useState('')
   const [q, setQ] = useState('')
@@ -413,7 +434,17 @@ export function RecordWasteModal({ flash, onClose }: { flash: (m: string) => voi
       flash(pick({ en: 'Sent for approval — stock is unchanged', ar: 'رُفع للاعتماد — لم يتغير المخزون' })); onClose(); return
     }
     if (recordWaste({ scope, itemId: sel.id, qty, reason })) {
-      flash(`${pick({ en: 'Waste recorded', ar: 'سُجّل الهدر' })} · ${pick(sel.name)} − ${qty.toLocaleString()}`)
+      // Stock has genuinely left, so its cost becomes an expense now. This only runs once
+      // the write-off has cleared approval — a held one changes nothing, books included.
+      const booked = ledger.post(wasteEntry({
+        date: ledger.bookDate,
+        ref: `WST-${sel.id.toUpperCase()}`,
+        item: sel.name,
+        lossMinor,
+        scope,
+        reason,
+      }))
+      flash(`${pick({ en: 'Waste recorded', ar: 'سُجّل الهدر' })} · ${pick(sel.name)} − ${qty.toLocaleString()}${booked.ok ? ` · ${booked.entry.no}` : ''}`)
       onClose()
     }
   }

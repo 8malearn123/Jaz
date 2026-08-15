@@ -17,6 +17,8 @@ import { useDistributorFile } from '@/state/DistributorFileContext'
 import { useGovernance } from '@/state/GovernanceContext'
 import { useChannel } from '@/state/ChannelContext'
 import { useTeam } from '@/state/TeamContext'
+import { useLedger } from '@/state/LedgerContext'
+import { receiptEntry } from '@/lib/postingRules'
 import { statementMonths, type StatementStatus, type VendorStatement } from '@/data/vendorStatements'
 import { openStatementPdf } from '@/lib/statementPdf'
 import { makeSellingMoney, useSellingMoney, type SellingMoney } from '@/lib/useSellingMoney'
@@ -50,6 +52,7 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
   const { creditLimits: limits, setCreditLimit, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment, vendorDocs, attachVendorDoc } = useOwnerState() // limits are overlay only — never written to shared org credit
   const { statements, accountantApprove } = useStatements()
   const { submit } = useGovernance()
+  const ledger = useLedger()
   // The active sub-view is driven by the sidebar sub-nav (see AdminConsole);
   // local overrides (e.g. jumping to Accounts after activating a vendor) still work.
   const [subTab, setSubTab] = useState<VendorView>(view)
@@ -469,7 +472,15 @@ export function OwnerVendors({ view = 'accounts' }: { view?: VendorView }) {
             })
             if (out.outcome === 'pending') { flash(pick({ en: 'Sent for approval — the balance is unchanged', ar: 'رُفع للاعتماد — الرصيد لم يتغير' })); return }
             recordVendorPayment(payVendor.id, minor)
-            flash(`${pick({ en: 'Payment recorded', ar: 'سُجّل سداد' })} ${makeSellingMoney(money, payVendor.country).money(minor)} · ${pick(payVendor.name)}`)
+            // The partner owes Jaz, so a settlement is money coming in: the bank rises and
+            // the receivable clears by the same amount.
+            const booked = ledger.post(receiptEntry({
+              date: ledger.bookDate,
+              ref: `RCPT-${payVendor.id}`,
+              party: payVendor.name,
+              amountMinor: minor,
+            }))
+            flash(`${pick({ en: 'Payment recorded', ar: 'سُجّل سداد' })} ${makeSellingMoney(money, payVendor.country).money(minor)} · ${pick(payVendor.name)}${booked.ok ? ` · ${booked.entry.no}` : ''}`)
           }}
         />
       )}

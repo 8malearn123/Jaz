@@ -5,10 +5,21 @@ import {
   type CostCenter, type CostProcess, type CostEntry, type CostCenterTotals,
 } from '@/data/costCenters'
 import { useTeam } from '@/state/TeamContext'
+import { useLedger } from '@/state/LedgerContext'
+import { costCenterEntry } from '@/lib/postingRules'
 
 // Cost centres live above the accounting section, the orders board and the purchase
 // desk, because all three touch the same ledger: accounting defines the centres and
 // their processes, a sale posts against one, a purchase posts against one.
+//
+// A centre's load is also a real cost the business has taken on — a commission, a freight
+// bill, a card fee — so filing a document against a centre posts a journal entry to the
+// general ledger at the same moment, tagged with the centre. That is what lets the cost
+// reports and the income statement be reconciled against each other rather than merely
+// coexist.
+
+/** How a centre's load is referenced in the general ledger, so the two can be tied together. */
+const ledgerRefOf = (entryId: string) => `CC-${entryId}`
 
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
 
@@ -51,6 +62,7 @@ const Ctx = createContext<CostCenterCtx | null>(null)
 
 export function CostCenterProvider({ children }: { children: ReactNode }) {
   const { activeEmployee } = useTeam()
+  const ledger = useLedger()
   const [centers, setCenters] = useState<CostCenter[]>(() => clone(costCentersSeed))
   const [entries, setEntries] = useState<CostEntry[]>([])
   const [seq, setSeq] = useState({ center: costCentersSeed.length + 1, process: 1, entry: 1 })
@@ -92,6 +104,16 @@ export function CostCenterProvider({ children }: { children: ReactNode }) {
   const entriesOf = useCallback((centerId: string) => entries.filter((e) => e.centerId === centerId), [entries])
   const entryForRef = useCallback((ref: string) => entries.find((e) => e.ref === ref), [entries])
 
+  /**
+   * Take a centre's load back out of the general ledger. The ledger never deletes, so this
+   * posts the reversing entry — leaving both the original charge and its withdrawal on the
+   * record, which is what an auditor needs to see.
+   */
+  const reverseLedgerLoad = useCallback((costEntryId: string) => {
+    const booked = ledger.entryForRef(ledgerRefOf(costEntryId))
+    if (booked && booked.status === 'posted') ledger.reverse(booked.id)
+  }, [ledger])
+
   const post = useCallback((input: PostInput): CostEntry | null => {
     const cc = centers.find((c) => c.id === input.centerId)
     if (!cc) return null
@@ -107,12 +129,31 @@ export function CostCenterProvider({ children }: { children: ReactNode }) {
       by: actingAccount, note: input.note,
     }
     setSeq((s) => ({ ...s, entry: s.entry + 1 }))
-    // A document is filed against one centre — refiling replaces the earlier posting.
+    // A document is filed against one centre — refiling replaces the earlier posting, so
+    // the ledger entry that posting made is reversed out along with it.
+    const superseded = entries.find((e) => e.ref === input.ref)
+    if (superseded) reverseLedgerLoad(superseded.id)
     setEntries((prev) => [entry, ...prev.filter((e) => e.ref !== input.ref)])
+    // The load reaches the general ledger as an expense accrued against the centre.
+    const draft = costCenterEntry({
+      date: ledger.bookDate,
+      ref: ledgerRefOf(entry.id),
+      party: entry.party,
+      centerId: cc.id,
+      centerKind: cc.kind,
+      centerName: cc.name,
+      side: input.side,
+      charges,
+      by: actingAccount,
+    })
+    if (draft) ledger.post(draft)
     return entry
-  }, [centers, seq.entry, actingAccount])
+  }, [centers, entries, seq.entry, actingAccount, ledger, reverseLedgerLoad])
 
-  const unpost = useCallback((entryId: string) => setEntries((prev) => prev.filter((e) => e.id !== entryId)), [])
+  const unpost = useCallback((entryId: string) => {
+    reverseLedgerLoad(entryId)
+    setEntries((prev) => prev.filter((e) => e.id !== entryId))
+  }, [reverseLedgerLoad])
 
   const totalsOfCenter = useCallback((centerId: string) => totalsOf(entries.filter((e) => e.centerId === centerId)), [entries])
   const totalProcessMinor = useMemo(() => entries.reduce((a, e) => a + e.processMinor, 0), [entries])
