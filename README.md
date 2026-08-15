@@ -34,6 +34,32 @@ The architecture's most important rule — *"credit is governed, never implicit;
   2. **Pay the excess now** by card / mada (reserve the available, pay the shortfall)
   3. **Request a higher limit** → opens a limit-increase application and notifies the assigned sales rep (a human, finance-approved decision).
 
+### The books: one double-entry ledger
+
+The owner console's **Accounting** section is a working double-entry accounting system, not a reporting view. Every document raised anywhere in the console — a sale, a supplier invoice, a settlement, a write-off, a cost-centre load, a depreciation run — posts a balanced journal entry, and everything else is a reading of that one book.
+
+| Sub-view | What it is |
+|---|---|
+| **Chart of accounts** | The Saudi/IFRS-style chart (1 أصول · 2 خصوم · 3 حقوق ملكية · 4 إيرادات · 5 مصروفات), with live balances |
+| **Journal** | Every entry, newest first, plus the manual-entry form — which will not submit unbalanced |
+| **General ledger** | One account's movements with the balance carried down, each row naming its source document |
+| **Trial balance** | Every balance on the side it stands, and the proof the two columns agree |
+| **Financial statements** | Income statement, balance sheet and a *direct* cash flow built from what actually moved through cash and bank |
+| **VAT** | The 15% return — output tax, input tax, net due — filed and settled as real entries |
+| **Receivables & payables** | Aging bands, each checked against the control account that summarises it |
+| **Fixed assets** | Straight-line register; running the month posts a line per asset against the centre that uses it |
+| **Period close** | Pre-close checks with their own figures, then the closing entry that carries the result to retained earnings |
+| **Cost centres** | The analytical dimension every posting can be tagged with — unchanged, now tied into the ledger |
+
+Four rules are enforced by the book itself, not by the forms:
+
+1. **An unbalanced entry cannot be posted.** Debits equal credits or nothing happens.
+2. **A posted entry is never edited or deleted.** The only correction is a reversal, which posts the mirror image and leaves both on the record.
+3. **A closed period accepts nothing further.**
+4. **Control accounts must equal their subledgers** — trade receivables equals the collection list, trade payables the unpaid supplier invoices.
+
+The book opens agreeing with every screen that pre-dated it: revenue ties to `finBase.revenueMinor`, cost of goods sold to `finBase.cogsMinor`, waste to the waste log, and the two control accounts to their lists. `npm run smoke:accounting` asserts all of this — 40 invariants plus a server-side render of all twelve sub-views in both languages.
+
 ---
 
 ## Design-system fidelity
@@ -61,6 +87,15 @@ The mock data layer mirrors the production data model (money as integer **halala
 - `src/state/` — `ChannelContext` (B2C ↔ B2B pricing) and `CartContext` (totals, VAT, cold-chain handling, free-shipping threshold).
 - `src/i18n/` — locale provider (`dir`/`lang` switching, persisted) and a bilingual UI dictionary.
 
+The accounting layer sits on the same foundations:
+
+- `src/data/coa.ts` — the chart of accounts, the named account anchors the posting rules reach for, and the VAT arithmetic.
+- `src/data/ledger.ts` — journal types plus the invariants (`entryProblems`, `makeEntry`, `numberDrafts`) shared by the app and the verification script.
+- `src/lib/postingRules.ts` — the one place a business document becomes a balanced entry; the opening book and every live posting both go through it.
+- `src/lib/accounting.ts` — the pure engine: trial balance, statements, cash flow, VAT return, aging, closing entry, control-account checks.
+- `src/data/ledgerSeed.ts` — the opening book, derived from the figures the console already showed.
+- `src/state/LedgerContext.tsx` — the book itself, mounted above the orders board, the purchase desk and the cost centres.
+
 This is a **front-end prototype**: payments, ZATCA clearance, Wathq verification, and persistence are represented by faithful UI flows and mock data, ready to be wired to the real services defined in the architecture document.
 
 ---
@@ -78,6 +113,7 @@ Other scripts:
 npm run build    # typecheck + production build
 npm run lint     # tsc --noEmit
 npm run smoke    # SSR-render every route and assert it builds (no browser needed)
+npm run smoke:accounting  # rebuild the ledger and assert its accounting invariants
 ```
 
 **Try this:** open `/account` and switch the pricing mode to **Business**, then add a few bars and go to **Checkout** → choose **Account credit terms** → drag the order slider past your available credit to see the governed over-limit flow. Toggle **العربية** in the header to flip the whole experience to RTL.

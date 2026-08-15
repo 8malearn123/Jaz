@@ -13,7 +13,8 @@
     "smoke:account": "node scripts/verify-account.mjs",
     "smoke:business": "node scripts/verify-business.mjs",
     "smoke:owner": "node scripts/verify-owner.mjs",
-    "smoke:mega": "node scripts/verify-mega.mjs"
+    "smoke:mega": "node scripts/verify-mega.mjs",
+    "smoke:accounting": "node scripts/verify-accounting.mjs"
   },
   "dependencies": {
     "@fontsource/fraunces": "^5.0.20",
