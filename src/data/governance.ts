@@ -47,16 +47,16 @@ export const jobRoles: JobRoleDef[] = [
     key: 'finance_mgr',
     label: { en: 'Finance manager', ar: 'مدير مالي' },
     desc: { en: 'Credit, settlements and pricing above the accountant’s ceiling.', ar: 'الائتمان والسداد والتسعير فوق سقف المحاسب.' },
-    perms: ['reports', 'customers', 'suppliers', 'accounting'],
-    approves: ['credit_limit', 'vendor_payment', 'price_change', 'fx_rate', 'stock_take', 'waste', 'invoice_match', 'order_cancel', 'loyalty', 'batch_disposition'],
+    perms: ['reports', 'customers', 'suppliers', 'accounting', 'ledger'],
+    approves: ['credit_limit', 'vendor_payment', 'price_change', 'fx_rate', 'stock_take', 'waste', 'invoice_match', 'order_cancel', 'loyalty', 'batch_disposition', 'journal_post', 'period_close', 'account_change'],
     ceilingMinor: null,
   },
   {
     key: 'accountant',
     label: { en: 'Accountant', ar: 'محاسب' },
     desc: { en: 'Books, matching and settlements within a set ceiling.', ar: 'الدفاتر والمطابقة والسداد ضمن سقف محدد.' },
-    perms: ['purchases', 'reports', 'suppliers', 'accounting'],
-    approves: ['invoice_match', 'vendor_payment', 'waste', 'stock_take'],
+    perms: ['purchases', 'reports', 'suppliers', 'accounting', 'ledger'],
+    approves: ['invoice_match', 'vendor_payment', 'waste', 'stock_take', 'journal_post', 'account_change'],
     ceilingMinor: 5000000, // ﷼ 50,000
   },
   {
@@ -117,6 +117,8 @@ export type DecisionKind =
   // finance & stock
   | 'credit_limit' | 'stock_take' | 'waste' | 'invoice_match' | 'price_change'
   | 'fx_rate' | 'perm_grant' | 'vendor_payment' | 'order_cancel' | 'loyalty'
+  // the books
+  | 'journal_post' | 'period_close' | 'account_change'
   // production
   | 'batch_release' | 'recipe_change' | 'shelf_life' | 'batch_disposition' | 'yield_variance'
 
@@ -238,6 +240,35 @@ export const decisionPolicies: DecisionPolicy[] = [
     desc: { en: 'Changing earning or redemption rates', ar: 'تغيير نسب الاكتساب أو الاستبدال' },
     autoBelowMinor: null,
     steps: [{ roles: ['finance_mgr'] }],
+    dualAboveMinor: null,
+    requiresReason: true,
+    valueless: true,
+  },
+  {
+    kind: 'journal_post',
+    label: { en: 'Manual journal entry', ar: 'قيد يومية يدوي' },
+    desc: { en: 'Posting an entry by hand rather than from a document', ar: 'ترحيل قيد يدويًا لا من مستند' },
+    autoBelowMinor: 500000, // ﷼ 5,000 — an accrual or a correction of this size is routine
+    steps: [{ roles: ['accountant', 'finance_mgr'] }],
+    dualAboveMinor: 5000000, // ﷼ 50,000 → the owner co-signs; a hand-made entry moves real money
+    requiresReason: true,
+  },
+  {
+    kind: 'period_close',
+    label: { en: 'Period close', ar: 'إقفال فترة' },
+    desc: { en: 'Closing a period and carrying its result to retained earnings', ar: 'إقفال فترة وترحيل نتيجتها إلى الأرباح المبقاة' },
+    autoBelowMinor: null, // a close is never routine, whatever the period earned
+    steps: [{ roles: ['finance_mgr'] }],
+    dualAboveMinor: null,
+    requiresReason: false,
+    valueless: true,
+  },
+  {
+    kind: 'account_change',
+    label: { en: 'Chart of accounts change', ar: 'تعديل دليل الحسابات' },
+    desc: { en: 'Adding or deactivating an account in the chart', ar: 'إضافة حساب أو إيقافه في الدليل' },
+    autoBelowMinor: null,
+    steps: [{ roles: ['accountant', 'finance_mgr'] }],
     dualAboveMinor: null,
     requiresReason: true,
     valueless: true,

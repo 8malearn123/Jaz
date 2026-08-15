@@ -14,8 +14,24 @@ import { useCostCenters } from '@/state/CostCenterContext'
 import { openCostCenterReportPdf } from '@/lib/costCenterPdf'
 import { cn } from '@/lib/cn'
 import { PanelHead, StatCard, Pill, FilterChips, SegTabs, UtilBar } from './_shared'
+import { ChartOfAccounts } from './accounting/ChartOfAccounts'
+import { JournalPanel } from './accounting/JournalPanel'
+import { GeneralLedger } from './accounting/GeneralLedger'
+import { TrialBalance } from './accounting/TrialBalance'
+import { FinancialStatements } from './accounting/FinancialStatements'
+import { VatReturn } from './accounting/VatReturn'
+import { AgingPanel } from './accounting/AgingPanel'
+import { FixedAssets } from './accounting/FixedAssets'
+import { PeriodClose } from './accounting/PeriodClose'
 
-export type AccountingView = 'centers' | 'entries' | 'reports'
+/**
+ * The accounting section has two halves that meet in the general ledger: the book itself
+ * — chart, journal, ledger, statements, tax, receivables, assets and the close — and the
+ * cost centres, which carry the analytical dimension every posting can be tagged with.
+ */
+export type AccountingView =
+  | 'chart' | 'journal' | 'ledger' | 'trial' | 'statements' | 'vat' | 'aging' | 'assets' | 'close'
+  | 'centers' | 'entries' | 'reports'
 
 /* ── parsers (Arabic digits tolerated, like every other owner form) ── */
 const parseDecimal = (s: string) => {
@@ -27,18 +43,27 @@ const parseMinor = (s: string) => {
   return Math.max(0, (parseInt(whole || '0', 10) || 0) * 100 + (parseInt((frac + '00').slice(0, 2), 10) || 0))
 }
 
-/** Accounting — cost centres, their processes, the postings they collect and the PDF report. */
-export function OwnerAccounting({ view = 'centers' }: { view?: AccountingView }) {
+/** Accounting — the double-entry book, and the cost centres that dimension it. */
+export function OwnerAccounting({ view = 'chart' }: { view?: AccountingView }) {
   const { pick } = useLocale()
   return (
     <div className="flex flex-col gap-lg">
       <PanelHead
         title={pick({ en: 'Accounting', ar: 'المحاسبة' })}
         subtitle={pick({
-          en: 'Cost centres, the processes each one adds at the moment of sale and of purchase, and their reports',
-          ar: 'مراكز التكلفة، والعمليات التي يضيفها كل مركز وقت البيع ووقت الشراء، وتقاريرها',
+          en: 'One double-entry book: every sale, purchase, settlement and write-off posts to it, and the statements, the tax return and the cost centres are all readings of it',
+          ar: 'دفتر واحد بالقيد المزدوج: كل بيع وشراء وسداد وهدر يُرحَّل إليه، والقوائم المالية والإقرار الضريبي ومراكز التكلفة كلها قراءات له',
         })}
       />
+      {view === 'chart' && <ChartOfAccounts />}
+      {view === 'journal' && <JournalPanel />}
+      {view === 'ledger' && <GeneralLedger />}
+      {view === 'trial' && <TrialBalance />}
+      {view === 'statements' && <FinancialStatements />}
+      {view === 'vat' && <VatReturn />}
+      {view === 'aging' && <AgingPanel />}
+      {view === 'assets' && <FixedAssets />}
+      {view === 'close' && <PeriodClose />}
       {view === 'centers' && <CentersView />}
       {view === 'entries' && <EntriesView />}
       {view === 'reports' && <ReportsView />}

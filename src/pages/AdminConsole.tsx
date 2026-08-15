@@ -41,6 +41,7 @@ import { OwnerVendors, type VendorView } from './admin/owner/OwnerVendors'
 import { OwnerBrand } from './admin/owner/OwnerBrand'
 import { OwnerAccounting, type AccountingView } from './admin/owner/OwnerAccounting'
 import { CostCenterProvider } from '@/state/CostCenterContext'
+import { LedgerProvider } from '@/state/LedgerContext'
 
 type Section =
   | 'overview' | 'credit' | 'invoicing' | 'accounts' | 'pipeline' | 'performance' | 'support' | 'catalogue' | 'audit' | 'users'
@@ -100,11 +101,21 @@ const APPROVAL_VIEWS: SubView[] = [
   { id: 'inbox', label: { en: 'Awaiting signature', ar: 'بانتظار التوقيع' } },
   { id: 'policies', label: { en: 'Approval chains', ar: 'سلاسل الاعتماد' } },
 ]
-// Accounting: define the cost centres, read their postings, print their reports.
+// Accounting: the double-entry book first — chart, journal, ledger, then what is read off
+// it — and the cost centres that dimension every posting last.
 const ACCOUNTING_VIEWS: SubView[] = [
+  { id: 'chart', label: { en: 'Chart of accounts', ar: 'دليل الحسابات' } },
+  { id: 'journal', label: { en: 'Journal', ar: 'دفتر اليومية' } },
+  { id: 'ledger', label: { en: 'General ledger', ar: 'الأستاذ العام' } },
+  { id: 'trial', label: { en: 'Trial balance', ar: 'ميزان المراجعة' } },
+  { id: 'statements', label: { en: 'Financial statements', ar: 'القوائم المالية' } },
+  { id: 'vat', label: { en: 'VAT', ar: 'ضريبة القيمة المضافة' } },
+  { id: 'aging', label: { en: 'Receivables & payables', ar: 'الذمم المدينة والدائنة' } },
+  { id: 'assets', label: { en: 'Fixed assets', ar: 'الأصول الثابتة' } },
+  { id: 'close', label: { en: 'Period close', ar: 'إقفال الفترة' } },
   { id: 'centers', label: { en: 'Cost centres', ar: 'مراكز التكلفة' } },
-  { id: 'entries', label: { en: 'Entries', ar: 'القيود' } },
-  { id: 'reports', label: { en: 'Reports', ar: 'التقارير' } },
+  { id: 'entries', label: { en: 'Cost centre entries', ar: 'قيود المراكز' } },
+  { id: 'reports', label: { en: 'Cost centre reports', ar: 'تقارير المراكز' } },
 ]
 const SUB_NAVS: Partial<Record<Section, SubView[]>> = {
   owner_supply: SUPPLY_VIEWS,
@@ -126,6 +137,7 @@ const PERM_SECTIONS: Record<TeamPermission, Section> = {
   suppliers: 'owner_vendors',
   reports: 'owner_supply',
   accounting: 'owner_accounting',
+  ledger: 'owner_accounting',
 }
 
 const ACCESS: Record<RoleId, Section[]> = {
@@ -200,8 +212,10 @@ export function AdminConsole() {
   return (
     <StepUpGate id={activeEmployee ? `emp-${activeEmployee.id}` : role} required={isPrivileged && !activeEmployee}>
      <ToastProvider>
-      {/* Cost centres sit above the owner state: the accounting section defines them,
-          the orders board and the purchase desk post against them. */}
+      {/* The book sits above everything that raises a document: the accounting section
+          reads it, and the orders board, the purchase desk and the cost centres all post
+          into it. Cost centres come next, because posting a load is itself an entry. */}
+      <LedgerProvider>
       <CostCenterProvider>
       <OwnerStateProvider>
       <AccountShell
@@ -232,11 +246,12 @@ export function AdminConsole() {
         {active === 'owner_team' && <OwnerTeam />}
         {active === 'owner_catalog' && <OwnerCatalog view={(sub ?? 'b2c') as ProdChannel} />}
         {active === 'owner_vendors' && <OwnerVendors view={(sub ?? 'accounts') as VendorView} />}
-        {active === 'owner_accounting' && <OwnerAccounting view={(sub ?? 'centers') as AccountingView} />}
+        {active === 'owner_accounting' && <OwnerAccounting view={(sub ?? 'chart') as AccountingView} />}
         {active === 'owner_brand' && <OwnerBrand />}
       </AccountShell>
       </OwnerStateProvider>
       </CostCenterProvider>
+      </LedgerProvider>
      </ToastProvider>
     </StepUpGate>
   )

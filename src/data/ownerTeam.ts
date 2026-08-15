@@ -6,7 +6,7 @@ import type { JobRole } from './governance'
 
 export type TeamPermission =
   | 'orders' | 'purchases' | 'raw' | 'production' | 'waste'
-  | 'products' | 'customers' | 'suppliers' | 'reports' | 'accounting'
+  | 'products' | 'customers' | 'suppliers' | 'reports' | 'accounting' | 'ledger'
 
 export interface TeamPermDef { key: TeamPermission; label: Bilingual; desc: Bilingual }
 export const teamPermissions: TeamPermDef[] = [
@@ -20,6 +20,7 @@ export const teamPermissions: TeamPermDef[] = [
   { key: 'suppliers', label: { en: 'Suppliers', ar: 'الموردون' }, desc: { en: 'Suppliers directory', ar: 'دليل الموردين' } },
   { key: 'reports', label: { en: 'Reports', ar: 'التقارير' }, desc: { en: 'Stock-take reports & printing', ar: 'تقارير الجرد والطباعة' } },
   { key: 'accounting', label: { en: 'Accounting', ar: 'المحاسبة' }, desc: { en: 'Cost centres & their reports', ar: 'مراكز التكلفة وتقاريرها' } },
+  { key: 'ledger', label: { en: 'The books', ar: 'الدفاتر' }, desc: { en: 'Journal, ledger, statements & the close', ar: 'اليومية والأستاذ والقوائم والإقفال' } },
 ]
 
 export interface Employee {
