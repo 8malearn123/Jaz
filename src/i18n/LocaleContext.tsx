@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react'
 import { dict, type Locale } from './dictionary'
 
 interface LocaleContextValue {
@@ -19,6 +19,10 @@ interface LocaleContextValue {
 const currencySymbol: Record<'SAR' | 'USD', string> = { SAR: '﷼', USD: '$' }
 
 const LocaleContext = createContext<LocaleContextValue | null>(null)
+
+// The server render has no document to set a direction on, and useLayoutEffect warns
+// there; fall back to the passive effect, which never runs during renderToString anyway.
+const useBeforePaint = typeof window === 'undefined' ? useEffect : useLayoutEffect
 
 const STORAGE_KEY = 'jaz.locale'
 
@@ -41,7 +45,10 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
 
   const dir: 'ltr' | 'rtl' = locale === 'ar' ? 'rtl' : 'ltr'
 
-  useEffect(() => {
+  // Before paint, not after: index.html ships dir="ltr", and the stored locale is read
+  // synchronously above — so a returning Arabic visitor would otherwise see one frame of
+  // the whole storefront laid out left-to-right, nav order included.
+  useBeforePaint(() => {
     const root = document.documentElement
     root.lang = locale === 'ar' ? 'ar' : 'en'
     root.dir = dir

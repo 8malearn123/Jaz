@@ -8,6 +8,12 @@ const routes = [
   '/shop?flavor=rose',
   '/product/damascena-rose',
   '/product/signature-milk',
+  '/product/orchard-box-250',
+  '/product/mountain-box-250',
+  '/product/full-library-500',
+  '/gifts',
+  // The retired URL. Under StaticRouter <Navigate> renders nothing, so this only proves
+  // the route still resolves — the redirect itself is a browser/vercel.json concern.
   '/collections',
   '/corporate',
   '/heritage',

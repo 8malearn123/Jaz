@@ -11,11 +11,14 @@ import { roleIcons } from '@/components/roles/roleIcons'
 import { AccountMenu } from './AccountMenu'
 import { SearchOverlay } from './SearchOverlay'
 
+// The client's four, in their order: عن جاز | الهدايا | خدمة الشركات | تسوّق الآن.
+// The row is a plain flex under a document-level dir, so DOM order is reading order in
+// both locales — index 0 sits inline-start (leftmost in English, rightmost in Arabic).
 const navItems = [
-  { to: '/shop', key: 'nav.shop' },
-  { to: '/collections', key: 'nav.collections' },
-  { to: '/corporate', key: 'nav.corporate' },
   { to: '/heritage', key: 'nav.heritage' },
+  { to: '/gifts', key: 'nav.gifts' },
+  { to: '/corporate', key: 'nav.corporate' },
+  { to: '/shop', key: 'nav.shopNow' },
 ] as const
 
 export function Navbar() {
@@ -254,6 +257,10 @@ function MobileSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
             <NavLink
               key={item.to}
               to={item.to}
+              // Closed here, not only by the pathname effect: tapping the link for the
+              // page you are already on pushes an identical pathname, so the effect
+              // never fires and the sheet would stay open over the page.
+              onClick={onClose}
               className={({ isActive }) =>
                 cn(
                   'font-serif text-headline py-2 border-b border-hairline/60 transition-colors',
@@ -280,13 +287,11 @@ function MobileSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
               <LogOut size={16} /> {t('role.signOut')}
             </button>
           )}
+          {/* No shop button here — «تسوّق الآن» is now the last item in the list above. */}
           <button onClick={toggleLocale} className={buttonClass('secondary', 'md', 'w-full')}>
             <Globe size={16} />
             {t('lang.toggle')}
           </button>
-          <Link to="/shop" onClick={onClose} className={buttonClass('primary', 'md', 'w-full')}>
-            {t('cta.shop')}
-          </Link>
         </div>
       </div>
     </div>

@@ -365,6 +365,102 @@ const baseProducts: Product[] = [
     ],
     reviews: [],
   },
+
+  // ── Gift boxes (page 4 — الهدايا) ───────────────────────────────────────────
+  // Two 250 g boxes and one 500 g, per the client brief. Every box is filled from the
+  // same twelve bars in 25 g mini-tablets: 250 g = 10 pieces, 500 g = 20. The 500 g box
+  // is exactly the two 250 g boxes side by side, which is what sets its price.
+  // Modelled as real products, not as `collections`: only a product has variant ids, so
+  // only a product can be priced per channel and reach the cart at the price shown.
+  {
+    id: 'p-gift-orchard',
+    sku: 'JAZ-GIFT-ORCH-250',
+    slug: 'orchard-box-250',
+    type: 'gift_box',
+    line: 'signature',
+    title: { en: 'The Orchard Box', ar: 'علبة البستان' },
+    flavorId: 'rose',
+    allergens: [ALLERGEN.milk, ALLERGEN.soya, ALLERGEN.mayNuts],
+    ingredients: {
+      en: 'An assortment of milk-chocolate mini-tablets: cocoa butter, whole milk powder, cane sugar, cocoa mass, soya lecithin, natural vanilla, lavender, Damascena rose, Jazan jasmine, sun-dried papaya, Jazani mango.',
+      ar: 'تشكيلة ألواح صغيرة بالحليب: زبدة كاكاو، حليب كامل الدسم مجفف، سكر قصب، كتلة كاكاو، ليسيثين الصويا، فانيليا طبيعية، خزامى، ورد دمشقي، فُل جازان، ببايا مجففة بالشمس، مانجو جيزاني.',
+    },
+    story: {
+      en: 'Ten 25 g mini-tablets from the milk side of the library — Signature Milk, Lavender, Damascena Rose and Jazan Jasmine twice over, then Sun Papaya and Jazani Mango to close. The orchard, boxed.',
+      ar: 'عشرة ألواح صغيرة زنة ٢٥ غرامًا من الجانب الحليبي في المكتبة — الحليب التوقيعية والخزامى والورد الدمشقي وفُل جازان، مرّتين لكلٍّ منها، ثم الببايا الشمسية والمانجو الجيزاني. البستان في علبة.',
+    },
+    badges: ['bestseller'],
+    rating: 4.9,
+    reviewCount: 64,
+    occasions: ['gifting', 'eid', 'wedding'],
+    pairsWith: ['p-gift-mountain', 'p-gift-library'],
+    variants: [
+      { id: 'v-gift-orchard-250', netWeightG: 250, packaging: 'gift', requiresColdChain: true, retailPriceMinor: 16500, b2bPriceMinor: 11550, inStock: true },
+    ],
+    reviews: [
+      { author: { en: 'Reem A.', ar: 'ريم أ.' }, rating: 5, verified: true, date: '2026-06-14', body: { en: 'I sent one to my mother and kept one. The rose and the jasmine together are the whole point.', ar: 'أرسلت واحدة لأمي واحتفظت بواحدة. الورد والفُل معًا هما بيت القصيد.' } },
+    ],
+  },
+  {
+    id: 'p-gift-mountain',
+    sku: 'JAZ-GIFT-MTN-250',
+    slug: 'mountain-box-250',
+    type: 'gift_box',
+    line: 'signature',
+    title: { en: 'The Mountain Box', ar: 'علبة الجبل' },
+    flavorId: 'coffee',
+    // Milk is declared because the Khawlani Coffee tablet carries milk powder — the box
+    // is dark-forward, not dairy-free. Allergens follow the contents, never the mood.
+    allergens: [ALLERGEN.milk, ALLERGEN.soya, ALLERGEN.mayNuts],
+    ingredients: {
+      en: 'An assortment of dark-chocolate mini-tablets: cocoa mass, cane sugar, cocoa butter, soya lecithin, Khawlani coffee, milk powder, Red Sea salt, chili, sun-dried banana.',
+      ar: 'تشكيلة ألواح صغيرة داكنة: كتلة كاكاو، سكر قصب، زبدة كاكاو، ليسيثين الصويا، بن خولاني، حليب مجفف، ملح البحر الأحمر، فلفل، موز مجفف بالشمس.',
+    },
+    story: {
+      en: 'Ten 25 g mini-tablets from the dark side — Single-Origin Dark 72%, Dark 60%, Khawlani Coffee and Sea Salt twice over, then Chili and Banana. The mountain and the salt flats, boxed.',
+      ar: 'عشرة ألواح صغيرة زنة ٢٥ غرامًا من الجانب الداكن — الداكنة ٧٢٪ والداكنة ٦٠٪ والبن الخولاني والداكنة بملح البحر، مرّتين لكلٍّ منها، ثم الفلفل الحار والموز. الجبل والملّاحات في علبة.',
+    },
+    badges: ['new'],
+    rating: 4.8,
+    reviewCount: 37,
+    occasions: ['gifting', 'everyday'],
+    pairsWith: ['p-gift-orchard', 'p-gift-library'],
+    variants: [
+      { id: 'v-gift-mountain-250', netWeightG: 250, packaging: 'gift', requiresColdChain: false, retailPriceMinor: 14500, b2bPriceMinor: 10150, inStock: true },
+    ],
+    reviews: [
+      { author: { en: 'Saad Q.', ar: 'سعد ق.' }, rating: 5, verified: true, date: '2026-05-29', body: { en: 'The coffee and the sea salt in one box. I have bought it three times.', ar: 'البن وملح البحر في علبة واحدة. اشتريتها ثلاث مرات.' } },
+    ],
+  },
+  {
+    id: 'p-gift-library',
+    sku: 'JAZ-GIFT-LIB-500',
+    slug: 'full-library-500',
+    type: 'gift_box',
+    line: 'signature',
+    title: { en: 'The Full Library', ar: 'المكتبة الكاملة' },
+    flavorId: 'milk',
+    allergens: [ALLERGEN.milk, ALLERGEN.soya, ALLERGEN.mayNuts],
+    ingredients: {
+      en: 'Every ingredient in the twelve bars — milk and dark chocolate with lavender, Damascena rose, Jazan jasmine, sun-dried papaya, Jazani mango, Khawlani coffee, Red Sea salt, chili and sun-dried banana.',
+      ar: 'كل ما في الألواح الاثني عشر — شوكولاتة بالحليب وداكنة مع الخزامى والورد الدمشقي وفُل جازان والببايا المجففة بالشمس والمانجو الجيزاني والبن الخولاني وملح البحر الأحمر والفلفل والموز المجفف بالشمس.',
+    },
+    story: {
+      en: 'The whole library in one box: twenty 25 g mini-tablets across all twelve flavors — eight of them doubled, four of them once. It is the two 250 g boxes, side by side.',
+      ar: 'المكتبة كاملةً في علبة: عشرون لوحًا صغيرًا زنة ٢٥ غرامًا من النكهات الاثنتي عشرة كلّها — ثماني نكهات مرّتين، وأربع مرّةً واحدة. إنها علبتا ٢٥٠ غرامًا جنبًا إلى جنب.',
+    },
+    badges: ['bestseller'],
+    rating: 5,
+    reviewCount: 41,
+    occasions: ['gifting', 'eid', 'wedding'],
+    pairsWith: ['p-gift-orchard', 'p-gift-mountain'],
+    variants: [
+      { id: 'v-gift-library-500', netWeightG: 500, packaging: 'gift', requiresColdChain: true, retailPriceMinor: 29500, b2bPriceMinor: 20650, inStock: true },
+    ],
+    reviews: [
+      { author: { en: 'Hind M.', ar: 'هند م.' }, rating: 5, verified: true, date: '2026-06-02', body: { en: 'Twelve flavors and twelve artworks. It is the only gift I take when I travel now.', ar: 'اثنتا عشرة نكهة واثنتا عشرة لوحة. صارت الهدية الوحيدة التي أحملها في سفري.' } },
+    ],
+  },
 ]
 
 // Collector art cards — the wrapper artwork on each bar, keyed by product slug.

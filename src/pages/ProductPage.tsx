@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Minus, Plus, Check, ChevronRight, Snowflake, ShieldCheck } from 'lucide-react'
-import { useLocale } from '@/i18n/LocaleContext'
+import { useLocale, toArabicDigits } from '@/i18n/LocaleContext'
 import { useChannel } from '@/state/ChannelContext'
 import { useCart } from '@/state/CartContext'
 import { getProduct, getProductById } from '@/data/products'
@@ -15,6 +15,7 @@ import { WaveDivider } from '@/components/brand/WaveDivider'
 import { MotifGlyph } from '@/components/brand/PatternBand'
 import { NotFoundPage } from './NotFoundPage'
 import { cn, tint } from '@/lib/cn'
+import { accentLabel, artKind } from '@/lib/productDisplay'
 
 export function ProductPage() {
   const { slug } = useParams()
@@ -62,7 +63,7 @@ export function ProductPage() {
         <div className="lg:sticky lg:top-28 flex flex-col gap-md">
           <div className="relative rounded-xl overflow-hidden shadow-soft" style={{ backgroundColor: tint(flavor.accent, 14) }}>
             <div className="aspect-[4/5]">
-              <ProductArt flavorId={product.flavorId} kind={product.type === 'gift_box' ? 'box' : 'bar'} />
+              <ProductArt flavorId={product.flavorId} kind={artKind(product)} />
             </div>
             <div className="absolute top-md flex flex-col gap-xs" style={{ insetInlineStart: 16 }}>
               {product.badges.map((b) => (
@@ -75,9 +76,9 @@ export function ProductPage() {
               <WaveDivider tone="gold" height={18} />
             </div>
           </div>
-          {/* thumbnails */}
+          {/* thumbnails — a box leads with the box, a bar with the bar */}
           <div className="grid grid-cols-3 gap-sm">
-            {(['bar', 'box', 'motif'] as const).map((kind) => (
+            {(artKind(product) === 'box' ? (['box', 'bar', 'motif'] as const) : (['bar', 'box', 'motif'] as const)).map((kind) => (
               <div key={kind} className="aspect-square rounded-md overflow-hidden border border-hairline" style={{ backgroundColor: tint(flavor.accent, 10) }}>
                 {kind === 'motif' ? (
                   <div className="w-full h-full grid place-items-center" style={{ color: flavor.accent }}>
@@ -96,7 +97,7 @@ export function ProductPage() {
           <div className="flex flex-col gap-sm">
             <div className="flex items-center gap-sm">
               <span className="font-sans text-caption uppercase tracking-[0.14em]" style={{ color: flavor.accent }}>
-                {pick(flavor.name)}
+                {pick(accentLabel(product))}
               </span>
               {product.cocoaPct && (
                 <span className="font-sans text-caption text-ink-subtle">
@@ -147,7 +148,7 @@ export function ProductPage() {
                     )}
                   >
                     <span className="block text-ink font-medium">
-                      {v.netWeightG}
+                      {locale === 'ar' ? toArabicDigits(String(v.netWeightG)) : v.netWeightG}
                       {locale === 'ar' ? ' غ' : 'g'}
                     </span>
                     <span className="block text-caption text-ink-subtle mt-0.5">

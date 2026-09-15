@@ -14,6 +14,7 @@ import { ProductArt } from '@/components/brand/ProductArt'
 import { useToast } from '@/components/account/Toast'
 import { cn, tint } from '@/lib/cn'
 import { customer, statusVariant, EmptyState } from './shared'
+import { artKind } from '@/lib/productDisplay'
 
 /** Orders as compact rows — details and tracking open on demand (عرض / تتبع). */
 export function OrdersPanel() {
@@ -116,7 +117,7 @@ function OrderViewModal({ order, onClose, onInvoice, onTrack }: { order: Custome
             return (
               <Link key={it.variantId} to={`/product/${found.product.slug}`} className="flex items-center gap-sm px-md py-2.5 group">
                 <span className="w-11 h-11 rounded-md overflow-hidden border border-hairline shrink-0" style={{ backgroundColor: tint(f.accent, 14) }}>
-                  <ProductArt flavorId={found.product.flavorId} kind={found.product.type === 'gift_box' ? 'box' : 'bar'} branded={false} />
+                  <ProductArt flavorId={found.product.flavorId} kind={artKind(found.product)} branded={false} />
                 </span>
                 <span className="flex-1 font-sans text-data text-ink group-hover:text-primary-hover transition-colors">{pick(found.product.title)}</span>
                 <span className="font-sans text-caption text-ink-subtle">×{it.qty}</span>

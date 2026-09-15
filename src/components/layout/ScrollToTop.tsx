@@ -15,12 +15,17 @@ const useBeforePaint = typeof window === 'undefined' ? useEffect : useLayoutEffe
  */
 const VIEW_PARAMS = ['tab', 'section', 'sub'] as const
 
-/** The part of the URL that decides which view is on screen. */
-function viewKey(pathname: string, search: string) {
+/**
+ * The part of the URL that decides which view is on screen. The hash is in the key
+ * because a link to a place on the page you are already standing on is still a move —
+ * without it, the footer's `/corporate#apply` is a no-op for anyone already on
+ * `/corporate`, and leaving `#apply` for the bare page never returns you to the top.
+ */
+function viewKey(pathname: string, search: string, hash: string) {
   const params = new URLSearchParams(search)
   // Serialised rather than concatenated: a value carrying the separator can't
   // then read as a different view.
-  return JSON.stringify([pathname, ...VIEW_PARAMS.map((p) => params.get(p))])
+  return JSON.stringify([pathname, hash, ...VIEW_PARAMS.map((p) => params.get(p))])
 }
 
 /**
@@ -32,9 +37,9 @@ function viewKey(pathname: string, search: string) {
  * which is exactly what a Back click means.
  */
 export function ScrollToTop() {
-  const { pathname, search } = useLocation()
+  const { pathname, search, hash } = useLocation()
   const navigationType = useNavigationType()
-  const key = viewKey(pathname, search)
+  const key = viewKey(pathname, search, hash)
   const lastKey = useRef<string | null>(null)
 
   // No dependency array on purpose: the ref below is the source of truth for
@@ -46,6 +51,15 @@ export function ScrollToTop() {
     lastKey.current = key
     // First paint and history navigation both keep the browser's own position.
     if (first || navigationType === 'POP') return
+    // A link that names a place on the new page means that place, not the top of it —
+    // the browser only honours the hash on a real document load, so do it here.
+    if (hash) {
+      const target = document.getElementById(hash.slice(1))
+      if (target) {
+        target.scrollIntoView({ behavior: 'instant' as ScrollBehavior, block: 'start' })
+        return
+      }
+    }
     // Only the vertical axis — `left` is left alone so RTL pages don't jump.
     window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
   })

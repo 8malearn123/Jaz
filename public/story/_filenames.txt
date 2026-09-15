@@ -1,0 +1,40 @@
+JAZ — story photography drop folder
+===================================
+
+The story page (/heritage) is three short chapters. Two of them are written around a
+photograph. Neither photograph exists yet, and that is a valid state: each chapter sets
+a typographic plate at exactly the shape the photo will occupy, so dropping a file in
+replaces the plate on the next reload with no reflow and no code change.
+
+── Drop exactly these ──────────────────────────────────────────────────
+  george.jpg      → chapter 02, «الحرفية السويسرية». Chef George at the bench.
+                    Hands visible if you can — the chapter is about hands that know
+                    the way. Warm light, no hard flash.
+
+  selection.jpg   → chapter 01, «الانتقاء أولًا». Beans being sorted or graded.
+                    Close, shallow depth of field.
+                    IMPORTANT: nothing in the frame may identify where the beans come
+                    from — no sacks with origin marks, no farm signage, no crates with
+                    a place name. The brief is explicit: «بدون ذكر المصدر».
+
+These two filenames are the only ones the page looks for. Any other file dropped here
+is ignored — if you want a third image somewhere, say so and it gets a hook.
+
+Specs
+-----
+- Format : .jpg  (or .png / .webp — just tell Claude if it isn't .jpg)
+- Size   : ~1600px on the long edge is plenty; these are column-width, not full-bleed.
+- Crop   : portrait, ~4:5. Both chapters sit on the same grid and mirror each other
+           across the page, so matching crops keep the rhythm.
+- Colour : warm and low-contrast, to sit on the off-white canvas without shouting.
+
+Both carry real alt text from the dictionary ('heritage.ch1.imageAlt',
+'heritage.ch2.portraitAlt'). Re-shoot either with a different subject and the alt text
+needs to change with it.
+
+── Still outstanding: the paintings themselves ─────────────────────────
+Chapter 03 hangs the commissioned wrapper artwork — «اللوحات بأيدِ الفنانين». Right now
+it can only show the product photographs from /public/products, in which the painting is
+the label on the box rather than the work itself. To hang the paintings properly we need
+the artwork files: one flat, square-ish scan or export per painting, named after the bar
+it belongs to. Ask, and the gallery is repointed at them in one line.

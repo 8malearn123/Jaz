@@ -16,19 +16,22 @@ export const dict: Dict = {
   'brand.location': { en: 'Abu Arish · Jazan · Saudi Arabia', ar: 'أبو عريش · جازان · المملكة العربية السعودية' },
 
   // ── Navigation ─────────────────────────────────────────
+  // The header's four, fixed by the client: عن جاز | الهدايا | خدمة الشركات | تسوّق الآن.
+  // nav.shop stays the plain noun — breadcrumbs and the shop page's own eyebrow use it.
   'nav.shop': { en: 'Shop', ar: 'المتجر' },
-  'nav.collections': { en: 'Collections', ar: 'المجموعات' },
-  'nav.corporate': { en: 'Corporate', ar: 'الشركات' },
+  'nav.shopNow': { en: 'Shop now', ar: 'تسوّق الآن' },
+  'nav.gifts': { en: 'Gifts', ar: 'الهدايا' },
+  'nav.corporate': { en: 'For Business', ar: 'خدمة الشركات' },
   'nav.heritage': { en: 'About JAZ', ar: 'عن جاز' },
   'nav.account': { en: 'Account', ar: 'الحساب' },
   'nav.search': { en: 'Search', ar: 'بحث' },
   'nav.cart': { en: 'Cart', ar: 'السلة' },
   'nav.menu': { en: 'Menu', ar: 'القائمة' },
   'nav.signin': { en: 'Sign in', ar: 'تسجيل الدخول' },
-  'nav.business': { en: 'Business portal', ar: 'بوابة الأعمال' },
 
   // ── Common actions ─────────────────────────────────────
-  'cta.shop': { en: 'Shop the collection', ar: 'تسوّق المجموعة' },
+  'cta.shop': { en: 'Shop now', ar: 'تسوّق الآن' },
+  'cta.discoverJaz': { en: 'Discover JAZ', ar: 'تعرّف على جاز' },
   'cta.explore': { en: 'Explore', ar: 'استكشف' },
   'cta.learnMore': { en: 'Learn more', ar: 'اعرف المزيد' },
   'cta.addToCart': { en: 'Add to cart', ar: 'أضف إلى السلة' },
@@ -50,13 +53,20 @@ export const dict: Dict = {
   'badge.coldChain': { en: 'Cold-chain', ar: 'سلسلة تبريد' },
 
   // ── Home ───────────────────────────────────────────────
-  'home.hero.eyebrow': { en: 'Jazan-rooted · Saudi luxury chocolate', ar: 'من جذور جازان · شوكولاتة سعودية فاخرة' },
-  'home.hero.title': { en: 'A taste of the south,\nrefined into art.', ar: 'نكهة من الجنوب،\nمصاغة كالفن.' },
+  // The headline now opens on «من جازان», so the eyebrow no longer says it too.
+  'home.hero.eyebrow': { en: 'Saudi luxury chocolate', ar: 'شوكولاتة سعودية فاخرة' },
+  // Client-fixed hero copy — the Arabic is verbatim from the content sheet.
+  // The Arabic carries no \n on purpose: a break at the comma leaves a second line too
+  // long for the column at the clamp maximum, so it is left to wrap. The English keeps
+  // its break because the comma is where the two halves of the sentence divide.
+  // Both are worth re-checking in a browser if the clamp or max-w-xl ever changes.
+  'home.hero.title': { en: 'From Jazan,\nevery bean begins its journey.', ar: 'من جازان، تبدأ كل حبة رحلتها.' },
   'home.hero.body': {
-    en: 'Single-origin intentions, painterly packaging, and flavors drawn from the Jazan harvest — jasmine, rose, lavender, papaya. Crafted in Abu Arish, gifted across the Kingdom.',
-    ar: 'نيّةٌ صافية من منشأٍ واحد، وتغليفٌ كاللوحة، ونكهاتٌ من حصاد جازان — الفُل، الورد، الخزامى، الببايا. تُصنع في أبو عريش، وتُهدى في أنحاء المملكة.',
+    en: 'From the finest cocoa beans, with craft drawn from Switzerland and a Saudi making that beats with the spirit of Jazan, we fold the journey of the bean into chocolate — piece by piece.',
+    ar: 'من أجود حبوب الكاكاو، بحرفية مستوحاة من سويسرا، وصناعة سعودية تنبض بروح جازان، نصنع شوكولاتة، تُطوى فيها رحلة الحبة، قطعةً قطعة.',
   },
-  'home.hero.reviews': { en: 'guest reviews across the Kingdom', ar: 'تقييمًا من عملائنا في المملكة' },
+  // The flavours are Jazan's; the cocoa's origin is deliberately never claimed.
+  'home.hero.trustLeaf': { en: 'Jazan-grown flavors', ar: 'نكهات من أرض جازان' },
   'home.marquee': {
     en: 'Cold-chain delivery Kingdom-wide · ZATCA e-invoicing · Corporate gifting at scale · Bilingual concierge',
     ar: 'توصيل بسلسلة تبريد في كل المملكة · فوترة إلكترونية معتمدة من هيئة الزكاة · إهداء مؤسسي بالجملة · كونسيرج بلغتين',
@@ -64,8 +74,8 @@ export const dict: Dict = {
   'home.flavors.eyebrow': { en: 'The Flavor Library', ar: 'مكتبة النكهات' },
   'home.flavors.title': { en: 'Twelve notes of Jazan', ar: 'اثنتا عشرة نفحة من جازان' },
   'home.flavors.body': {
-    en: 'From single-origin dark to milk lifted with jasmine, rose, coffee, and sun-dried fruit — each bar is one confident idea drawn from the southern harvest.',
-    ar: 'من الداكنة أحادية المصدر إلى الحليب المطعّم بالفُل والورد والبن والفاكهة المجفّفة بالشمس — كل لوحٍ فكرةٌ واحدة واثقة من حصاد الجنوب.',
+    en: 'From the deepest dark to milk lifted with jasmine, rose, coffee, and sun-dried fruit — each bar is one confident idea drawn from the southern harvest.',
+    ar: 'من أعمق الداكنة إلى الحليب المطعّم بالفُل والورد والبن والفاكهة المجفّفة بالشمس — كل لوحٍ فكرةٌ واحدة واثقة من حصاد الجنوب.',
   },
   'home.flavors.railTitle': { en: 'The full library', ar: 'المكتبة كاملة' },
   'home.art.eyebrow': { en: 'Art on every wrapper', ar: 'فنٌّ على كل غلاف' },
@@ -76,8 +86,8 @@ export const dict: Dict = {
   },
   'home.art.by': { en: 'Artwork by', ar: 'بريشة' },
   'home.art.cta': { en: 'Shop the artist series', ar: 'تسوّق سلسلة الفنانين' },
-  'home.collections.eyebrow': { en: 'Curated Collections', ar: 'مجموعات منتقاة' },
-  'home.collections.title': { en: 'Boxed, ribboned, ready to give', ar: 'معبّأة، مزيّنة، جاهزة للإهداء' },
+  'home.gifts.eyebrow': { en: 'The Gift Boxes', ar: 'علب الإهداء' },
+  'home.gifts.title': { en: 'Boxed, ribboned, ready to give', ar: 'معبّأة، مزيّنة، جاهزة للإهداء' },
   'home.story.eyebrow': { en: 'Our Heritage', ar: 'إرثنا' },
   'home.story.title': { en: 'Grown in the south,\nmade for the world', ar: 'نشأت في الجنوب،\nوصُنعت للعالم' },
   'home.story.body': {
@@ -139,17 +149,37 @@ export const dict: Dict = {
 
   // ── Shop ───────────────────────────────────────────────
   'shop.title': { en: 'The Chocolate Library', ar: 'مكتبة الشوكولاتة' },
+  // Bars only — the gift boxes have their own page, and the copy must not promise them here.
   'shop.subtitle': {
-    en: 'Bars, boxes, and collectible gifts — priced for you and your business.',
-    ar: 'ألواح، وعلب، وهدايا مقتناة — بأسعارٍ لك ولأعمالك.',
+    en: 'Every bar in the library, priced for you and for your business. The gift boxes have a page of their own.',
+    ar: 'كل ألواح المكتبة، بأسعارٍ لك ولأعمالك. أما علب الإهداء فلها صفحتها الخاصة.',
   },
+  'shop.giftsLink': { en: 'See the gift boxes', ar: 'شاهد علب الإهداء' },
   'shop.filter.all': { en: 'All', ar: 'الكل' },
   'shop.filter.flavor': { en: 'Flavor', ar: 'النكهة' },
-  'shop.filter.type': { en: 'Type', ar: 'النوع' },
-  'shop.filter.occasion': { en: 'Occasion', ar: 'المناسبة' },
+  'shop.filter.toggle': { en: 'Filter & sort', ar: 'تصفية وترتيب' },
+  'shop.filter.reset': { en: 'Back to the full shop', ar: 'العودة إلى المتجر كاملًا' },
   'shop.results': { en: 'pieces', ar: 'قطعة' },
   'shop.sort': { en: 'Sort', ar: 'ترتيب' },
   'shop.empty': { en: 'No pieces match these filters yet.', ar: 'لا توجد قطعٌ تطابق هذه المرشحات بعد.' },
+  // Two curated sections, per the client's «الصفحة الثالثة — المنتجات». They named only
+  // the second; the first takes its heading from their reference screenshot, which reads
+  // simply "Products".
+  'shop.section.direct.title': { en: 'Products', ar: 'المنتجات' },
+  'shop.section.land.eyebrow': { en: 'From Jazan', ar: 'من جازان' },
+  'shop.section.land.title': { en: 'Flavors from one land', ar: 'نكهات من أرضٍ واحدة' },
+  // Names the deliberate repeat: the client lists فل in both sections.
+  'shop.section.land.body': {
+    en: 'Seven flavors that grew where JAZ grew. Jasmine stands here too — it belongs to both lists.',
+    ar: 'سبع نكهاتٍ من أرض جازان. والفُل حاضرٌ هنا أيضًا، فهو ينتمي إلى القائمتين.',
+  },
+  'shop.section.land.bodyPlain': { en: 'Seven flavors that grew where JAZ grew.', ar: 'سبع نكهاتٍ من أرض جازان.' },
+  'shop.section.land.alsoAbove': { en: 'Also in the list above', ar: 'وهو أيضًا في القائمة أعلاه' },
+
+  // ── Gifts (الهدايا) ────────────────────────────────────
+  // The client asked for no copy on this page, so it carries only its own name.
+  'gifts.eyebrow': { en: 'Gifting', ar: 'الإهداء' },
+  'gifts.title': { en: 'Gifts', ar: 'الهدايا' },
 
   // ── Product ────────────────────────────────────────────
   'product.flavor': { en: 'Flavor', ar: 'النكهة' },
@@ -363,36 +393,66 @@ export const dict: Dict = {
     ar: 'الحسابات الموثّقة عبر واثق تتاجر بشروط ائتمان معتمدة.',
   },
 
-  // ── Heritage ───────────────────────────────────────────
+  // ── Heritage — the story, in the client's three chapters ───
   'heritage.hero.eyebrow': { en: 'The JAZ Story', ar: 'قصة جاز' },
   'heritage.hero.title': { en: 'We come down\nfrom Jazan', ar: 'ننحدرُ\nمن جازان' },
+  'heritage.hero.lede': {
+    en: 'Three short chapters: how the bean is chosen, how it is shaped, and how it comes home as a painting.',
+    ar: 'ثلاثة فصول قصيرة: كيف تُنتقى الحبة، وكيف تُصاغ، وكيف تعود لوحةً إلى أرضها.',
+  },
+  // Chapter ledes are the client's Arabic, verbatim.
+  'heritage.ch1.title': { en: 'Selection First', ar: 'الانتقاء أولًا' },
+  'heritage.ch1.lede': {
+    en: 'We choose. With precision, and with patience, until only the finest beans reach us.',
+    ar: 'نختار. بدقة، وبصبر، حتى تصل إلينا الحبوب الأجود.',
+  },
+  'heritage.ch1.body': {
+    en: 'Nothing here is hurried. The choosing is the slow part, and it happens before anything else does.',
+    ar: 'لا شيء يُستعجل هنا. الاختيار هو الجزء البطيء، ويسبق كل ما عداه.',
+  },
+  'heritage.ch1.imageAlt': { en: 'Cocoa beans being sorted by hand', ar: 'فرز حبوب الكاكاو يدويًا' },
+  'heritage.ch1.plateEyebrow': { en: 'Chapter one', ar: 'الفصل الأول' },
+
+  'heritage.ch2.title': { en: 'Swiss Craftsmanship', ar: 'الحرفية السويسرية' },
+  'heritage.ch2.lede': {
+    en: 'In Switzerland, a craft outlives the hands that keep it. George inherited that long age, and he works every bean again with hands that know the way.',
+    ar: 'في سويسرا، للحرفية عمرٌ يتجاوز أصحابها. وجورج، وريث هذا العمر، يعيد صياغة كل حبة بيدين تعرف الطريق.',
+  },
+  'heritage.ch2.body': {
+    en: 'A discipline learned slowly and then repeated exactly, so that every bar leaves the way the one before it did.',
+    ar: 'انضباطٌ يُتعلَّم ببطء ثم يُعاد بدقّة، ليخرج كل لوحٍ كما خرج الذي قبله.',
+  },
+  'heritage.ch2.portraitAlt': { en: 'Chef George at work', ar: 'الشيف جورج أثناء العمل' },
+  'heritage.ch2.plateRole': { en: 'Chocolatier', ar: 'شوكولاتييه' },
+  'heritage.ch2.plateName': { en: 'George', ar: 'جورج' },
+  'heritage.ch2.plateNote': { en: 'Switzerland → Jazan', ar: 'سويسرا ← جازان' },
+
+  'heritage.ch3.title': { en: 'The Spirit of Jazan', ar: 'روح جازان' },
+  'heritage.ch3.lede': {
+    en: 'And in Jazan the story continues, painted by the brush of artists from its own soil. Every box a painting, every painting a box — this land in its true colors.',
+    ar: 'وفي جازان تستمر الحكاية، تُرسم بريشة فنانين من أرضها. كل علبة لوحة، وكل لوحة علبة، هذه الأرض بألوانها الحقيقية.',
+  },
+  'heritage.ch3.body': {
+    en: 'Every wrapper carries an original commissioned painting, credited on its card to the hand that made it. Here they are, exactly as they appear on the bars.',
+    ar: 'كل غلافٍ يحمل لوحةً أصلية بتكليف، تُنسَب في بطاقتها إلى مَن رسمها. وهذه هي اللوحات، كما هي على الألواح.',
+  },
+  'heritage.ch3.galleryTitle': { en: "The paintings, by the artists' own hands", ar: 'اللوحات بأيدي الفنانين' },
 
   // ── Footer ─────────────────────────────────────────────
+  // Three headings, two links each — the whole of the client's footer sheet.
   'footer.shop': { en: 'Shop', ar: 'تسوّق' },
-  'footer.about': { en: 'Maison', ar: 'المنزل' },
-  'footer.business': { en: 'Business', ar: 'الأعمال' },
-  'footer.support': { en: 'Care', ar: 'العناية' },
-  'footer.allChocolate': { en: 'All chocolate', ar: 'كل الشوكولاتة' },
-  'footer.collections': { en: 'Gift collections', ar: 'مجموعات الإهداء' },
-  'footer.giftCards': { en: 'Gift cards', ar: 'بطاقات الهدايا' },
-  'footer.subscriptions': { en: 'Subscriptions', ar: 'الاشتراكات' },
+  'footer.about': { en: 'About JAZ', ar: 'عن جاز' },
+  'footer.business': { en: 'For Business', ar: 'خدمة الشركات' },
+  'footer.allProducts': { en: 'All products', ar: 'جميع المنتجات' },
+  'footer.gifts': { en: 'Gifts', ar: 'الهدايا' },
   'footer.ourStory': { en: 'Our story', ar: 'قصتنا' },
-  'footer.artists': { en: 'The artists', ar: 'الفنانون' },
-  'footer.sustainability': { en: 'Sourcing', ar: 'المصادر' },
-  'footer.careers': { en: 'Careers', ar: 'الوظائف' },
-  'footer.corporateGifting': { en: 'Corporate gifting', ar: 'إهداء الشركات' },
-  'footer.creditAccounts': { en: 'Credit accounts', ar: 'الحسابات الائتمانية' },
-  'footer.becomeReseller': { en: 'Become a reseller', ar: 'كن موزّعًا' },
-  'footer.contact': { en: 'Contact', ar: 'تواصل معنا' },
-  'footer.shipping': { en: 'Shipping & cold-chain', ar: 'الشحن وسلسلة التبريد' },
-  'footer.returns': { en: 'Returns', ar: 'الإرجاع' },
-  'footer.privacy': { en: 'Privacy (PDPL)', ar: 'الخصوصية (نظام حماية البيانات)' },
-  'footer.newsletter': { en: 'Join the list', ar: 'انضم للقائمة' },
+  'footer.contact': { en: 'Contact us', ar: 'تواصل معنا' },
+  'footer.corporateGifting': { en: 'Corporate gifts', ar: 'هدايا الشركات' },
+  'footer.corporateOrders': { en: 'Corporate orders', ar: 'طلبات الشركات' },
   'footer.rights': {
     en: '© 2026 JAZ Chocolate Food Industries Company. All rights reserved.',
     ar: '© ٢٠٢٦ شركة جاز للصناعات الغذائية للشوكولاتة. جميع الحقوق محفوظة.',
   },
-  'footer.madeIn': { en: 'Crafted in Abu Arish, Jazan, Kingdom of Saudi Arabia', ar: 'صُنعت في أبو عريش، جازان، المملكة العربية السعودية' },
 
   // ── Misc / system ──────────────────────────────────────
   'lang.toggle': { en: 'العربية', ar: 'English' },
