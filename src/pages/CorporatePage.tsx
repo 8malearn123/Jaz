@@ -99,12 +99,7 @@ export function CorporatePage() {
       {/* ── 02 · Ledger index (capabilities) ─────────────── */}
       <section className="container-jaz py-section">
         <Reveal>
-          <SectionHeader
-            number="01"
-            eyebrow={pick({ en: 'Capabilities', ar: 'الإمكانات' })}
-            label="INDEX · الفهرس"
-            title={pick({ en: 'One catalogue, account-based trade', ar: 'كتالوج واحد، وتجارة على الحساب' })}
-          />
+          <SectionHeader title={pick({ en: 'One catalogue, account-based trade', ar: 'كتالوج واحد، وتجارة على الحساب' })} />
         </Reveal>
 
         <div className="mt-xl">
@@ -150,8 +145,6 @@ export function CorporatePage() {
             <div className="lg:col-span-5">
               <Reveal>
                 <SectionHeader
-                  number="02"
-                  eyebrow={pick({ en: 'Governed credit', ar: 'ائتمان منضبط' })}
                   title={pick({ en: 'Credit is governed,\nnever implicit', ar: 'الائتمان منضبط،\nلا ضمنيّ أبدًا' })}
                   body={pick({
                     en: 'Every account carries an explicit, auditable limit. Orders consume credit transactionally — and over-limit spending is structurally impossible.',
@@ -176,7 +169,7 @@ export function CorporatePage() {
         <div className="grid lg:grid-cols-12 gap-xl items-start">
           <div className="lg:col-span-5 flex flex-col gap-md">
             <Reveal>
-              <SectionHeader number="03" eyebrow={pick({ en: 'Apply', ar: 'التقديم' })} title={t('corp.apply.title')} body={t('corp.apply.body')} />
+              <SectionHeader title={t('corp.apply.title')} body={t('corp.apply.body')} />
             </Reveal>
             <Reveal delay={100} className="mt-sm">
               <DoubleRule />

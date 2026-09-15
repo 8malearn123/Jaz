@@ -206,13 +206,7 @@ function ShowcaseSection() {
   return (
     <section className="container-jaz py-section">
       <Reveal>
-        <SectionHeader
-          number="01"
-          eyebrow={t('home.flavors.eyebrow')}
-          label="The Flavor Library"
-          title={t('home.flavors.title')}
-          body={t('home.flavors.body')}
-        />
+        <SectionHeader title={t('home.flavors.title')} body={t('home.flavors.body')} />
       </Reveal>
 
       {/* flavor pills rail */}
@@ -308,14 +302,7 @@ function ArtSection() {
       </div>
       <div className="container-jaz relative py-section">
         <Reveal>
-          <SectionHeader
-            number="02"
-            eyebrow={t('home.art.eyebrow')}
-            label="Collector Series"
-            title={t('home.art.title')}
-            body={t('home.art.body')}
-            tone="on-dark"
-          />
+          <SectionHeader title={t('home.art.title')} body={t('home.art.body')} tone="on-dark" />
         </Reveal>
 
         <div className="mt-xl grid gap-lg md:grid-cols-3">
@@ -387,7 +374,7 @@ function GiftsSection() {
       <PatternBand motif="wave" height={64} opacity={0.12} />
       <div className="container-jaz py-section">
         <Reveal>
-          <SectionHeader number="03" eyebrow={t('home.gifts.eyebrow')} title={t('home.gifts.title')} />
+          <SectionHeader title={t('home.gifts.title')} />
         </Reveal>
 
         <div className="mt-xl grid gap-lg lg:grid-cols-2">
@@ -476,7 +463,7 @@ function HeritageSection() {
 
         <div className="order-1 lg:order-2 flex flex-col gap-lg">
           <Reveal>
-            <SectionHeader number="04" eyebrow={t('home.story.eyebrow')} title={t('home.story.title')} />
+            <SectionHeader title={t('home.story.title')} />
           </Reveal>
           <Reveal delay={80}>
             <p className="text-body-lg text-ink-muted">{t('home.story.body')}</p>
@@ -529,7 +516,7 @@ function ReviewsSection() {
     <section className="bg-surface-2 border-y border-hairline bg-grain">
       <div className="container-jaz py-section">
         <Reveal>
-          <SectionHeader number="05" eyebrow={t('home.reviews.eyebrow')} label="Testimonials" title={t('home.reviews.title')} />
+          <SectionHeader title={t('home.reviews.title')} />
         </Reveal>
 
         <div
@@ -701,14 +688,7 @@ function NewsletterSection() {
         {/* the pitch — every reason to subscribe, readable with zero interaction */}
         <div className="flex flex-col gap-lg">
           <Reveal>
-            <SectionHeader
-              number="06"
-              tone="on-dark"
-              eyebrow={t('home.letters.eyebrow')}
-              label={t('home.letters.label')}
-              title={t('home.newsletter.title')}
-              body={t('home.letters.body')}
-            />
+            <SectionHeader tone="on-dark" title={t('home.newsletter.title')} body={t('home.letters.body')} />
           </Reveal>
           <Reveal delay={80}>
             <div className="flex items-center gap-sm flex-wrap">
