@@ -12,6 +12,7 @@ import { ProductArt } from '@/components/brand/ProductArt'
 import { useToast } from '@/components/account/Toast'
 import { cn, tint } from '@/lib/cn'
 import { daysUntil, EmptyState } from './shared'
+import { artKind } from '@/lib/productDisplay'
 
 export function WishlistPanel() {
   const { t } = useLocale()
@@ -51,7 +52,7 @@ function FavouritesSection() {
           return (
             <div key={w.variantId} className="card overflow-hidden flex flex-col">
               <div className="relative aspect-square" style={{ backgroundColor: tint(f.accent, 14) }}>
-                <ProductArt flavorId={product.flavorId} kind={product.type === 'gift_box' ? 'box' : 'bar'} branded={false} />
+                <ProductArt flavorId={product.flavorId} kind={artKind(product)} branded={false} />
                 {soldOut && <span className="absolute top-sm" style={{ insetInlineStart: 10 }}><StatusBadge variant="danger" solid>{t('wishlist.soldOut')}</StatusBadge></span>}
               </div>
               <div className="p-md flex flex-col gap-xs flex-1">

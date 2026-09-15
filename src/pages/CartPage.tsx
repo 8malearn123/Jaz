@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { Minus, Plus, X, ShoppingBag, ArrowRight, Snowflake, ShieldCheck } from 'lucide-react'
-import { useLocale } from '@/i18n/LocaleContext'
+import { useLocale, toArabicDigits } from '@/i18n/LocaleContext'
 import { useCart } from '@/state/CartContext'
 import { useChannel } from '@/state/ChannelContext'
 import { variantById } from '@/data/products'
@@ -11,6 +11,7 @@ import { Eyebrow, StatusBadge } from '@/components/ui/Misc'
 import { ProductArt } from '@/components/brand/ProductArt'
 import { OrderSummary } from '@/components/ui/OrderSummary'
 import { tint } from '@/lib/cn'
+import { accentLabel, artKind } from '@/lib/productDisplay'
 
 export function CartPage() {
   const { t, pick, money, locale } = useLocale()
@@ -69,20 +70,20 @@ export function CartPage() {
                     className="w-24 h-24 sm:w-28 sm:h-28 shrink-0 rounded-lg overflow-hidden border border-hairline"
                     style={{ backgroundColor: tint(flavor.accent, 14) }}
                   >
-                    <ProductArt flavorId={product.flavorId} kind={product.type === 'gift_box' ? 'box' : 'bar'} branded={false} />
+                    <ProductArt flavorId={product.flavorId} kind={artKind(product)} branded={false} />
                   </Link>
 
                   <div className="flex-1 flex flex-col gap-xs min-w-0">
                     <div className="flex items-start justify-between gap-sm">
                       <div className="min-w-0">
                         <span className="font-sans text-caption uppercase tracking-[0.1em]" style={{ color: flavor.accent }}>
-                          {pick(flavor.name)}
+                          {pick(accentLabel(product))}
                         </span>
                         <Link to={`/product/${product.slug}`} className="block font-serif text-card-title text-ink truncate hover:text-primary-hover transition-colors">
                           {pick(product.title)}
                         </Link>
                         <span className="font-sans text-caption text-ink-subtle">
-                          {variant.netWeightG}
+                          {locale === 'ar' ? toArabicDigits(String(variant.netWeightG)) : variant.netWeightG}
                           {locale === 'ar' ? ' غ' : 'g'}
                           {variant.packaging === 'bulk_case' && ` · ${pick({ en: `Case ×${variant.caseQty}`, ar: `كرتون ×${variant.caseQty}` })}`}
                           {line.isGift && ` · ${t('cart.gift')}`}

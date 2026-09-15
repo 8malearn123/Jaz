@@ -11,8 +11,11 @@ open space — because Arabic flips the copy to the opposite side:
                      (text + CTA overlay on the RIGHT)  ← mirror of the LTR one
 
 ── Start with ONE pair, named exactly ──────────────────────────────────
-  hero-ltr.jpg
-  hero-rtl.jpg
+  hero-1-ltr.jpg
+  hero-1-rtl.jpg
+
+  (The numbering starts at 1 and must stay gapless — the loader walks 1, 2, 3… and
+   stops at the first gap. An unnumbered hero-ltr.jpg is never loaded.)
 
 ── Want a rotating set? add more numbered pairs ─────────────────────────
   hero-2-ltr.jpg / hero-2-rtl.jpg
@@ -37,3 +40,36 @@ Each pair:
   • sits behind the transparent floating header, copy in the open side
 
 Tip: convert big PNGs to JPEG (Claude does this) to keep the hero light.
+
+── Requested by the client (2026 content pass) ──────────────────────────
+One photograph, built in three planes so the image reads as the journey
+itself — the land → the craftsman → the piece:
+
+  BACKGROUND  an agricultural scene that reads as the land of Jazan
+  MIDDLE      Chef George
+  FOREGROUND  the chocolate bar, clearly the sharpest thing in the frame
+
+Name it  hero-1-ltr.jpg  +  hero-1-rtl.jpg.
+
+  ! Slot 1 is currently the coffee-harvest painting, and it is the frame the
+    page shows on first paint — which is why the client photo belongs there.
+    BEFORE dropping the new files in, rename the painting out of the way:
+        hero-1-ltr.jpg → hero-4-ltr.jpg
+        hero-1-rtl.jpg → hero-4-rtl.jpg
+    It keeps its place in the crossfade loop, it just no longer leads.
+    Nothing else needs renaming, and no code changes.
+
+Both versions, per the safe-zone rule above:
+  hero-1-ltr.jpg  English — George + the bar on the RIGHT, land open LEFT
+  hero-1-rtl.jpg  Arabic  — George + the bar on the LEFT,  land open RIGHT
+Mirror the composition; don't just flip the file (flipped faces and text read wrong).
+
+The scrim darkens the text side heavily, so keep George and the bar OUT of that
+side — the headline and the two buttons live there. The bar should be the last
+thing the eye lands on, at the bright end of the frame.
+
+Hard requirements, or the hero breaks quietly:
+  • .jpg only — the loader builds the filename with a fixed .jpg extension
+  • BOTH -ltr and -rtl must land. Only -ltr is probed, so a missing -rtl shows
+    a blank frame in Arabic and nowhere else — easy to miss.
+  • numbering stays gapless from 1 — a gap truncates the loop

@@ -1,3 +1,4 @@
 {
+  "redirects": [{ "source": "/collections", "destination": "/gifts", "permanent": true }],
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }

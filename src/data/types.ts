@@ -12,6 +12,11 @@ export interface Flavor {
   name: Bilingual
   /** Botanical / tasting note */
   note: Bilingual
+  /**
+   * The client's one line for the «نكهات من أرضٍ واحدة» section of /shop. Present only
+   * on the seven Jazan-rooted flavours; a flavour without one simply renders no caption.
+   */
+  landLine?: Bilingual
   /** Product-layer accent (hex). Not a core UI token — applied via style. */
   accent: string
   /** Foreground that reads on the accent at full strength */
@@ -67,21 +72,9 @@ export interface Product {
   rating: number
   reviewCount: number
   reviews: Review[]
-  /** Variant ids that pair well */
+  /** Product ids that pair well */
   pairsWith: string[]
   occasions: string[]
-}
-
-export interface Collection {
-  id: string
-  slug: string
-  title: Bilingual
-  kind: 'signature' | 'seasonal' | 'corporate'
-  description: Bilingual
-  accent: string
-  priceMinor: number
-  pieceCount: number
-  productIds: string[]
 }
 
 // ── B2B / Credit ──────────────────────────────────────────

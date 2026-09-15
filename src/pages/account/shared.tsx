@@ -8,6 +8,7 @@ import { ProductArt } from '@/components/brand/ProductArt'
 import { buttonClass } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { cn, tint } from '@/lib/cn'
+import { artKind } from '@/lib/productDisplay'
 
 /** Status → StatusBadge variant, shared by Overview and Orders. */
 export const statusVariant: Record<CustomerOrder['status'], 'gold' | 'success' | 'neutral'> = {
@@ -30,7 +31,7 @@ export function OrderThumb({ order, size = 14 }: { order: CustomerOrder; size?: 
       className={cn('shrink-0 rounded-md overflow-hidden border border-hairline', size === 12 ? 'w-12 h-12' : 'w-14 h-14')}
       style={{ backgroundColor: tint(flavor.accent, 14) }}
     >
-      {first && <ProductArt flavorId={first.product.flavorId} kind={first.product.type === 'gift_box' ? 'box' : 'bar'} branded={false} />}
+      {first && <ProductArt flavorId={first.product.flavorId} kind={artKind(first.product)} branded={false} />}
     </span>
   )
 }

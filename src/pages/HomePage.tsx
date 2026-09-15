@@ -1,9 +1,8 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, ArrowUpRight, Check, Copy, Leaf, Palette } from 'lucide-react'
-import { useLocale } from '@/i18n/LocaleContext'
+import { useLocale, toArabicDigits } from '@/i18n/LocaleContext'
 import { products } from '@/data/products'
-import { collections } from '@/data/collections'
 import { flavorList, flavors } from '@/data/flavors'
 import { buttonClass } from '@/components/ui/Button'
 import { SectionHeader } from '@/components/ui/SectionHeader'
@@ -15,6 +14,7 @@ import { JazanScene } from '@/components/brand/JazanScene'
 import { WaveDivider } from '@/components/brand/WaveDivider'
 import { PatternBand, MotifGlyph } from '@/components/brand/PatternBand'
 import { cn, tint } from '@/lib/cn'
+import { artKind } from '@/lib/productDisplay'
 
 /** Scroll position for subtle parallax. SSR-safe (starts at 0), honours reduced motion. */
 function useScrollY() {
@@ -74,7 +74,7 @@ export function HomePage() {
       <Marquee />
       <ShowcaseSection />
       <ArtSection />
-      <CollectionsSection />
+      <GiftsSection />
       <HeritageSection />
       <ReviewsSection />
       <NewsletterSection />
@@ -84,7 +84,7 @@ export function HomePage() {
 
 /* ─────────────────────────── Hero ─────────────────────────── */
 function Hero() {
-  const { t, pick, locale } = useLocale()
+  const { t, locale } = useLocale()
   const y = useScrollY()
   const { count, active } = useHeroCarousel()
   const [mounted, setMounted] = useState(false)
@@ -92,8 +92,6 @@ function Hero() {
     const r = requestAnimationFrame(() => setMounted(true))
     return () => cancelAnimationFrame(r)
   }, [])
-  const reviewTotal = products.reduce((s, p) => s + p.reviewCount, 0)
-  const ratingAvg = products.reduce((s, p) => s + p.rating * p.reviewCount, 0) / reviewTotal
   // Language-swapped artwork: LTR keeps the open space on the left, RTL on the right —
   // so the copy always lands on the calm side. Scrim direction follows suit.
   const side = locale === 'ar' ? 'rtl' : 'ltr'
@@ -132,7 +130,10 @@ function Hero() {
             <h1
               className={cn(
                 'font-serif text-ink-on-dark whitespace-pre-line text-balance',
-                'text-[clamp(2.8rem,7vw,5.3rem)] leading-[86px]',
+                // Ratio, not a fixed 86px: the clamp spans 2.8rem–5.3rem, so a frozen
+                // leading reads as 1.9 on a phone. Arabic carries the extra allowance.
+                'text-[clamp(2.8rem,7vw,5.3rem)]',
+                locale === 'ar' ? 'leading-[1.14]' : 'leading-[1.06]',
                 '[text-shadow:0_2px_28px_rgba(23,18,15,0.42)]',
                 locale === 'en' && 'tracking-[-0.02em]',
               )}
@@ -149,24 +150,20 @@ function Hero() {
               <ArrowRight size={16} className="rtl:rotate-180" />
             </Link>
             <Link
-              to="/collections"
+              to="/heritage"
               className="btn bg-ink-on-dark/10 backdrop-blur-sm text-ink-on-dark border border-ink-on-dark/25 hover:bg-ink-on-dark/20 hover:border-ink-on-dark/40"
             >
-              {t('nav.collections')}
+              {t('cta.discoverJaz')}
             </Link>
           </Reveal>
-          {/* trust row */}
+          {/* The star rating and the review count that used to sit here were summed from
+              the mock catalogue — a five-figure social-proof claim with no reviews behind
+              it. Gone until there is real review data; the client's hero is the headline,
+              the sentence and the two buttons. */}
           <Reveal delay={320} className="flex flex-wrap items-center gap-md pt-md mt-xs border-t border-ink-on-dark/15">
-            <div className="flex items-center gap-sm pt-md">
-              <Stars value={ratingAvg} size={15} />
-              <span className="font-sans text-data text-ink-on-dark tabular-nums">{ratingAvg.toFixed(1)}</span>
-            </div>
-            <span className="font-sans text-caption text-ink-on-dark-muted pt-md">
-              {reviewTotal.toLocaleString(locale === 'ar' ? 'ar-SA' : 'en-US')} {t('home.hero.reviews')}
-            </span>
             <span className="inline-flex items-center gap-xs font-sans text-caption text-ink-on-dark-muted pt-md">
               <Leaf size={13} className="text-primary-bright" />
-              {pick({ en: 'Jazan-grown ingredients', ar: 'مكوّنات من جازان' })}
+              {t('home.hero.trustLeaf')}
             </span>
           </Reveal>
         </div>
@@ -282,11 +279,14 @@ function ShowcaseSection() {
       </Reveal>
       <div className="mt-lg -mx-lg px-lg md:-mx-xl md:px-xl overflow-x-auto no-scrollbar">
         <div className="flex gap-lg snap-x snap-mandatory pb-xs">
-          {products.map((p, i) => (
-            <Reveal key={p.id} delay={Math.min(i, 6) * 60} className="snap-start shrink-0 w-[248px] sm:w-[268px]">
-              <ProductCard product={p} />
-            </Reveal>
-          ))}
+          {/* The rail is titled "twelve notes of Jazan" — bars only; the boxes have their own section. */}
+          {products
+            .filter((p) => p.type === 'bar')
+            .map((p, i) => (
+              <Reveal key={p.id} delay={Math.min(i, 6) * 60} className="snap-start shrink-0 w-[248px] sm:w-[268px]">
+                <ProductCard product={p} />
+              </Reveal>
+            ))}
         </div>
       </div>
     </section>
@@ -371,36 +371,43 @@ function ArtSection() {
   )
 }
 
-/* ─────────────────────────── Collections ─────────────────────────── */
-function CollectionsSection() {
-  const { t, pick, money } = useLocale()
-  const [feature, ...rest] = collections
+/* ─────────────────────────── Gifts ─────────────────────────── */
+function GiftsSection() {
+  const { t, pick, money, locale } = useLocale()
+  const boxes = products.filter((p) => p.type === 'gift_box')
+  // The 500 g box leads because it is the two 250 g boxes together — the page's own point.
+  const feature = boxes.find((p) => p.id === 'p-gift-library') ?? boxes[0]
+  const rest = boxes.filter((p) => p.id !== feature.id)
+  const featureFlavor = flavors[feature.flavorId]
+  const featureVariant = feature.variants[0]
+  const gram = locale === 'ar' ? ' غ' : 'g'
+  const weight = (g: number) => `${locale === 'ar' ? toArabicDigits(String(g)) : g}${gram}`
   return (
     <section className="bg-surface-2 border-y border-hairline bg-grain">
       <PatternBand motif="wave" height={64} opacity={0.12} />
       <div className="container-jaz py-section">
         <Reveal>
-          <SectionHeader number="03" eyebrow={t('home.collections.eyebrow')} label="Gifting" title={t('home.collections.title')} />
+          <SectionHeader number="03" eyebrow={t('home.gifts.eyebrow')} title={t('home.gifts.title')} />
         </Reveal>
 
         <div className="mt-xl grid gap-lg lg:grid-cols-2">
-          {/* feature collection */}
+          {/* feature — the 500 g box */}
           <Reveal>
             <Link
-              to="/collections"
+              to={`/product/${feature.slug}`}
               className="group relative block rounded-xl overflow-hidden h-full min-h-[420px] shadow-lift card-hover"
-              style={{ backgroundColor: feature.accent }}
+              style={{ backgroundColor: featureFlavor.accent }}
             >
               <div className="absolute inset-0 opacity-90 transition-transform duration-700 ease-editorial group-hover:scale-[1.03]">
-                <ProductArt flavorId="rose" kind="box" />
+                <ProductArt flavorId={feature.flavorId} kind="box" />
               </div>
               <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(23,18,15,0.78), rgba(23,18,15,0.12) 60%, transparent)' }} />
               <div className="absolute inset-x-0 bottom-0 p-xl flex flex-col gap-sm text-ink-on-dark">
-                <span className="eyebrow text-primary-bright">{t(`badge.${feature.kind === 'corporate' ? 'limited' : 'new'}`)}</span>
+                <span className="eyebrow text-primary-bright">{weight(featureVariant.netWeightG)}</span>
                 <h3 className="font-serif text-display-md text-ink-on-dark">{pick(feature.title)}</h3>
-                <p className="text-body-sm text-ink-on-dark-muted max-w-md">{pick(feature.description)}</p>
+                <p className="text-body-sm text-ink-on-dark-muted max-w-md line-clamp-3">{pick(feature.story)}</p>
                 <div className="flex items-center gap-md mt-xs">
-                  <span className="font-sans text-body text-ink-on-dark">{money(feature.priceMinor)}</span>
+                  <span className="font-sans text-body text-ink-on-dark">{money(featureVariant.retailPriceMinor)}</span>
                   <span className="inline-flex items-center gap-xs font-sans text-button uppercase text-primary-bright">
                     {t('cta.explore')} <ArrowUpRight size={15} className="rtl:rotate-[-90deg]" />
                   </span>
@@ -409,29 +416,37 @@ function CollectionsSection() {
             </Link>
           </Reveal>
 
-          {/* rest list */}
-          <div className="grid gap-lg">
-            {rest.map((c, i) => (
-              <Reveal key={c.id} delay={i * 80}>
-                <Link to="/collections" className="group card card-hover flex items-stretch overflow-hidden min-h-[124px]">
-                  <div className="w-32 shrink-0 relative overflow-hidden" style={{ backgroundColor: tint(c.accent, 16) }}>
-                    <div className="absolute inset-0 transition-transform duration-700 ease-editorial group-hover:scale-[1.06]">
-                      <ProductArt flavorId={c.id === 'c-harvest-ribbon' ? 'mango' : c.id === 'c-corporate-crescent' ? 'coffee' : 'milk'} kind="box" />
+          {/* the two 250 g boxes */}
+          <div className="grid gap-lg content-start">
+            {rest.map((p, i) => {
+              const v = p.variants[0]
+              return (
+                <Reveal key={p.id} delay={i * 80}>
+                  <Link to={`/product/${p.slug}`} className="group card card-hover flex items-stretch overflow-hidden min-h-[124px]">
+                    <div className="w-32 shrink-0 relative overflow-hidden" style={{ backgroundColor: tint(flavors[p.flavorId].accent, 16) }}>
+                      <div className="absolute inset-0 transition-transform duration-700 ease-editorial group-hover:scale-[1.06]">
+                        <ProductArt flavorId={p.flavorId} kind="box" />
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex flex-col justify-center gap-xxs p-lg flex-1">
-                    <div className="flex items-center justify-between gap-sm">
-                      <h4 className="font-serif text-card-title text-ink">{pick(c.title)}</h4>
-                      <ArrowUpRight size={18} className="text-ink-subtle group-hover:text-primary-hover transition-colors rtl:rotate-[-90deg]" />
+                    <div className="flex flex-col justify-center gap-xxs p-lg flex-1">
+                      <div className="flex items-center justify-between gap-sm">
+                        <h4 className="font-serif text-card-title text-ink">{pick(p.title)}</h4>
+                        <ArrowUpRight size={18} className="text-ink-subtle group-hover:text-primary-hover transition-colors rtl:rotate-[-90deg]" />
+                      </div>
+                      <p className="text-body-sm text-ink-muted line-clamp-2">{pick(p.story)}</p>
+                      <span className="font-sans text-data text-ink-subtle mt-xxs">
+                        {money(v.retailPriceMinor)} · {weight(v.netWeightG)}
+                      </span>
                     </div>
-                    <p className="text-body-sm text-ink-muted line-clamp-2">{pick(c.description)}</p>
-                    <span className="font-sans text-data text-ink-subtle mt-xxs">
-                      {money(c.priceMinor)} · {c.pieceCount} {t('shop.results')}
-                    </span>
-                  </div>
-                </Link>
-              </Reveal>
-            ))}
+                  </Link>
+                </Reveal>
+              )
+            })}
+            <Reveal delay={160}>
+              <Link to="/gifts" className="link-gold">
+                {t('cta.viewAll')} <ArrowRight size={15} className="rtl:rotate-180" />
+              </Link>
+            </Reveal>
           </div>
         </div>
       </div>
@@ -562,7 +577,7 @@ function ReviewCard({ review, product }: { review: ReviewProduct['reviews'][numb
       {/* product photo */}
       <div className="relative aspect-[16/10] overflow-hidden" style={{ backgroundColor: tint(flavor.accent, 12) }}>
         <div className="absolute inset-0 transition-transform duration-700 ease-editorial group-hover:scale-[1.04]">
-          <ProductArt flavorId={product.flavorId} />
+          <ProductArt flavorId={product.flavorId} kind={artKind(product)} />
         </div>
       </div>
       {/* gold wave seam — the house signature */}

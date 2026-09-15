@@ -2,10 +2,10 @@ import { useState } from 'react'
 import { ChevronDown, Check } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { products } from '@/data/products'
-import { flavors } from '@/data/flavors'
 import type { FlavorId, ProductType } from '@/data/types'
 import { ProductArt } from '@/components/brand/ProductArt'
 import { cn } from '@/lib/cn'
+import { accentLabel } from '@/lib/productDisplay'
 
 const thumbKind = (type: ProductType): 'bar' | 'box' => (type === 'bar' ? 'bar' : 'box')
 
@@ -48,7 +48,7 @@ export function ProductPicker({ value, onChange, placeholder, className }: Produ
             <ProductThumb flavorId={selected.flavorId} type={selected.type} className="w-10 h-10" />
             <span className="flex-1 min-w-0">
               <span className="block font-sans text-data text-ink truncate">{pick(selected.title)}</span>
-              <span className="block font-sans text-caption text-ink-subtle truncate">{pick(flavors[selected.flavorId].name)}</span>
+              <span className="block font-sans text-caption text-ink-subtle truncate">{pick(accentLabel(selected))}</span>
             </span>
           </>
         ) : (
@@ -72,7 +72,7 @@ export function ProductPicker({ value, onChange, placeholder, className }: Produ
                     <ProductThumb flavorId={p.flavorId} type={p.type} className="w-10 h-10" />
                     <span className="flex-1 min-w-0">
                       <span className="block font-sans text-data text-ink truncate">{pick(p.title)}</span>
-                      <span className="block font-sans text-caption text-ink-subtle truncate">{pick(flavors[p.flavorId].name)} · {money(p.variants[0].b2bPriceMinor)}</span>
+                      <span className="block font-sans text-caption text-ink-subtle truncate">{pick(accentLabel(p))} · {money(p.variants[0].b2bPriceMinor)}</span>
                     </span>
                     {isSel && <Check size={15} className="text-primary-hover shrink-0" />}
                   </button>

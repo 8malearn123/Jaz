@@ -14,12 +14,12 @@ A complete, navigable storefront that demonstrates both commerce modes from one 
 
 | Area | Route | Highlights |
 |---|---|---|
-| **Home** | `/` | Cinematic dark hero, flavor library, curated collections, heritage story, corporate band, newsletter |
-| **Shop** | `/shop` | Channel-aware pricing, flavor / type filters, sorting, deep-linkable `?flavor=` |
+| **Home** | `/` | Cinematic dark hero, flavor library, the gift boxes, the story, corporate band, newsletter |
+| **Shop** | `/shop` | Two curated sections — the bars stated plainly, then «نكهات من أرضٍ واحدة» — with filter/sort folded away and deep-linkable `?flavor=` |
 | **Product** | `/product/:slug` | Variants (weight × packaging), story, ingredients & allergens, collectible **art-card** crediting the artist, verified reviews, cold-chain notice |
-| **Collections** | `/collections` | Gift-box features with "add the box" curation |
+| **Gifts** | `/gifts` | The three gift boxes — two of 250 g, one of 500 g (`/collections` redirects here) |
 | **Corporate** | `/corporate` | B2B value props, the *governed-credit* explainer, price-list tiers, Wathq/ZATCA account application |
-| **Heritage** | `/heritage` | The region, the five Jazan motifs, the commissioned artists, sourcing & cold-chain |
+| **Story** | `/heritage` | The three chapters — the selection, the Swiss hand, the spirit of Jazan — closing on the commissioned wrapper paintings |
 | **Cart** | `/cart` | Channel-aware lines, cold-chain handling, VAT 15%, free-shipping threshold |
 | **Checkout** | `/checkout` | Per-channel payment methods **and the signature B2B governed-credit flow** |
 | **Business portal** | `/account` | Credit account dashboard — limit / available / reserved / outstanding, append-only ledger, statements, limit-increase request |
@@ -83,7 +83,7 @@ All design tokens live in [`tailwind.config.js`](./tailwind.config.js) and [`src
 
 The mock data layer mirrors the production data model (money as integer **halalas**, bilingual `{ en, ar }` fields, VAT at 15%):
 
-- `src/data/` — products, variants, flavors, collections, and a B2B `Organization` with a `CreditAccount`, append-only ledger, and statements.
+- `src/data/` — products (bars and gift boxes), variants, flavors, and a B2B `Organization` with a `CreditAccount`, append-only ledger, and statements.
 - `src/state/` — `ChannelContext` (B2C ↔ B2B pricing) and `CartContext` (totals, VAT, cold-chain handling, free-shipping threshold).
 - `src/i18n/` — locale provider (`dir`/`lang` switching, persisted) and a bilingual UI dictionary.
 

@@ -1,10 +1,10 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { Layout } from '@/components/layout/Layout'
 import { ScrollToTop } from '@/components/layout/ScrollToTop'
 import { HomePage } from '@/pages/HomePage'
 import { ShopPage } from '@/pages/ShopPage'
 import { ProductPage } from '@/pages/ProductPage'
-import { CollectionsPage } from '@/pages/CollectionsPage'
+import { GiftsPage } from '@/pages/GiftsPage'
 import { CorporatePage } from '@/pages/CorporatePage'
 import { HeritagePage } from '@/pages/HeritagePage'
 import { CartPage } from '@/pages/CartPage'
@@ -31,7 +31,9 @@ export default function App() {
           <Route index element={<HomePage />} />
           <Route path="shop" element={<ShopPage />} />
           <Route path="product/:slug" element={<ProductPage />} />
-          <Route path="collections" element={<CollectionsPage />} />
+          <Route path="gifts" element={<GiftsPage />} />
+          {/* The gifts page used to live at /collections — keep the old URL alive. */}
+          <Route path="collections" element={<Navigate to="/gifts" replace />} />
           <Route path="corporate" element={<CorporatePage />} />
           <Route path="heritage" element={<HeritagePage />} />
           <Route path="cart" element={<CartPage />} />

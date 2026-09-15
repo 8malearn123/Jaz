@@ -8,6 +8,7 @@ import { products } from '@/data/products'
 import { flavors, flavorList } from '@/data/flavors'
 import { ProductArt } from '@/components/brand/ProductArt'
 import { tint } from '@/lib/cn'
+import { accentLabel, artKind } from '@/lib/productDisplay'
 
 export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t, pick, money, locale } = useLocale()
@@ -34,13 +35,18 @@ export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () =>
     const query = q.trim().toLowerCase()
     if (!query) return products.filter((p) => p.badges.includes('bestseller')).slice(0, 4)
     return products
-      .filter((p) =>
-        p.title.en.toLowerCase().includes(query) ||
-        p.title.ar.includes(q.trim()) ||
-        flavors[p.flavorId].name.en.toLowerCase().includes(query) ||
-        flavors[p.flavorId].name.ar.includes(q.trim()) ||
-        p.sku.toLowerCase().includes(query),
-      )
+      .filter((p) => {
+        // A box is searched by what it is, not by the flavour that supplies its art.
+        const label = accentLabel(p)
+        return (
+          p.title.en.toLowerCase().includes(query) ||
+          p.title.ar.includes(q.trim()) ||
+          label.en.toLowerCase().includes(query) ||
+          label.ar.includes(q.trim()) ||
+          (p.type === 'gift_box' && ('gift'.includes(query) || 'هدايا'.includes(q.trim()) || 'علبة'.includes(q.trim()))) ||
+          p.sku.toLowerCase().includes(query)
+        )
+      })
       .slice(0, 6)
   }, [q])
 
@@ -86,11 +92,11 @@ export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () =>
                       className="flex items-center gap-md p-sm rounded-lg hover:bg-surface-2 transition-colors group"
                     >
                       <span className="w-12 h-12 rounded-md overflow-hidden border border-hairline shrink-0" style={{ backgroundColor: tint(f.accent, 14) }}>
-                        <ProductArt flavorId={p.flavorId} kind={p.type === 'gift_box' ? 'box' : 'bar'} branded={false} />
+                        <ProductArt flavorId={p.flavorId} kind={artKind(p)} branded={false} />
                       </span>
                       <span className="flex-1 min-w-0">
                         <span className="block font-serif text-card-title text-ink truncate group-hover:text-primary-hover transition-colors">{pick(p.title)}</span>
-                        <span className="block font-sans text-caption text-ink-subtle">{pick(f.name)}</span>
+                        <span className="block font-sans text-caption text-ink-subtle">{pick(accentLabel(p))}</span>
                       </span>
                       <span className="font-sans text-data text-ink tabular-nums shrink-0" dir={locale === 'ar' ? 'rtl' : 'ltr'}>{money(price)}</span>
                     </Link>
