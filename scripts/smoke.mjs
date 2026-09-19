@@ -17,6 +17,7 @@ const routes = [
   '/collections',
   '/corporate',
   '/heritage',
+  '/art',
   '/cart',
   '/checkout',
   '/account',

@@ -13,6 +13,7 @@ import { ForecastProvider } from '@/state/ForecastContext'
 import { TeamProvider } from '@/state/TeamContext'
 import { GovernanceProvider } from '@/state/GovernanceContext'
 import { BrandProvider } from '@/state/BrandContext'
+import { ArtworksProvider } from '@/state/ArtworksContext'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -29,9 +30,12 @@ createRoot(document.getElementById('root')!).render(
               {/* Governance sits above the console: it needs to know who is signed in. */}
               <GovernanceProvider>
                 <BrandProvider>
-                  <BrowserRouter>
-                    <App />
-                  </BrowserRouter>
+                  {/* The gallery is authored in the console and hung on /art — one state above both. */}
+                  <ArtworksProvider>
+                    <BrowserRouter>
+                      <App />
+                    </BrowserRouter>
+                  </ArtworksProvider>
                 </BrandProvider>
               </GovernanceProvider>
             </TeamProvider>

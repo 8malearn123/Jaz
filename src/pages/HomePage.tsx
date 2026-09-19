@@ -312,7 +312,7 @@ function ArtSection() {
             return (
               <Reveal key={p.id} delay={i * 90}>
                 <Link
-                  to={`/product/${p.slug}`}
+                  to="/art"
                   className="group block rounded-xl overflow-hidden border border-hairline-dark bg-surface-dark-1 card-hover h-full"
                 >
                   <div className="relative aspect-[4/5] overflow-hidden" style={{ backgroundColor: tint(flavor.accent, 10) }}>
@@ -345,7 +345,7 @@ function ArtSection() {
 
         <Reveal delay={120} className="mt-xl flex justify-center">
           <Link
-            to="/shop"
+            to="/art"
             className="btn bg-transparent text-ink-on-dark border border-hairline-dark hover:border-primary/60 hover:text-primary-bright"
           >
             {t('home.art.cta')}

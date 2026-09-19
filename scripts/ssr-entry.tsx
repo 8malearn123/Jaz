@@ -7,6 +7,7 @@ import { CartProvider } from '../src/state/CartContext'
 import { BillingProvider } from '../src/state/BillingContext'
 import { TeamProvider } from '../src/state/TeamContext'
 import { BrandProvider } from '../src/state/BrandContext'
+import { ArtworksProvider } from '../src/state/ArtworksContext'
 
 // Render any route to an HTML string — used only by the smoke test.
 // Provider tree mirrors src/main.tsx so components that read app context render.
@@ -18,9 +19,11 @@ export function render(url: string): string {
           <BillingProvider>
             <TeamProvider>
               <BrandProvider>
-                <StaticRouter location={url}>
-                  <App />
-                </StaticRouter>
+                <ArtworksProvider>
+                  <StaticRouter location={url}>
+                    <App />
+                  </StaticRouter>
+                </ArtworksProvider>
               </BrandProvider>
             </TeamProvider>
           </BillingProvider>

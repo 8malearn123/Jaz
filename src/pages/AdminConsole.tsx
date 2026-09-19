@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import {
   LayoutGrid, Wallet, FileText, Building2, Headset, PenTool, ScrollText, Users, Workflow,
   X, Check, RefreshCw, QrCode, Lock, ArrowRight, ShieldCheck, ShieldAlert, Target,
-  Gauge, ClipboardList, Factory, UsersRound, UserCog, LayoutList, Handshake, Palette, Calculator,
+  Gauge, ClipboardList, Factory, UsersRound, UserCog, LayoutList, Frame, Handshake, Palette, Calculator,
 } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useChannel } from '@/state/ChannelContext'
@@ -37,6 +37,7 @@ import { jobRoleOf } from '@/data/governance'
 import { OwnerCustomers } from './admin/owner/OwnerCustomers'
 import { OwnerTeam } from './admin/owner/OwnerTeam'
 import { OwnerCatalog } from './admin/owner/OwnerCatalog'
+import { OwnerArtworks, type ArtView } from './admin/owner/OwnerArtworks'
 import { OwnerVendors, type VendorView } from './admin/owner/OwnerVendors'
 import { OwnerBrand } from './admin/owner/OwnerBrand'
 import { OwnerAccounting, type AccountingView } from './admin/owner/OwnerAccounting'
@@ -46,7 +47,7 @@ import { LedgerProvider } from '@/state/LedgerContext'
 type Section =
   | 'overview' | 'credit' | 'invoicing' | 'accounts' | 'pipeline' | 'performance' | 'support' | 'catalogue' | 'audit' | 'users'
   // Owner operational sections (owner role only)
-  | 'owner_exec' | 'owner_orders' | 'owner_supply' | 'owner_customers' | 'owner_team' | 'owner_catalog' | 'owner_vendors' | 'owner_accounting' | 'owner_brand' | 'owner_approvals' | 'owner_audit'
+  | 'owner_exec' | 'owner_orders' | 'owner_supply' | 'owner_customers' | 'owner_team' | 'owner_catalog' | 'owner_art' | 'owner_vendors' | 'owner_accounting' | 'owner_brand' | 'owner_approvals' | 'owner_audit'
 
 const SECTION_META: Record<Section, { key: string; icon: NonNullable<TabDef['icon']> }> = {
   overview: { key: 'admin.section.overview', icon: LayoutGrid },
@@ -65,6 +66,7 @@ const SECTION_META: Record<Section, { key: string; icon: NonNullable<TabDef['ico
   owner_customers: { key: 'owner.section.customers', icon: UsersRound },
   owner_team: { key: 'owner.section.team', icon: UserCog },
   owner_catalog: { key: 'owner.section.catalog', icon: LayoutList },
+  owner_art: { key: 'owner.section.art', icon: Frame },
   owner_vendors: { key: 'owner.section.vendors', icon: Handshake },
   owner_accounting: { key: 'owner.section.accounting', icon: Calculator },
   owner_brand: { key: 'owner.section.brand', icon: Palette },
@@ -72,7 +74,7 @@ const SECTION_META: Record<Section, { key: string; icon: NonNullable<TabDef['ico
   owner_audit: { key: 'owner.section.audit', icon: ScrollText },
 }
 
-const OWNER_SECTIONS: Section[] = ['owner_exec', 'owner_orders', 'owner_supply', 'owner_customers', 'owner_team', 'owner_approvals', 'owner_catalog', 'owner_vendors', 'owner_accounting', 'owner_brand', 'owner_audit']
+const OWNER_SECTIONS: Section[] = ['owner_exec', 'owner_orders', 'owner_supply', 'owner_customers', 'owner_team', 'owner_approvals', 'owner_catalog', 'owner_art', 'owner_vendors', 'owner_accounting', 'owner_brand', 'owner_audit']
 
 // Owner sections that expand into nested sidebar sub-tabs, mapped to their sub-views (id + bilingual label).
 // The active sub-view is carried in a shared `?sub=` URL param and passed down to the panel as `view`.
@@ -117,10 +119,16 @@ const ACCOUNTING_VIEWS: SubView[] = [
   { id: 'entries', label: { en: 'Cost centre entries', ar: 'قيود المراكز' } },
   { id: 'reports', label: { en: 'Cost centre reports', ar: 'تقارير المراكز' } },
 ]
+// The gallery: the works themselves, then what collectors have asked for.
+const ART_VIEWS: SubView[] = [
+  { id: 'works', label: { en: 'Paintings', ar: 'اللوحات' } },
+  { id: 'requests', label: { en: 'Acquisition requests', ar: 'طلبات الاقتناء' } },
+]
 const SUB_NAVS: Partial<Record<Section, SubView[]>> = {
   owner_supply: SUPPLY_VIEWS,
   owner_approvals: APPROVAL_VIEWS,
   owner_catalog: CHANNEL_VIEWS,
+  owner_art: ART_VIEWS,
   owner_vendors: VENDOR_VIEWS,
   owner_accounting: ACCOUNTING_VIEWS,
 }
@@ -244,7 +252,8 @@ export function AdminConsole() {
         {active === 'owner_audit' && <OwnerAudit />}
         {active === 'owner_customers' && <OwnerCustomers />}
         {active === 'owner_team' && <OwnerTeam />}
-        {active === 'owner_catalog' && <OwnerCatalog view={(sub ?? 'b2c') as ProdChannel} />}
+        {active === 'owner_catalog' && <OwnerCatalog view={(sub ?? 'b2c') as ProdChannel} onArtworks={() => setActive('owner_art')} />}
+        {active === 'owner_art' && <OwnerArtworks view={(sub ?? 'works') as ArtView} onProducts={() => setActive('owner_catalog')} />}
         {active === 'owner_vendors' && <OwnerVendors view={(sub ?? 'accounts') as VendorView} />}
         {active === 'owner_accounting' && <OwnerAccounting view={(sub ?? 'chart') as AccountingView} />}
         {active === 'owner_brand' && <OwnerBrand />}

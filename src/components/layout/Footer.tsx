@@ -16,6 +16,7 @@ const columns = [
     links: [
       { key: 'footer.allProducts', to: '/shop' },
       { key: 'footer.gifts', to: '/gifts' },
+      { key: 'nav.art', to: '/art' },
     ],
   },
   {

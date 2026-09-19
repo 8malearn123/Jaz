@@ -117,3 +117,38 @@ export interface Organization {
   ledger: CreditLedgerEntry[]
   statements: CreditStatement[]
 }
+
+// ── The paintings, as things that are sold ───────────────────────────────────
+// A bar's ArtCard credits the work printed on its wrapper. The canvas behind that
+// print is a separate object with a separate life: it is one of one, it has a
+// medium and a true size, and once it is acquired there is no second one.
+export type ArtworkStatus = 'available' | 'reserved' | 'sold'
+
+/** What selling an original needs, and a catalogue entry cannot know. */
+export interface ArtworkFacts {
+  year: number
+  medium: Bilingual
+  widthCm: number
+  heightCm: number
+  /** 0 = priced on request — never an invented number. */
+  priceMinor: number
+  status: ArtworkStatus
+}
+
+export interface Artwork extends ArtworkFacts {
+  id: string
+  title: Bilingual
+  artist: Bilingual
+  description: Bilingual
+  /** Art key: the plate image and the accent both read off the bar's flavour. */
+  flavorId: FlavorId
+  /** The bars whose wrappers carry this painting. Empty for a work that was never printed. */
+  barSlugs: string[]
+  /** A photograph of the canvas itself, uploaded in the console (data URL). When a work
+   *  has one it is shown whole; without one the plate is cropped out of the bar's photo. */
+  image?: string
+  /** Defined in the console rather than derived from the catalogue. */
+  custom?: boolean
+  /** Hidden from the public gallery — the console can hold a work back. */
+  hidden?: boolean
+}

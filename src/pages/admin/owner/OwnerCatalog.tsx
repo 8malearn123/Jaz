@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, Eye, EyeOff, Pencil, Check, Upload, Trash2, Snowflake, ChevronDown } from 'lucide-react'
+import { Plus, Eye, EyeOff, Pencil, Check, Upload, Trash2, Snowflake, ChevronDown, Frame } from 'lucide-react'
 import { useLocale, toAsciiDigits } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
@@ -27,7 +27,7 @@ const parseDec = (s: string) => { const n = parseFloat(toAsciiDigits(s).replace(
 const blankVariant = (id: string, retailMinor = 0): StoreVariant => ({ id, netWeightG: 90, packaging: 'standard', retailPriceMinor: retailMinor, b2bPriceMinor: Math.round(retailMinor * 0.7 / 100) * 100, inStock: true, requiresColdChain: false })
 
 /** "Products" panel — add products and manage how they appear to the end customer, per channel (see AdminConsole). */
-export function OwnerCatalog({ view: chan }: { view: ProdChannel }) {
+export function OwnerCatalog({ view: chan, onArtworks }: { view: ProdChannel; onArtworks?: () => void }) {
   const { pick, locale } = useLocale()
   const { flash } = useToast()
   const { storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible } = useOwnerState()
@@ -65,7 +65,11 @@ export function OwnerCatalog({ view: chan }: { view: ProdChannel }) {
   return (
     <div className="flex flex-col gap-lg">
       <PanelHead title={pick({ en: 'Products', ar: 'المنتجات' })} subtitle={pick({ en: 'Add products and manage how they appear to your customers', ar: 'أضف المنتجات وتحكّم بطريقة ظهورها لعملائك' })}
-        action={<button onClick={() => setEditing('new')} className={buttonClass('primary', 'sm')}><Plus size={15} /> {pick({ en: 'New product', ar: 'منتج جديد' })}</button>} />
+        action={<div className="flex flex-wrap items-center gap-xs">
+          {/* A painting is not a product — it is defined next door, and says so here. */}
+          {onArtworks && <button onClick={onArtworks} className={buttonClass('ghost', 'sm')}><Frame size={15} /> {pick({ en: 'Defining a painting?', ar: 'تُعرّف لوحة؟' })}</button>}
+          <button onClick={() => setEditing('new')} className={buttonClass('primary', 'sm')}><Plus size={15} /> {pick({ en: 'New product', ar: 'منتج جديد' })}</button>
+        </div>} />
 
       {/* storefront summary */}
       <div className="flex flex-wrap items-center gap-sm">
