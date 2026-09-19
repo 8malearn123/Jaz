@@ -145,20 +145,22 @@ export const dict: Dict = {
   'home.letters.postmark': { en: 'JAZAN · 45142 · KSA · ', ar: 'JAZAN · 45142 · KSA · ' },
   'home.letters.successAria': { en: 'Subscribed — your first letter has been revealed', ar: 'تم الاشتراك — وظهرت رسالتك الأولى' },
   'home.reviews.eyebrow': { en: 'Loved by guests', ar: 'محبوبةٌ لدى العملاء' },
-  'home.reviews.title': { en: 'Words from our table', ar: 'كلماتٌ من مائدتنا' },
+  'home.reviews.title': { en: 'Experiences with a different taste', ar: 'تجارب بطعم مختلف' },
 
   // ── Shop ───────────────────────────────────────────────
-  'shop.title': { en: 'The Chocolate Library', ar: 'مكتبة الشوكولاتة' },
+  'shop.title': { en: 'The Chocolate Gallery', ar: 'معرض الشوكولاتة' },
   // Bars only — the gift boxes have their own page, and the copy must not promise them here.
   'shop.subtitle': {
-    en: 'Every bar in the library, priced for you and for your business. The gift boxes have a page of their own.',
-    ar: 'كل ألواح المكتبة، بأسعارٍ لك ولأعمالك. أما علب الإهداء فلها صفحتها الخاصة.',
+    en: 'Every bar in the gallery, priced for you and for your business. The gift boxes have a page of their own.',
+    ar: 'كل ألواح المعرض، بأسعارٍ لك ولأعمالك. أما علب الإهداء فلها صفحتها الخاصة.',
   },
   'shop.giftsLink': { en: 'See the gift boxes', ar: 'شاهد علب الإهداء' },
   'shop.filter.all': { en: 'All', ar: 'الكل' },
   'shop.filter.flavor': { en: 'Flavor', ar: 'النكهة' },
   'shop.filter.toggle': { en: 'Filter & sort', ar: 'تصفية وترتيب' },
   'shop.filter.reset': { en: 'Back to the full shop', ar: 'العودة إلى المتجر كاملًا' },
+  'shop.filter.clearOne': { en: 'Clear this filter', ar: 'إزالة هذه التصفية' },
+  'shop.filter.showing': { en: 'Showing', ar: 'المعروض' },
   'shop.results': { en: 'pieces', ar: 'قطعة' },
   'shop.sort': { en: 'Sort', ar: 'ترتيب' },
   'shop.empty': { en: 'No pieces match these filters yet.', ar: 'لا توجد قطعٌ تطابق هذه المرشحات بعد.' },

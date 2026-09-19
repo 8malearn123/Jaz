@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, ChevronDown, SlidersHorizontal, X } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useLocale, toArabicDigits } from '@/i18n/LocaleContext'
 import { useChannel } from '@/state/ChannelContext'
@@ -103,6 +103,18 @@ export function ShopPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flavor, sort, channel, bars])
 
+  /*
+   * «١ قطعة» would be wrong twice over: English needs the singular, and Arabic
+   * inflects a counted noun four ways. HeritagePage already counts bars this way;
+   * the result line here follows the same rule rather than gluing a plural on.
+   */
+  const countPhrase = (n: number) => {
+    if (locale === 'en') return `${n} ${n === 1 ? 'piece' : 'pieces'}`
+    if (n === 1) return 'قطعة واحدة'
+    if (n === 2) return 'قطعتان'
+    return `${toArabicDigits(String(n))} ${n <= 10 ? 'قطع' : 'قطعة'}`
+  }
+
   const sortLabels: Record<SortKey, { en: string; ar: string }> = {
     featured: { en: 'Featured', ar: 'مميز' },
     'price-asc': { en: 'Price: low to high', ar: 'السعر: من الأقل' },
@@ -125,51 +137,88 @@ export function ShopPage() {
         </div>
       </section>
 
-      {/* filter & sort — folded away until asked for */}
+      {/* filter & sort — one stated control, folded away until asked for */}
       <section className="container-jaz pt-lg">
-        <div className="flex items-center justify-end gap-md">
-          {isFiltered && (
-            <button type="button" onClick={resetFilters} className="link-gold">
-              {t('shop.filter.reset')}
+        {/* A toolbar, not a floating word: what is on screen sits at the leading edge,
+            the controls at the trailing one, with a hairline under the pair. */}
+        <div className="flex flex-wrap items-center justify-between gap-sm pb-md border-b border-hairline">
+          <p className="font-sans text-caption uppercase tracking-[0.12em] text-ink-subtle" aria-live="polite">
+            {isFiltered ? `${t('shop.filter.showing')} · ${countPhrase(filtered.length)}` : ''}
+          </p>
+
+          <div className="flex flex-wrap items-center gap-xs">
+            {/* The active flavour is stated as a removable tag, so a filtered page
+                never leaves a shopper guessing why the grid is short. */}
+            {isFiltered && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                title={t('shop.filter.reset')}
+                className="group inline-flex items-center gap-xs rounded-pill border border-hairline-strong bg-surface-1 ps-sm pe-xs min-h-[40px] font-sans text-caption uppercase tracking-[0.08em] text-ink-muted hover:text-ink hover:border-ink/40 transition-colors"
+              >
+                <span className="inline-block w-2 h-2 rounded-pill" style={{ backgroundColor: flavors[flavor as FlavorId].accent }} aria-hidden />
+                {pick(flavors[flavor as FlavorId].name)}
+                <span className="sr-only">{t('shop.filter.clearOne')}</span>
+                <X size={14} className="text-ink-subtle group-hover:text-ink transition-colors" aria-hidden />
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((o) => !o)}
+              aria-expanded={filtersOpen}
+              aria-controls="shop-filters"
+              className={cn(
+                'inline-flex items-center gap-xs rounded-pill border ps-md pe-sm min-h-[40px]',
+                'font-sans text-caption uppercase tracking-[0.12em] transition-colors duration-200',
+                filtersOpen
+                  ? 'bg-ink text-ink-on-dark border-ink'
+                  : 'bg-surface-1 text-ink-muted border-hairline-strong hover:text-ink hover:border-ink/40',
+              )}
+            >
+              <SlidersHorizontal size={15} className="shrink-0" aria-hidden />
+              {t('shop.filter.toggle')}
+              <ChevronDown
+                size={15}
+                aria-hidden
+                className={cn('shrink-0 transition-transform duration-300 ease-editorial', filtersOpen && 'rotate-180')}
+              />
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setFiltersOpen((o) => !o)}
-            aria-expanded={filtersOpen}
-            aria-controls="shop-filters"
-            className="font-sans text-caption uppercase tracking-[0.12em] text-ink-muted hover:text-ink transition-colors py-2"
-          >
-            {t('shop.filter.toggle')}
-          </button>
+          </div>
         </div>
 
         {filtersOpen && (
-          <div id="shop-filters" className="flex flex-col gap-md mt-md pt-md border-t border-hairline">
-            <div className="flex flex-wrap items-center gap-xs">
-              <span className="me-sm font-sans text-caption uppercase tracking-[0.12em] text-ink-subtle">{t('shop.filter.flavor')}</span>
-              <FlavorChip label={t('shop.filter.all')} active={flavor === 'all'} onClick={() => selectFlavor('all')} />
-              {flavorList.map((f) => (
-                <FlavorChip key={f.id} label={pick(f.name)} accent={f.accent} active={flavor === f.id} onClick={() => selectFlavor(f.id)} />
-              ))}
+          <div
+            id="shop-filters"
+            className="mt-md rounded-lg border border-hairline bg-surface-1 shadow-lift p-lg flex flex-col gap-lg animate-scale-in origin-top"
+          >
+            <div className="flex flex-col gap-sm">
+              <span className="font-sans text-caption uppercase tracking-[0.12em] text-ink-subtle" id="shop-filter-flavor">
+                {t('shop.filter.flavor')}
+              </span>
+              <div className="flex flex-wrap items-center gap-xs" role="group" aria-labelledby="shop-filter-flavor">
+                <FlavorChip label={t('shop.filter.all')} active={flavor === 'all'} onClick={() => selectFlavor('all')} />
+                {flavorList.map((f) => (
+                  <FlavorChip key={f.id} label={pick(f.name)} accent={f.accent} active={flavor === f.id} onClick={() => selectFlavor(f.id)} />
+                ))}
+              </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-md">
-              <span className="font-sans text-caption uppercase tracking-[0.1em] text-ink-subtle">
-                {isFiltered ? `${locale === 'ar' ? toArabicDigits(String(filtered.length)) : filtered.length} ${t('shop.results')}` : ''}
-              </span>
-              {/* Sorting only means something over a flat list — the curated page is
-                  in the client's order, and reordering it would discard their curation. */}
-              {isFiltered && (
-                <div className="flex items-center gap-sm">
-                  <label className="sr-only" htmlFor="sort">
-                    {t('shop.sort')}
-                  </label>
+            {/* Sorting only means something over a flat list — the curated page is
+                in the client's order, and reordering it would discard their curation. */}
+            {isFiltered && (
+              <div className="flex flex-wrap items-center justify-between gap-md pt-md border-t border-hairline">
+                <label className="font-sans text-caption uppercase tracking-[0.12em] text-ink-subtle" htmlFor="sort">
+                  {t('shop.sort')}
+                </label>
+                {/* The native select stays — it is the right control on a phone — but its
+                    browser chrome is replaced by the house chevron. */}
+                <div className="relative">
                   <select
                     id="sort"
                     value={sort}
                     onChange={(e) => setSort(e.target.value as SortKey)}
-                    className="input py-2 ps-3 pe-8 font-sans text-data w-auto cursor-pointer"
+                    className="appearance-none rounded-pill border border-hairline-strong bg-surface-1 text-ink font-sans text-data min-h-[40px] ps-md pe-xl w-auto cursor-pointer hover:border-ink/40 focus:outline-none focus:border-primary transition-colors"
                   >
                     {(Object.keys(sortLabels) as SortKey[]).map((k) => (
                       <option key={k} value={k}>
@@ -177,9 +226,14 @@ export function ShopPage() {
                       </option>
                     ))}
                   </select>
+                  <ChevronDown
+                    size={15}
+                    aria-hidden
+                    className="pointer-events-none absolute end-sm top-1/2 -translate-y-1/2 text-ink-subtle"
+                  />
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )}
       </section>
