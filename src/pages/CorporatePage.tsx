@@ -499,8 +499,8 @@ function SealedStatement() {
         {/* endorsement footer — two signatures, one decision */}
         <div className="bg-surface-2 rounded-b-lg px-lg py-md pe-xxl flex items-end gap-xl">
           {[
-            { name: 'R. AlAmoudi', arabicName: false, caption: 'SALES · المبيعات' },
-            { name: 'هند القحطاني', arabicName: true, caption: 'FINANCE · المالية' },
+            { name: 'مبارك المالكي', arabicName: true, caption: 'SALES · المبيعات' },
+            { name: 'سامي شبيلي', arabicName: true, caption: 'FINANCE · المالية' },
           ].map((sig) => (
             <div key={sig.caption} className="flex flex-col gap-xxs w-28">
               <span className={cn('text-body leading-none pb-xs', sig.arabicName ? 'font-arabic' : 'font-serif italic')} aria-hidden>

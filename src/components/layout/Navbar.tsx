@@ -17,6 +17,7 @@ import { SearchOverlay } from './SearchOverlay'
 const navItems = [
   { to: '/heritage', key: 'nav.heritage' },
   { to: '/gifts', key: 'nav.gifts' },
+  { to: '/art', key: 'nav.art' },
   { to: '/corporate', key: 'nav.corporate' },
   { to: '/shop', key: 'nav.shopNow' },
 ] as const

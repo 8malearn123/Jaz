@@ -7,6 +7,7 @@ import { ProductPage } from '@/pages/ProductPage'
 import { GiftsPage } from '@/pages/GiftsPage'
 import { CorporatePage } from '@/pages/CorporatePage'
 import { HeritagePage } from '@/pages/HeritagePage'
+import { ArtGalleryPage } from '@/pages/ArtGalleryPage'
 import { CartPage } from '@/pages/CartPage'
 import { CheckoutPage } from '@/pages/CheckoutPage'
 import { AccountPage } from '@/pages/AccountPage'
@@ -36,6 +37,8 @@ export default function App() {
           <Route path="collections" element={<Navigate to="/gifts" replace />} />
           <Route path="corporate" element={<CorporatePage />} />
           <Route path="heritage" element={<HeritagePage />} />
+          {/* The canvases behind the wrappers — sold once each, never in the cart. */}
+          <Route path="art" element={<ArtGalleryPage />} />
           <Route path="cart" element={<CartPage />} />
           <Route
             path="checkout"
