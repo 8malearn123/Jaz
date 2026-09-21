@@ -51,7 +51,7 @@ export default function App() {
           <Route path="account" element={<RequireAuth><AccountPage /></RequireAuth>} />
           <Route path="business" element={<RequireAuth><BusinessPage /></RequireAuth>} />
           <Route path="mega" element={<RequireAuth><MegaPage /></RequireAuth>} />
-          <Route path="admin" element={<RequireAuth><AdminConsole /></RequireAuth>} />
+          <Route path="admin" element={<RequireAuth allow="staff"><AdminConsole /></RequireAuth>} />
           <Route path="signin" element={<SignInPage />} />
           <Route path="signup" element={<SignUpPage />} />
           <Route path="*" element={<NotFoundPage />} />

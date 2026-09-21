@@ -2,6 +2,7 @@ import { renderToString } from 'react-dom/server'
 import { StaticRouter } from 'react-router-dom/server'
 import App from '../src/App'
 import { LocaleProvider } from '../src/i18n/LocaleContext'
+import { AuthProvider } from '../src/state/AuthContext'
 import { ChannelProvider } from '../src/state/ChannelContext'
 import { CartProvider } from '../src/state/CartContext'
 import { BillingProvider } from '../src/state/BillingContext'
@@ -14,6 +15,7 @@ import { ArtworksProvider } from '../src/state/ArtworksContext'
 export function render(url: string): string {
   return renderToString(
     <LocaleProvider>
+      <AuthProvider>
       <ChannelProvider>
         <CartProvider>
           <BillingProvider>
@@ -29,6 +31,7 @@ export function render(url: string): string {
           </BillingProvider>
         </CartProvider>
       </ChannelProvider>
+      </AuthProvider>
     </LocaleProvider>,
   )
 }

@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App'
 import { LocaleProvider } from '@/i18n/LocaleContext'
+import { AuthProvider } from '@/state/AuthContext'
 import { ChannelProvider } from '@/state/ChannelContext'
 import { CartProvider } from '@/state/CartContext'
 import { BillingProvider } from '@/state/BillingContext'
@@ -18,6 +19,8 @@ import { ArtworksProvider } from '@/state/ArtworksContext'
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <LocaleProvider>
+      {/* Owns the real session; ChannelProvider reads the role from it. */}
+      <AuthProvider>
       <ChannelProvider>
         <CartProvider>
           <BillingProvider>
@@ -45,6 +48,7 @@ createRoot(document.getElementById('root')!).render(
           </BillingProvider>
         </CartProvider>
       </ChannelProvider>
+      </AuthProvider>
     </LocaleProvider>
   </StrictMode>,
 )

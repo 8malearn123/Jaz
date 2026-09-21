@@ -1,0 +1,62 @@
+// Hand-written to match supabase/migrations/20260921000000_auth_roles.sql.
+// Regenerate with: npx supabase gen types typescript --project-id <ref>
+//
+// These are `type` aliases rather than interfaces on purpose: postgrest-js
+// constrains a schema to Record<string, unknown>, and an interface has no
+// implicit index signature, so interfaces here resolve every query to `never`.
+
+import type { RoleId } from '@/data/roles'
+
+/** The Postgres enum public.app_role mirrors RoleId exactly. */
+export type AppRole = RoleId
+
+export type ProfileRow = {
+  id: string
+  email: string | null
+  phone: string | null
+  full_name_en: string | null
+  full_name_ar: string | null
+  role: AppRole
+  org_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type OrganizationRow = {
+  id: string
+  name_en: string
+  name_ar: string
+  cr_number: string | null
+  vat_number: string | null
+  channel: 'b2c' | 'b2b'
+  credit_limit: number
+  created_at: string
+}
+
+export type Database = {
+  public: {
+    Tables: {
+      profiles: {
+        Row: ProfileRow
+        Insert: Partial<ProfileRow> & { id: string }
+        Update: Partial<ProfileRow>
+        Relationships: []
+      }
+      organizations: {
+        Row: OrganizationRow
+        Insert: Partial<OrganizationRow> & { name_en: string; name_ar: string }
+        Update: Partial<OrganizationRow>
+        Relationships: []
+      }
+    }
+    Views: Record<string, never>
+    Functions: {
+      current_app_role: { Args: Record<string, never>; Returns: AppRole }
+      is_staff: { Args: Record<string, never>; Returns: boolean }
+      is_privileged: { Args: Record<string, never>; Returns: boolean }
+      is_admin: { Args: Record<string, never>; Returns: boolean }
+    }
+    Enums: { app_role: AppRole }
+    CompositeTypes: Record<string, never>
+  }
+}

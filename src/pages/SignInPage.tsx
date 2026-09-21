@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Smartphone, Lock, Mail, ShieldCheck, Fingerprint, ArrowRight, Truck, BadgeCheck, KeyRound } from 'lucide-react'
+import { Smartphone, Lock, Mail, ShieldCheck, Fingerprint, ArrowRight, Truck, BadgeCheck, KeyRound, ShieldAlert } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useChannel } from '@/state/ChannelContext'
 import { buttonClass } from '@/components/ui/Button'
 import { WaveDivider } from '@/components/brand/WaveDivider'
 import { AuthLayout, AuthHeading, AuthField, ModeToggle, AuthDivider, OtpInput, type AuthMode, type TrustPoint } from '@/components/account/AuthScaffold'
+import { isSupabaseConfigured } from '@/lib/supabase'
+import { signInWithPassword, sendPhoneOtp, verifyPhoneOtp, requestPasswordReset } from '@/lib/api/auth'
 
 type Step = 'credentials' | 'otp'
 
@@ -20,14 +22,71 @@ export function SignInPage() {
   const [mode, setMode] = useState<AuthMode>(initialMode)
   const [step, setStep] = useState<Step>('credentials')
   const [contact, setContact] = useState('')
+  const [password, setPassword] = useState('')
   const [otp, setOtp] = useState('')
   const [note, setNote] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
   const isBusiness = mode === 'b2b'
 
-  const safeNext = next && next.startsWith('/') ? next : null
+  // Only same-origin paths, so ?next= cannot bounce a freshly signed-in session
+  // off to another site.
+  const safeNext = next && next.startsWith('/') && !next.startsWith('//') ? next : null
+  const land = () => navigate(safeNext ?? (isBusiness ? '/business' : '/account'))
+
+  /** Demo path: no backend, so the role picker's behaviour stands in for a session. */
   const complete = () => {
     signIn(isBusiness ? 'b2b' : 'customer')
-    navigate(safeNext ?? (isBusiness ? '/business' : '/account'))
+    land()
+  }
+
+  // With a backend, the role is never chosen here — it is read from the
+  // profile after the session opens. Landing falls back to /account and the
+  // person is redirected by their own role's home if it differs.
+  const submitPassword = async () => {
+    setError('')
+    setBusy(true)
+    const res = await signInWithPassword(contact, password)
+    setBusy(false)
+    if (!res.ok) {
+      setError(res.error ?? '')
+      return
+    }
+    land()
+  }
+
+  const submitOtpRequest = async () => {
+    setError('')
+    setBusy(true)
+    const res = await sendPhoneOtp(contact)
+    setBusy(false)
+    if (!res.ok) {
+      setError(res.error ?? '')
+      return
+    }
+    setStep('otp')
+  }
+
+  const submitOtpVerify = async () => {
+    setError('')
+    setBusy(true)
+    const res = await verifyPhoneOtp(contact, otp)
+    setBusy(false)
+    if (!res.ok) {
+      setError(res.error ?? '')
+      return
+    }
+    land()
+  }
+
+  const submitReset = async () => {
+    setError('')
+    const res = await requestPasswordReset(contact)
+    if (!res.ok) {
+      setError(res.error ?? '')
+      return
+    }
+    setNote(t('signin.resetSent'))
   }
   const switchMode = (m: AuthMode) => {
     setMode(m)
@@ -51,7 +110,7 @@ export function SignInPage() {
           otp={otp}
           setOtp={setOtp}
           onBack={() => setStep('credentials')}
-          onVerify={complete}
+          onVerify={isSupabaseConfigured ? submitOtpVerify : complete}
         />
       ) : (
         <>
@@ -61,7 +120,11 @@ export function SignInPage() {
           <form
             onSubmit={(e) => {
               e.preventDefault()
-              setStep('otp')
+              if (!isSupabaseConfigured) {
+                setStep('otp')
+                return
+              }
+              void (isBusiness ? submitPassword() : submitOtpRequest())
             }}
             className="flex flex-col gap-md"
           >
@@ -69,8 +132,8 @@ export function SignInPage() {
               <>
                 <AuthField icon={Mail} label={t('checkout.email')} type="email" placeholder="procurement@company.sa" autoComplete="email" required onChange={(e) => setContact(e.target.value)} />
                 <div className="flex flex-col gap-xs">
-                  <AuthField icon={Lock} label={t('signin.password')} type="password" placeholder="••••••••" autoComplete="current-password" required />
-                  <button type="button" onClick={() => setNote(t('signin.resetSent'))} className="self-end font-sans text-caption text-primary-hover hover:text-ink transition-colors">
+                  <AuthField icon={Lock} label={t('signin.password')} type="password" placeholder="••••••••" autoComplete="current-password" required onChange={(e) => setPassword(e.target.value)} />
+                  <button type="button" onClick={() => (isSupabaseConfigured ? void submitReset() : setNote(t('signin.resetSent')))} className="self-end font-sans text-caption text-primary-hover hover:text-ink transition-colors">
                     {t('signin.forgot')}
                   </button>
                 </div>
@@ -78,7 +141,7 @@ export function SignInPage() {
                   <ShieldCheck size={16} className="text-brand-blue shrink-0" />
                   <span className="font-sans text-caption text-ink-muted">{t('signin.mfaNote')}</span>
                 </div>
-                <button type="submit" className={buttonClass('primary', 'md', 'w-full')}>
+                <button type="submit" disabled={busy} className={buttonClass('primary', 'md', 'w-full disabled:opacity-50 disabled:pointer-events-none')}>
                   {t('signin.continue')} <ArrowRight size={16} className="rtl:rotate-180" />
                 </button>
                 <AuthDivider label={pick({ en: 'or', ar: 'أو' })} />
@@ -89,7 +152,7 @@ export function SignInPage() {
             ) : (
               <>
                 <AuthField icon={Smartphone} label={t('signin.otp')} type="text" inputMode="tel" placeholder="+9665XXXXXXXX" autoComplete="tel" required onChange={(e) => setContact(e.target.value)} />
-                <button type="submit" className={buttonClass('primary', 'md', 'w-full')}>
+                <button type="submit" disabled={busy} className={buttonClass('primary', 'md', 'w-full disabled:opacity-50 disabled:pointer-events-none')}>
                   {t('signin.sendOtp')} <ArrowRight size={16} className="rtl:rotate-180" />
                 </button>
                 <p className="font-sans text-caption text-ink-subtle text-center">{t('signin.individual.desc')}</p>
@@ -98,6 +161,12 @@ export function SignInPage() {
                   <Fingerprint size={16} /> {t('signin.nafath')}
                 </button>
               </>
+            )}
+
+            {error && (
+              <p role="alert" className="flex items-center gap-xs rounded-md bg-danger/10 border border-danger/20 px-sm py-2 font-sans text-caption text-danger">
+                <ShieldAlert size={14} /> {error}
+              </p>
             )}
 
             {note && (
