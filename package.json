@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "JAZ Chocolate — a premium bilingual (AR/EN) B2B/B2C commerce storefront prototype",
+  "description": "JAZ Chocolate \u2014 a premium bilingual (AR/EN) B2B/B2C commerce storefront prototype",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -14,7 +14,8 @@
     "smoke:business": "node scripts/verify-business.mjs",
     "smoke:owner": "node scripts/verify-owner.mjs",
     "smoke:mega": "node scripts/verify-mega.mjs",
-    "smoke:accounting": "node scripts/verify-accounting.mjs"
+    "smoke:accounting": "node scripts/verify-accounting.mjs",
+    "smoke:gallery": "node scripts/verify-gallery.mjs"
   },
   "dependencies": {
     "@fontsource/fraunces": "^5.0.20",

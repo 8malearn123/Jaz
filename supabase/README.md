@@ -59,9 +59,60 @@ RLS policies call them and a policy's function calls are permission-checked
 against the querying role. Each one reports only the caller's own role, so there
 is nothing to leak. `anon` has no grant.
 
+## Slice 2 — the gallery
+
+`artworks`, `artwork_overrides`, `acquisition_requests`.
+
+The overlay model from `ArtworksContext` is preserved rather than flattened,
+because it carries an invariant: the twelve commissions are *derived* from the
+catalogue's art cards, so a painting can never hang on a wrapper and be missing
+from the wall. Seeding them into a table would let the table drift from the
+catalogue. So a seeded work stays in code and is edited as a **partial** override
+(a null column means the catalogue still supplies that field), while a
+console-defined work is stored whole. Neither id can be a foreign key — a seeded
+id exists only in `src/data/artworks.ts`.
+
+`can_edit_content()` is narrower than `is_staff()`: a support agent has no
+business repricing a canvas. Only `content_editor`, `admin`, `owner` write.
+
+### The interesting part: an anonymous visitor holds a canvas
+
+`/art` is public, so the collector asking for an original is usually not signed
+in and has no write access to either artwork table. But asking must reserve the
+piece, or two collectors get told the same one-of-one is available. So the hold is
+applied by `reserve_on_request()`, a definer-side trigger on the insert into
+`acquisition_requests` — not by a second client call, which RLS would refuse. It
+tells a custom work from a seeded one by whether the id parses as a uuid, and it
+never walks a `sold` canvas back to `reserved`.
+
+Requests are insertable by anyone and readable only by staff, because they carry
+a name, an email and a phone number.
+
+### Verified behaviour
+
+| Case | Result |
+|---|---|
+| anon reads artworks | sees non-hidden only |
+| anon reprices a canvas | 0 rows |
+| anon sends a request | inserted |
+| anon reads requests back | 0 rows — PII withheld |
+| anon requests a seeded work | override row created, `status = reserved` |
+| anon requests a custom work | `artworks.status = reserved` |
+| new request on a **sold** canvas | stays `sold`, both paths |
+| `content_editor` reprices / overrides | 1 row each |
+| `content_editor` reads requests | sees all |
+| `content_editor` promotes self | refused by the identity guard |
+| plain shopper reprices | 0 rows |
+| plain shopper reads requests | 0 rows |
+
+Test rows were deleted afterwards; all five tables are empty.
+
+`npm run smoke:gallery` asserts the mapping invariants with no database — chiefly
+that a null override column yields **no key**, so merging a patch over a seeded
+work cannot erase the catalogue's title, story or price.
+
 ## Not yet on the server
 
-Only identity. The other ~180 types and ~225 context mutators (catalogue,
-orders, cart, artworks, accounting, governance) are still seeded data in
-`src/data/` and React state. `profiles` and `organizations` are the pattern the
-rest should follow.
+Catalogue, orders, cart, accounting and governance are still seeded data in
+`src/data/` and React state — roughly 180 types and 225 context mutators. The two
+slices done so far are the pattern for the rest.
