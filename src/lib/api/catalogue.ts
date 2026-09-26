@@ -232,3 +232,113 @@ export async function deleteProduct(id: string): Promise<WriteResult> {
   const { error } = await requireSupabase().from('store_products').delete().eq('id', id)
   return error ? bad(error.message) : OK
 }
+
+// ---------------------------------------------------------------- public catalogue
+//
+// The storefront's own read. Separate from fetchCatalogue() above, which serves the
+// console's per-channel listings: this one returns the Product shape that /shop,
+// /product/:slug, the cart and checkout speak.
+
+import type { Product, ProductVariant, ArtCard, Review, ProductType, ProductLine, BadgeKind, FlavorId } from '@/data/types'
+import type { ProductRow, ProductVariantFullRow, ProductReviewRow } from '@/lib/database.types'
+
+function rowToProductVariant(r: ProductVariantFullRow): ProductVariant {
+  return {
+    id: r.id,
+    netWeightG: r.net_weight_g,
+    packaging: r.packaging,
+    ...(r.case_qty === null ? {} : { caseQty: r.case_qty }),
+    requiresColdChain: r.requires_cold_chain,
+    retailPriceMinor: Number(r.retail_price_minor),
+    b2bPriceMinor: Number(r.b2b_price_minor),
+    inStock: r.in_stock,
+  }
+}
+
+function rowToReview(r: ProductReviewRow): Review {
+  return {
+    author: { en: r.author_en, ar: r.author_ar },
+    rating: r.rating,
+    body: { en: r.body_en, ar: r.body_ar },
+    verified: r.verified,
+    date: r.review_date,
+  }
+}
+
+export function rowToPublicProduct(
+  r: ProductRow,
+  variants: ProductVariantFullRow[],
+  reviews: ProductReviewRow[],
+): Product {
+  return {
+    id: r.id,
+    sku: r.sku,
+    slug: r.slug,
+    type: r.type as ProductType,
+    line: r.line as ProductLine,
+    title: { en: r.title_en, ar: r.title_ar },
+    flavorId: r.flavor_id as FlavorId,
+    ...(r.cocoa_pct === null ? {} : { cocoaPct: r.cocoa_pct }),
+    allergens: r.allergens,
+    ingredients: { en: r.ingredients_en, ar: r.ingredients_ar },
+    story: { en: r.story_en, ar: r.story_ar },
+    badges: r.badges as BadgeKind[],
+    variants: variants
+      .slice()
+      .sort((a, b) => a.position - b.position)
+      .map(rowToProductVariant),
+    // Absent, not null: `p.artCard!` is used after a truthiness check in several
+    // places, and the gallery derivation filters on it.
+    ...(r.art_card === null ? {} : { artCard: r.art_card as ArtCard }),
+    rating: Number(r.rating),
+    reviewCount: r.review_count,
+    reviews: reviews.map(rowToReview),
+    pairsWith: r.pairs_with,
+    occasions: r.occasions,
+  }
+}
+
+/**
+ * The public catalogue, ordered as the storefront expects. Returns null — not an
+ * empty array — when the read fails, so a caller can tell "no backend / broken
+ * read" from "a catalogue with nothing in it" and fall back to the seed rather
+ * than showing an empty shop.
+ */
+export async function fetchPublicProducts(): Promise<Product[] | null> {
+  if (!isSupabaseConfigured) return null
+  const db = requireSupabase()
+
+  const [products, variants, reviews] = await Promise.all([
+    db.from('products').select('*').order('sort_order'),
+    db.from('product_variants').select('*').order('position'),
+    db.from('product_reviews').select('*').order('review_date', { ascending: false }),
+  ])
+
+  if (products.error) {
+    console.error('[catalogue] public products:', products.error.message)
+    return null
+  }
+  if (variants.error) console.error('[catalogue] public variants:', variants.error.message)
+  if (reviews.error) console.error('[catalogue] public reviews:', reviews.error.message)
+
+  // An empty table is also treated as "no data": the storefront should show the
+  // seeded catalogue rather than nothing at all.
+  if ((products.data ?? []).length === 0) return null
+
+  const vByProduct = new Map<string, ProductVariantFullRow[]>()
+  for (const v of variants.data ?? []) {
+    const list = vByProduct.get(v.product_id)
+    if (list) list.push(v)
+    else vByProduct.set(v.product_id, [v])
+  }
+  const rByProduct = new Map<string, ProductReviewRow[]>()
+  for (const r of reviews.data ?? []) {
+    const list = rByProduct.get(r.product_id)
+    if (list) list.push(r)
+    else rByProduct.set(r.product_id, [r])
+  }
+
+  return (products.data ?? []).map((r) =>
+    rowToPublicProduct(r, vByProduct.get(r.id) ?? [], rByProduct.get(r.id) ?? []),
+  )
+}

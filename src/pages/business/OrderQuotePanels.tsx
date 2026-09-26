@@ -6,7 +6,7 @@ import {
   accountOrders, accountOrderItems, members, CANCEL_WINDOW_MS,
   type AccountOrder, type AccountOrderStatus,
 } from '@/data/business'
-import { variantById } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
 import { ProductThumb } from '@/components/ui/ProductPicker'
 import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
@@ -123,6 +123,7 @@ function OrderCard({ order, onView }: { order: AccountOrder; onView: () => void 
 
 /* ─────────── Order detail / invoice ─────────── */
 function OrderDetailModal({ order, open, onClose, onCancel }: { order: AccountOrder | null; open: boolean; onClose: () => void; onCancel: (orderNo: string) => void }) {
+  const { variantById } = useCatalogue()
   const { t, pick, locale } = useLocale()
   const { money } = useOrgMoney()
   const { flash } = useToast()

@@ -4,7 +4,7 @@ import { useLocale } from '@/i18n/LocaleContext'
 import { useCart } from '@/state/CartContext'
 import { useCustomer } from '@/state/CustomerContext'
 import { type OccasionChannel } from '@/data/account'
-import { variantById } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
 import { flavors } from '@/data/flavors'
 import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
@@ -39,6 +39,7 @@ function FavouritesSection() {
       <p className="eyebrow text-ink-subtle inline-flex items-center gap-xs"><Heart size={13} className="text-primary-hover" /> {t('wishlist.title')}</p>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-md">
         {wishlist.map((w) => {
+          const { variantById } = useCatalogue()
           const found = variantById(w.variantId)
           if (!found) return null
           const { product, variant } = found

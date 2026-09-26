@@ -13,7 +13,7 @@ import {
   creditApplications, invoices, articles, auditEvents, consentLedger, platformKpis,
   type CreditApplication, type Invoice, type AuditEvent,
 } from '@/data/staff'
-import { products } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
 import { prodChannelMeta, type ProdChannel } from '@/data/ownerProducts'
 import { AccountShell, type TabDef } from '@/components/account/AccountShell'
 import { StepUpGate } from '@/components/account/StepUpGate'
@@ -460,6 +460,7 @@ function InvoicingPanel() {
 
 /* ───────────── Catalogue & CMS (content editor) ───────────── */
 function CataloguePanel() {
+  const { products } = useCatalogue()
   const { t, pick, locale } = useLocale()
   const [prodStatus, setProdStatus] = useState<Record<string, 'active' | 'draft'>>(
     Object.fromEntries(products.map((p) => [p.id, 'active'])),

@@ -16,7 +16,8 @@
     "smoke:mega": "node scripts/verify-mega.mjs",
     "smoke:accounting": "node scripts/verify-accounting.mjs",
     "smoke:gallery": "node scripts/verify-gallery.mjs",
-    "smoke:team": "node scripts/verify-team.mjs"
+    "smoke:team": "node scripts/verify-team.mjs",
+    "smoke:catalogue": "node scripts/verify-catalogue.mjs"
   },
   "dependencies": {
     "@fontsource/fraunces": "^5.0.20",

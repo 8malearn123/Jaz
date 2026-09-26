@@ -4,7 +4,8 @@ import { Minus, Plus, Check, ChevronRight, Snowflake, ShieldCheck } from 'lucide
 import { useLocale, toArabicDigits } from '@/i18n/LocaleContext'
 import { useChannel } from '@/state/ChannelContext'
 import { useCart } from '@/state/CartContext'
-import { getProduct, getProductById } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
+import type { Product } from '@/data/types'
 import { flavors } from '@/data/flavors'
 import { buttonClass } from '@/components/ui/Button'
 import { Reveal } from '@/components/ui/Reveal'
@@ -18,8 +19,9 @@ import { cn, tint } from '@/lib/cn'
 import { accentLabel, artKind } from '@/lib/productDisplay'
 
 export function ProductPage() {
+  const { bySlug, byId } = useCatalogue()
   const { slug } = useParams()
-  const product = slug ? getProduct(slug) : undefined
+  const product = slug ? bySlug(slug) : undefined
   const { t, pick, money, locale } = useLocale()
   const { channel } = useChannel()
   const { add } = useCart()
@@ -35,7 +37,7 @@ export function ProductPage() {
   const variant = product.variants.find((v) => v.id === variantId) ?? product.variants[0]
   const priceMinor = channel === 'b2b' ? variant.b2bPriceMinor : variant.retailPriceMinor
   const savingPct = Math.round((1 - variant.b2bPriceMinor / variant.retailPriceMinor) * 100)
-  const related = product.pairsWith.map(getProductById).filter(Boolean).slice(0, 4) as NonNullable<ReturnType<typeof getProductById>>[]
+  const related = product.pairsWith.map((pid) => byId(pid)).filter(Boolean).slice(0, 4) as Product[]
 
   const onAdd = () => {
     if (!variant.inStock) return
@@ -294,7 +296,7 @@ function Spec({ title, body, defaultOpen = false }: { title: string; body: strin
   )
 }
 
-function ArtCardFeature({ product }: { product: NonNullable<ReturnType<typeof getProduct>> }) {
+function ArtCardFeature({ product }: { product: Product }) {
   const { t, pick } = useLocale()
   const flavor = flavors[product.flavorId]
   const card = product.artCard!

@@ -8,7 +8,7 @@ import { customer } from '@/data/account'
 import { organization, availableCreditMinor } from '@/data/organization'
 import { members } from '@/data/business'
 import { plantSite, pickupNotice } from '@/data/fulfilment'
-import { variantById } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
 import type { Bilingual } from '@/data/types'
 import { openPrintWindow } from '@/lib/printWindow'
 import { Modal } from '@/components/ui/Modal'
@@ -35,6 +35,7 @@ export function CheckoutPage() {
   const [snap, setSnap] = useState<OrderSnap | null>(null)
 
   const place = () => {
+    const { variantById } = useCatalogue()
     const items = lines
       .map((l) => { const found = variantById(l.variantId); return found ? { title: found.product.title, qty: l.qty, unitMinor: unitPrice(l.variantId, l.qty) } : null })
       .filter(Boolean) as OrderSnap['items']

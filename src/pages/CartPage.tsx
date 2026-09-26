@@ -3,7 +3,7 @@ import { Minus, Plus, X, ShoppingBag, ArrowRight, Snowflake, ShieldCheck } from 
 import { useLocale, toArabicDigits } from '@/i18n/LocaleContext'
 import { useCart } from '@/state/CartContext'
 import { useChannel } from '@/state/ChannelContext'
-import { variantById } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
 import { wholesaleBySku, type WholesaleProduct } from '@/data/wholesale'
 import { flavors } from '@/data/flavors'
 import { buttonClass } from '@/components/ui/Button'
@@ -55,6 +55,7 @@ export function CartPage() {
           )}
           <ul className="flex flex-col divide-y divide-hairline border-y border-hairline">
             {lines.map((line) => {
+              const { variantById } = useCatalogue()
               const found = variantById(line.variantId)
               if (!found) {
                 const w = wholesaleBySku(line.variantId)

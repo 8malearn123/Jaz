@@ -90,6 +90,24 @@ export type Database = {
         Update: Partial<StoreVariantRow>
         Relationships: []
       }
+      products: {
+        Row: ProductRow
+        Insert: Partial<ProductRow> & { id: string; sku: string; slug: string }
+        Update: Partial<ProductRow>
+        Relationships: []
+      }
+      product_variants: {
+        Row: ProductVariantFullRow
+        Insert: Partial<ProductVariantFullRow> & { id: string; product_id: string }
+        Update: Partial<ProductVariantFullRow>
+        Relationships: []
+      }
+      product_reviews: {
+        Row: ProductReviewRow
+        Insert: Omit<Partial<ProductReviewRow>, 'id'> & { product_id: string; rating: number }
+        Update: Partial<ProductReviewRow>
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: {
@@ -241,5 +259,60 @@ export type StoreVariantRow = {
   b2b_price_minor: number
   in_stock: boolean
   requires_cold_chain: boolean
+  created_at: string
+}
+
+// ---------------------------------------------------------------- public catalogue
+// Matches supabase/migrations/20260926030000_products.sql.
+
+export type ProductRow = {
+  id: string
+  sku: string
+  slug: string
+  type: string
+  line: string
+  title_en: string
+  title_ar: string
+  flavor_id: string
+  cocoa_pct: number | null
+  ingredients_en: string
+  ingredients_ar: string
+  story_en: string
+  story_ar: string
+  allergens: { en: string; ar: string }[]
+  badges: StoreBadgeRow[]
+  art_card: unknown | null
+  rating: number
+  review_count: number
+  pairs_with: string[]
+  occasions: string[]
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export type ProductVariantFullRow = {
+  id: string
+  product_id: string
+  position: number
+  net_weight_g: number
+  packaging: StorePackagingRow
+  case_qty: number | null
+  retail_price_minor: number
+  b2b_price_minor: number
+  in_stock: boolean
+  requires_cold_chain: boolean
+}
+
+export type ProductReviewRow = {
+  id: string
+  product_id: string
+  author_en: string
+  author_ar: string
+  rating: number
+  body_en: string
+  body_ar: string
+  verified: boolean
+  review_date: string
   created_at: string
 }

@@ -4,7 +4,7 @@ import { Repeat, Plus, CalendarClock, Pause, Play } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useCustomer } from '@/state/CustomerContext'
 import { type Subscription } from '@/data/account'
-import { variantById } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
 import { flavors } from '@/data/flavors'
 import { buttonClass } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Misc'
@@ -54,6 +54,7 @@ export function SubscriptionsPanel() {
 }
 
 function SubCard({ sub, onToggle, onCancel }: { sub: Subscription; onToggle: () => void; onCancel: () => void }) {
+  const { variantById } = useCatalogue()
   const { t, pick, money, locale } = useLocale()
   const found = variantById(sub.variantId)
   const f = found ? flavors[found.product.flavorId] : flavors.milk

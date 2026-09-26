@@ -3,7 +3,7 @@ import { useLocale } from '@/i18n/LocaleContext'
 import { useCart } from '@/state/CartContext'
 import { useCustomer } from '@/state/CustomerContext'
 import { customer, type CustomerOrder } from '@/data/account'
-import { variantById } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
 import { buttonClass } from '@/components/ui/Button'
 import { useToast } from '@/components/account/Toast'
 import { cn } from '@/lib/cn'
@@ -30,6 +30,7 @@ export function OverviewPanel({ onTab }: { onTab: (id: string) => void }) {
   ]
 
   const reorder = (o: CustomerOrder) => {
+    const { variantById } = useCatalogue()
     const allInStock = o.items.every((it) => variantById(it.variantId)?.variant.inStock)
     o.items.forEach((it) => add(it.variantId, it.qty))
     flash(allInStock ? `${t('orders.reorderedToast')} · ${o.orderNo}` : t('overview.reorderedPartial'))
@@ -110,6 +111,7 @@ export function OverviewPanel({ onTab }: { onTab: (id: string) => void }) {
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-sm">
           {orders.slice(0, 3).map((o) => {
+            const { variantById } = useCatalogue()
             const first = variantById(o.items[0]?.variantId)
             const allInStock = o.items.every((it) => variantById(it.variantId)?.variant.inStock)
             return (

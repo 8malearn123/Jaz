@@ -4,6 +4,7 @@ import App from '../src/App'
 import { LocaleProvider } from '../src/i18n/LocaleContext'
 import { AuthProvider } from '../src/state/AuthContext'
 import { ChannelProvider } from '../src/state/ChannelContext'
+import { CatalogueProvider } from '../src/state/CatalogueContext'
 import { CartProvider } from '../src/state/CartContext'
 import { BillingProvider } from '../src/state/BillingContext'
 import { TeamProvider } from '../src/state/TeamContext'
@@ -17,6 +18,7 @@ export function render(url: string): string {
     <LocaleProvider>
       <AuthProvider>
       <ChannelProvider>
+        <CatalogueProvider>
         <CartProvider>
           <BillingProvider>
             <TeamProvider>
@@ -30,6 +32,7 @@ export function render(url: string): string {
             </TeamProvider>
           </BillingProvider>
         </CartProvider>
+        </CatalogueProvider>
       </ChannelProvider>
       </AuthProvider>
     </LocaleProvider>,

@@ -7,7 +7,7 @@ import { Reveal } from '@/components/ui/Reveal'
 import { WaveDivider } from '@/components/brand/WaveDivider'
 import { PatternBand, type Motif } from '@/components/brand/PatternBand'
 import { flavorBarPhoto } from '@/components/brand/ProductArt'
-import { products } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
 import type { ArtCard, Bilingual, Product } from '@/data/types'
 import { cn } from '@/lib/cn'
 
@@ -81,6 +81,7 @@ const editionLabel = (n: number) => ({
 })
 
 export function HeritagePage() {
+  const { products } = useCatalogue()
   const { t, pick, isRTL } = useLocale()
   // Arabic script has no italic; a browser-synthesized oblique reads as broken type.
   const italicLatin = isRTL ? '' : 'italic'

@@ -1,5 +1,5 @@
 import { useLocale } from '@/i18n/LocaleContext'
-import { products } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
 import { ProductCard } from '@/components/ui/ProductCard'
 import { Reveal } from '@/components/ui/Reveal'
 import { Eyebrow } from '@/components/ui/Misc'
@@ -15,11 +15,11 @@ import { PatternBand } from '@/components/brand/PatternBand'
  * client named for these three.
  */
 
-/** The three gift boxes, in catalogue order: 250 g, 250 g, 500 g. */
-const giftBoxes = products.filter((p) => p.type === 'gift_box')
-
 export function GiftsPage() {
   const { t } = useLocale()
+  const { products } = useCatalogue()
+  /** The three gift boxes, in catalogue order: 250 g, 250 g, 500 g. */
+  const giftBoxes = products.filter((p) => p.type === 'gift_box')
   return (
     <>
       <section className="bg-surface-2 border-b border-hairline">

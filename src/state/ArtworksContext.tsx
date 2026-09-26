@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { seededArtworks, type AcquisitionRequest } from '@/data/artworks'
+import { deriveArtworks, type AcquisitionRequest } from '@/data/artworks'
 import type { Artwork, ArtworkStatus } from '@/data/types'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import { useCatalogue } from '@/state/CatalogueContext'
 import {
   fetchGallery, createArtwork, saveArtworkPatch, deleteArtwork,
   sendAcquisitionRequest, setRequestHandled as apiSetRequestHandled,
@@ -59,6 +60,11 @@ function loadLocal(): GalleryState {
 
 export function ArtworksProvider({ children }: { children: ReactNode }) {
   const backed = isSupabaseConfigured
+  // The twelve commissions are derived from the catalogue's art cards, so they must
+  // follow whichever catalogue is in play — the seed, or the products table. The ids
+  // stay `aw-<slug>`, which is what the artwork_overrides rows are keyed on.
+  const { products: catalogue } = useCatalogue()
+  const seeded = useMemo(() => deriveArtworks(catalogue), [catalogue])
   const [stored, setStored] = useState<GalleryState>(() => (backed ? EMPTY_GALLERY : loadLocal()))
   const [ready, setReady] = useState(!backed)
   const [error, setError] = useState<string | null>(null)
@@ -85,8 +91,8 @@ export function ArtworksProvider({ children }: { children: ReactNode }) {
   }, [reload])
 
   const artworks = useMemo<Artwork[]>(
-    () => [...seededArtworks.map((a) => ({ ...a, ...stored.overrides[a.id] })), ...stored.custom],
-    [stored.overrides, stored.custom],
+    () => [...seeded.map((a) => ({ ...a, ...stored.overrides[a.id] })), ...stored.custom],
+    [seeded, stored.overrides, stored.custom],
   )
 
   const publicArtworks = useMemo(() => artworks.filter((a) => !a.hidden), [artworks])

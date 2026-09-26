@@ -300,14 +300,40 @@ never set `verified`, since verified means tied to a real order. Only staff set 
 
 Test rows removed and the edited story restored; the tables read 15 / 23 / 10.
 
-### What is still NOT done
+### The storefront now reads it
 
-**The storefront does not read this table yet.** `ShopPage`, `ProductPage`, the
-cart, checkout, search and the account panels reach `products` through 22
-**synchronous, module-level** imports (`import { products } from '@/data/products'`,
-`getProductById(...)`). Converting those to async reads is the remaining work and
-it is a real refactor of the customer-facing site, not a wiring job — so it was not
-started on the same pass that created the schema.
+`CatalogueProvider` holds the public catalogue, and twenty files that previously
+imported `products` / `getProductById` / `getProduct` / `variantById` from the module
+now read them from `useCatalogue()` instead. It sits above `CartProvider` and
+`ArtworksProvider`, both of which read from it.
+
+Two things made this more than a rename:
+
+* **The gallery derivation.** `seededArtworks` was computed at module level from
+  `products`, which cannot follow a table. It is now `deriveArtworks(catalogue)`, a
+  pure function, and `ArtworksProvider` re-derives from whatever catalogue is live.
+  The ids stay `aw-<slug>`, so the `artwork_overrides` rows keyed on them keep
+  matching. `seededArtworks` remains as `deriveArtworks(products)` for the
+  unconfigured path.
+* **Hook placement.** A first mechanical pass put `useCatalogue()` inside `.map()`
+  callbacks in two files and inside the wrong closure in a third — a hook-rules
+  violation that also shadowed the outer binding. Driving the injection from the
+  compiler's own error positions found every site; the three bad ones were then
+  corrected by hand.
+
+`variantById` is now indexed rather than scanning every product's variants, because
+it is called once per cart line, per checkout summary row and per order row.
+
+**The seed is never discarded.** It is the initial state and the fallback: if
+Supabase is unconfigured, the read fails, or the table is empty, the shop shows the
+seeded catalogue. `fetchPublicProducts()` returns `null` rather than `[]` for exactly
+this reason — a storefront with no products is worse than a slightly stale one.
+
+`npm run smoke:catalogue` asserts 19 invariants with no database, including that a
+null art card maps to an **absent** key (not `undefined`, which is still an own key
+and would break `p.artCard!`), that two bars carrying one card collapse to a single
+canvas with both slugs while the same title with a different artist stays two, and
+that deriving from DB-shaped rows yields the same twelve ids as the seed.
 
 ## Not yet on the server
 

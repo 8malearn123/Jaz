@@ -3,7 +3,7 @@ import { ArrowRight, ChevronDown, SlidersHorizontal, X } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useLocale, toArabicDigits } from '@/i18n/LocaleContext'
 import { useChannel } from '@/state/ChannelContext'
-import { products, getProductById } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
 import { flavors, flavorList } from '@/data/flavors'
 import { directProductIds, oneLandProductIds, repeatedProductIds } from '@/data/shopSections'
 import type { FlavorId, Product } from '@/data/types'
@@ -29,6 +29,7 @@ import { cn } from '@/lib/cn'
 type SortKey = 'featured' | 'price-asc' | 'price-desc' | 'rating'
 
 export function ShopPage() {
+  const { byId, products } = useCatalogue()
   const { t, pick, locale, isRTL } = useLocale()
   const { channel } = useChannel()
   const [params, setParams] = useSearchParams()
@@ -74,11 +75,11 @@ export function ShopPage() {
 
   // The curated lists are the client's order — never sorted.
   const directProducts = useMemo(
-    () => directProductIds.map((id) => getProductById(id)).filter((p): p is Product => Boolean(p)),
+    () => directProductIds.map((id) => byId(id)).filter((p): p is Product => Boolean(p)),
     [],
   )
   const landProducts = useMemo(
-    () => oneLandProductIds.map((id) => getProductById(id)).filter((p): p is Product => Boolean(p)),
+    () => oneLandProductIds.map((id) => byId(id)).filter((p): p is Product => Boolean(p)),
     [],
   )
 

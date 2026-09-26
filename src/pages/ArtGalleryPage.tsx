@@ -4,7 +4,7 @@ import { ArrowRight, Palette } from 'lucide-react'
 import { useLocale, toArabicDigits } from '@/i18n/LocaleContext'
 import { useArtworks } from '@/state/ArtworksContext'
 import { artworkStatusMeta } from '@/data/artworks'
-import { getProduct } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
 import { flavors } from '@/data/flavors'
 import type { Artwork, ArtworkStatus } from '@/data/types'
 import { flavorBarPhoto } from '@/components/brand/ProductArt'
@@ -202,6 +202,7 @@ function ArtworkDialog({
   money: (minor: number) => string
   isRTL: boolean
 }) {
+  const { bySlug } = useCatalogue()
   const { t, pick, locale } = useLocale()
   const [form, setForm] = useState({ name: '', email: '', phone: '', note: '' })
   const [sent, setSent] = useState(false)
@@ -217,7 +218,7 @@ function ArtworkDialog({
   if (!artwork) return null
 
   const status = artworkStatusMeta[artwork.status]
-  const bars = artwork.barSlugs.map((s) => getProduct(s)).filter((p): p is NonNullable<typeof p> => Boolean(p))
+  const bars = artwork.barSlugs.map((s) => bySlug(s)).filter((p): p is NonNullable<typeof p> => Boolean(p))
   const canAsk = artwork.status !== 'sold'
 
   const submit = (e: React.FormEvent) => {

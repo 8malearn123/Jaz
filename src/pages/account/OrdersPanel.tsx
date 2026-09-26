@@ -4,7 +4,7 @@ import { Package, Snowflake, Check, Download, Repeat, AlertCircle, Eye, Truck } 
 import { useLocale } from '@/i18n/LocaleContext'
 import { useCart } from '@/state/CartContext'
 import { type CustomerOrder } from '@/data/account'
-import { variantById } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
 import { flavors } from '@/data/flavors'
 import { buttonClass } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -111,6 +111,7 @@ function OrderViewModal({ order, onClose, onInvoice, onTrack }: { order: Custome
 
         <div className="rounded-lg border border-hairline divide-y divide-hairline">
           {order.items.map((it) => {
+            const { variantById } = useCatalogue()
             const found = variantById(it.variantId)
             if (!found) return null
             const f = flavors[found.product.flavorId]
