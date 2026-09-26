@@ -132,6 +132,31 @@ export type Database = {
         Update: Partial<LoyaltyLedgerRow>
         Relationships: []
       }
+      accounts: {
+        Row: AccountRow
+        Insert: Partial<AccountRow> & { code: string; name_en: string; name_ar: string; type: AccountTypeRow; normal: NormalBalanceRow }
+        Update: Partial<AccountRow>
+        Relationships: []
+      }
+      accounting_periods: {
+        Row: AccountingPeriodRow
+        Insert: Partial<AccountingPeriodRow> & { key: string }
+        Update: Partial<AccountingPeriodRow>
+        Relationships: []
+      }
+      journal_entries: {
+        Row: JournalEntryRow
+        // `period` is generated: it is readable but never sent.
+        Insert: Omit<Partial<JournalEntryRow>, 'id' | 'period'> & { no: string; entry_date: string; source: JournalSourceRow }
+        Update: Omit<Partial<JournalEntryRow>, 'period'>
+        Relationships: []
+      }
+      journal_lines: {
+        Row: JournalLineRow
+        Insert: Omit<Partial<JournalLineRow>, 'id'> & { entry_id: string; account_code: string }
+        Update: Partial<JournalLineRow>
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: {
@@ -140,6 +165,9 @@ export type Database = {
       is_privileged: { Args: Record<string, never>; Returns: boolean }
       is_admin: { Args: Record<string, never>; Returns: boolean }
       order_owner_stage: { Args: { s: OrderStatusRow }; Returns: number }
+      period_of: { Args: { d: string }; Returns: string }
+      can_keep_books: { Args: Record<string, never>; Returns: boolean }
+      can_read_books: { Args: Record<string, never>; Returns: boolean }
       can_edit_content: { Args: Record<string, never>; Returns: boolean }
     }
     Enums: {
@@ -147,6 +175,8 @@ export type Database = {
       team_permission: TeamPermissionRow; job_role: JobRoleRow
       prod_channel: ProdChannelRow; store_badge: StoreBadgeRow; store_packaging: StorePackagingRow
       loyalty_tier: LoyaltyTierRow; order_channel: OrderChannelRow; order_status: OrderStatusRow
+      account_type: AccountTypeRow; normal_balance: NormalBalanceRow
+      entry_status: EntryStatusRow; journal_source: JournalSourceRow
     }
     CompositeTypes: Record<string, never>
   }
@@ -411,4 +441,68 @@ export type LoyaltyLedgerRow = {
   points: number
   at_date: string
   created_at: string
+}
+
+// ---------------------------------------------------------------- the books
+// Matches supabase/migrations/20260927020000_books.sql.
+
+export type AccountTypeRow    = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense'
+export type NormalBalanceRow  = 'debit' | 'credit'
+export type EntryStatusRow    = 'posted' | 'reversed'
+export type JournalSourceRow =
+  | 'opening' | 'sale' | 'purchase' | 'receipt' | 'payment' | 'waste' | 'production'
+  | 'cost_center' | 'depreciation' | 'vat' | 'closing' | 'manual' | 'reversal'
+
+export type AccountRow = {
+  code: string
+  name_en: string
+  name_ar: string
+  type: AccountTypeRow
+  normal: NormalBalanceRow
+  parent: string | null
+  postable: boolean
+  active: boolean
+  is_control: boolean
+  contra: boolean
+  cash: boolean
+  vat_role: 'input' | 'output' | 'payable' | null
+  sort_order: number
+}
+
+export type AccountingPeriodRow = {
+  key: string
+  closed: boolean
+  closed_at: string | null
+  closed_by: string | null
+}
+
+export type JournalEntryRow = {
+  id: string
+  no: string
+  entry_date: string
+  /** Generated from entry_date — never written. */
+  period: string
+  source: JournalSourceRow
+  source_ref: string | null
+  memo_en: string
+  memo_ar: string
+  party_en: string | null
+  party_ar: string | null
+  status: EntryStatusRow
+  reversal_of: string | null
+  reversed_by: string | null
+  posted_by: string | null
+  created_at: string
+}
+
+export type JournalLineRow = {
+  id: string
+  entry_id: string
+  account_code: string
+  debit_minor: number
+  credit_minor: number
+  center_id: string | null
+  memo_en: string | null
+  memo_ar: string | null
+  position: number
 }

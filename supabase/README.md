@@ -511,7 +511,85 @@ Stated rather than left to be discovered: subscriptions, addresses, the wallet, 
 wishlist, occasions, gift recipients, consents and notification preferences have no
 tables yet. Only identity and loyalty come from the server.
 
+## Slice 8 — the books
+
+`accounts`, `accounting_periods`, `journal_entries`, `journal_lines`, plus the
+`account_type` / `normal_balance` / `entry_status` / `journal_source` enums and the
+`can_keep_books()` / `can_read_books()` helpers.
+
+`scripts/verify-accounting.mjs` already asserted the double-entry rules, so the bar
+here was to move the books to the server **without weakening any of them**. All four
+are now enforced by Postgres as well as by `entryProblems()`.
+
+### Two properties the prototype could only hold by convention
+
+* **A posted entry is immutable.** A ledger is append-only; a correction is a reversal,
+  not an edit. The only mutation allowed on an entry is recording that it *was*
+  reversed, and a journal line can never be touched at all.
+* **A closed period is closed.** Nothing may be posted into it, by anyone, including
+  through the API — not merely hidden in the UI.
+
+### Notes on the implementation
+
+The balance check is a **deferred constraint trigger**, not an RPC guard: the lines are
+inserted after the entry, so the sums are only meaningful at commit — and a constraint
+trigger cannot be sidestepped the way an RPC can.
+
+`period` is a generated column. `to_char()` is only STABLE (it reads DateStyle) so a
+generated column cannot use it; `period_of()` is built from `extract()`, which is
+immutable, and the same function serves both the column and the period lock, which is
+what keeps them from disagreeing.
+
+An **auditor reads and never writes** — that is the point of an auditor — so there are
+two helpers rather than one. A `support_agent` sees none of it: the books are not
+general staff data.
+
+### Verified behaviour
+
+Every refusal below is the database's, tested by trying:
+
+| Attempt | Result |
+|---|---|
+| an out-of-balance entry | refused at commit |
+| a one-line entry | refused |
+| a line with a debit **and** a credit | refused |
+| a line on a header account | refused |
+| a line on an account not in the chart | refused |
+| posting into a **closed period** | refused |
+| change a posted line's amount | refused |
+| delete a posted line | refused |
+| back-date a posted entry | refused |
+| rewrite a posted memo | refused |
+| delete a posted entry | refused |
+| **mark the original reversed** | allowed — the one legitimate change |
+| re-record a different reversal | refused |
+| un-reverse an entry | refused |
+| net movement per account after a reversal | **0 on every account** |
+| `finance` reads / posts | yes / yes |
+| `auditor` reads / posts / closes a period | yes / **no** / **no** |
+| `support_agent` reads entries or the chart | 0 / 0 |
+| anon | 0 |
+
+Test rows removed. The immutability triggers had to be disabled for that cleanup —
+since the API cannot delete a posted entry, which is the point — and were re-enabled
+immediately; all five guards were then confirmed `ENABLED`.
+
+`npm run smoke:books` asserts 26 invariants, and its purpose is narrower than the
+others: it checks that **the rules the database enforces are the rules
+`entryProblems()` enforces**. If those drift, the UI accepts an entry the server
+refuses, or stops refusing one the server would take. It also re-checks, on
+DB-shaped rows, the property `verify-accounting.mjs` checks on seeded ones: a reversal
+nets to zero on every account.
+
+### Not wired yet
+
+`LedgerContext` still reads `ledgerSeed`. This slice is the schema, the API layer and
+the tests — the context rewiring is a further pass, and the nine accounting panels
+(chart, journal, ledger, trial balance, statements, VAT, aging, fixed assets, close)
+read through it.
+
 ## Not yet on the server
 
-Cart, accounting, governance and supply, plus the seven customer-account areas listed
-above. The seven slices done so far are the pattern for the rest.
+Cart, governance, supply and cost centres, plus the seven customer-account areas
+listed above and the accounting contexts. The eight slices done so far are the pattern
+for the rest.

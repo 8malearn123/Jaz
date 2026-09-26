@@ -18,7 +18,8 @@
     "smoke:gallery": "node scripts/verify-gallery.mjs",
     "smoke:team": "node scripts/verify-team.mjs",
     "smoke:catalogue": "node scripts/verify-catalogue.mjs",
-    "smoke:orders": "node scripts/verify-orders.mjs"
+    "smoke:orders": "node scripts/verify-orders.mjs",
+    "smoke:books": "node scripts/verify-books.mjs"
   },
   "dependencies": {
     "@fontsource/fraunces": "^5.0.20",
