@@ -240,8 +240,77 @@ before one table can serve both.
 Also still in code: `b2cCatalog` / `stdCatalog` / `megaCatalog` (the wholesale
 price lists), the category tree (`catTree`), and `OwnerProduct` with its BOM.
 
+## Slice 5 — the public catalogue (schema and data)
+
+`products`, `product_variants`, `product_reviews`, plus the `product_type` and
+`product_line` enums. Seeded with all 15 products, 23 variants, 10 reviews and 12
+art cards from `products.ts`.
+
+### The duplication this uncovered
+
+`products.ts` and `storeProductsSeed` describe **the same fifteen products under
+different names**, and not one title matches:
+
+| `products.ts` (public) | `storeProductsSeed` (console) |
+|---|---|
+| Signature Milk | Milk chocolate bar |
+| Damascena Rose | Dark chocolate with rose |
+| Jazan Jasmine | Dark chocolate with Arabian jasmine |
+| Khawlani Coffee | Dark chocolate with coffee |
+| The Orchard Box | Jasmine luxury box |
+
+`products.ts` carries the editorial voice the client signed off (PR #78, "the
+client's own words"), so it is canonical here. Whether `store_products` is then
+retired into per-channel listings of this table is a **content decision with
+customer-visible consequences** and is deliberately not taken by these migrations —
+the three tables are identical either way.
+
+`ProductVariant` and `StoreVariant` were checked field by field and are the same
+type. They stay in two tables because they hang off two parents, but the shape and
+constraints are identical on purpose, so a later merge is a data move, not a
+redesign.
+
+### The coupling that had to survive
+
+`/art` derives its twelve commissions from these art cards, keyed `aw-<slug>`, and
+slice 2's `artwork_overrides` rows reference those ids. So `slug` is unique, is the
+id already in the code, and is never regenerated. Verified after seeding: 12/12
+gallery slugs present; 12 distinct paintings keyed on title **and** artist **and**
+story; and the three products that share the title «حين تزهر الحقول» are still
+three, through the jsonb.
+
+Reviews have one rule worth naming: a signed-in customer may leave one but may
+never set `verified`, since verified means tied to a real order. Only staff set it.
+
+### Verified behaviour
+
+| Case | Result |
+|---|---|
+| gallery slugs after seeding | 12 / 12 |
+| distinct art works (title+artist+story) | 12 |
+| products sharing «حين تزهر الحقول» | 3 |
+| anon reads catalogue / reviews | 15 / 10 |
+| anon edits a product | 0 rows |
+| anon posts any review | refused |
+| customer posts an unverified review | 1 row |
+| **customer claims `verified`** | refused |
+| customer inflates a rating | 0 rows |
+| `content_editor` rewrites a story | 1 row |
+| `content_editor` verifies a review | 1 row |
+
+Test rows removed and the edited story restored; the tables read 15 / 23 / 10.
+
+### What is still NOT done
+
+**The storefront does not read this table yet.** `ShopPage`, `ProductPage`, the
+cart, checkout, search and the account panels reach `products` through 22
+**synchronous, module-level** imports (`import { products } from '@/data/products'`,
+`getProductById(...)`). Converting those to async reads is the remaining work and
+it is a real refactor of the customer-facing site, not a wiring job — so it was not
+started on the same pass that created the schema.
+
 ## Not yet on the server
 
 Orders, cart, customers, accounting, governance and supply are still seeded data in
-`src/data/` and React state. The four slices done so far are the pattern for the
+`src/data/` and React state. The five slices done so far are the pattern for the
 rest.
