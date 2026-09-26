@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { Search, X, CornerDownLeft } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useChannel } from '@/state/ChannelContext'
-import { products } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
 import { flavors, flavorList } from '@/data/flavors'
 import { ProductArt } from '@/components/brand/ProductArt'
 import { tint } from '@/lib/cn'
@@ -32,6 +32,7 @@ export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () =>
   }, [open, onClose])
 
   const results = useMemo(() => {
+    const { products } = useCatalogue()
     const query = q.trim().toLowerCase()
     if (!query) return products.filter((p) => p.badges.includes('bestseller')).slice(0, 4)
     return products

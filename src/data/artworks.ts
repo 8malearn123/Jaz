@@ -41,27 +41,37 @@ const sameWork = (a: Product, b: Product) =>
  * holds three different paintings called «حين تزهر الحقول», and merging them would
  * quietly delete two commissions (and sell one canvas three times).
  */
-export const seededArtworks: Artwork[] = products
-  .filter((p) => p.artCard)
-  .reduce<Product[][]>((groups, p) => {
-    const g = groups.find((members) => sameWork(members[0], p))
-    if (g) g.push(p)
-    else groups.push([p])
-    return groups
-  }, [])
-  .map((members) => {
-    const lead = members[0]
-    const art = lead.artCard!
-    return {
-      id: `aw-${lead.slug}`,
-      title: art.artworkTitle,
-      artist: art.artistName,
-      description: art.description,
-      flavorId: lead.flavorId,
-      barSlugs: members.map((m) => m.slug),
-      ...(facts[lead.slug] ?? unstated),
-    }
-  })
+export function deriveArtworks(catalogue: Product[]): Artwork[] {
+  return catalogue
+    .filter((p) => p.artCard)
+    .reduce<Product[][]>((groups, p) => {
+      const g = groups.find((members) => sameWork(members[0], p))
+      if (g) g.push(p)
+      else groups.push([p])
+      return groups
+    }, [])
+    .map((members) => {
+      const lead = members[0]
+      const art = lead.artCard!
+      return {
+        id: `aw-${lead.slug}`,
+        title: art.artworkTitle,
+        artist: art.artistName,
+        description: art.description,
+        flavorId: lead.flavorId,
+        barSlugs: members.map((m) => m.slug),
+        ...(facts[lead.slug] ?? unstated),
+      }
+    })
+}
+
+/**
+ * The gallery derived from the in-code catalogue. Still the whole story with no
+ * backend; with one, ArtworksProvider re-derives from whatever the products table
+ * returns, so the ids stay `aw-<slug>` and the artwork_overrides rows keyed on them
+ * keep matching.
+ */
+export const seededArtworks: Artwork[] = deriveArtworks(products)
 
 export const artworkStatuses = ['available', 'reserved', 'sold'] as const
 

@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { Package, ArrowRight } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { customer, DEMO_TODAY, type CustomerOrder, type TrackStep } from '@/data/account'
-import { variantById } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
 import { flavors } from '@/data/flavors'
 import { ProductArt } from '@/components/brand/ProductArt'
 import { buttonClass } from '@/components/ui/Button'
@@ -24,6 +24,7 @@ export function daysUntil(dateISO: string): number {
 
 /** Tinted square thumbnail for an order's first item. */
 export function OrderThumb({ order, size = 14 }: { order: CustomerOrder; size?: number }) {
+  const { variantById } = useCatalogue()
   const first = variantById(order.items[0]?.variantId)
   const flavor = first ? flavors[first.product.flavorId] : flavors.milk
   return (

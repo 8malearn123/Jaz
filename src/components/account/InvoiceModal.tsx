@@ -1,7 +1,7 @@
 import { Download, ShieldCheck } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
 import { useCustomer } from '@/state/CustomerContext'
-import { variantById } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
 import { flavors } from '@/data/flavors'
 import type { Bilingual, Flavor } from '@/data/types'
 import type { CustomerOrder } from '@/data/account'
@@ -23,6 +23,7 @@ export function InvoiceModal({ order, open, onClose }: { order: CustomerOrder | 
   type InvoiceLine = { title: Bilingual; flavor: Flavor; weight: number; qty: number; unit: number; total: number }
   const lines: InvoiceLine[] = order.items
     .map((it): InvoiceLine | null => {
+      const { variantById } = useCatalogue()
       const found = variantById(it.variantId)
       if (!found) return null
       const unit = found.variant.retailPriceMinor

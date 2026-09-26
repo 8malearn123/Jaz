@@ -1,0 +1,508 @@
+// Hand-written to match supabase/migrations/20260921000000_auth_roles.sql.
+// Regenerate with: npx supabase gen types typescript --project-id <ref>
+//
+// These are `type` aliases rather than interfaces on purpose: postgrest-js
+// constrains a schema to Record<string, unknown>, and an interface has no
+// implicit index signature, so interfaces here resolve every query to `never`.
+
+import type { RoleId } from '@/data/roles'
+
+/** The Postgres enum public.app_role mirrors RoleId exactly. */
+export type AppRole = RoleId
+
+export type ProfileRow = {
+  id: string
+  email: string | null
+  phone: string | null
+  full_name_en: string | null
+  full_name_ar: string | null
+  role: AppRole
+  org_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type OrganizationRow = {
+  id: string
+  name_en: string
+  name_ar: string
+  cr_number: string | null
+  vat_number: string | null
+  channel: 'b2c' | 'b2b'
+  credit_limit: number
+  created_at: string
+}
+
+export type Database = {
+  public: {
+    Tables: {
+      profiles: {
+        Row: ProfileRow
+        Insert: Partial<ProfileRow> & { id: string }
+        Update: Partial<ProfileRow>
+        Relationships: []
+      }
+      organizations: {
+        Row: OrganizationRow
+        Insert: Partial<OrganizationRow> & { name_en: string; name_ar: string }
+        Update: Partial<OrganizationRow>
+        Relationships: []
+      }
+      artworks: {
+        Row: ArtworkRow
+        Insert: Omit<Partial<ArtworkRow>, 'id'> & {
+          title_en: string; title_ar: string; artist_en: string; artist_ar: string
+          flavor_id: string; year: number; width_cm: number; height_cm: number
+        }
+        Update: Partial<ArtworkRow>
+        Relationships: []
+      }
+      artwork_overrides: {
+        Row: ArtworkOverrideRow
+        Insert: Partial<ArtworkOverrideRow> & { artwork_id: string }
+        Update: Partial<ArtworkOverrideRow>
+        Relationships: []
+      }
+      acquisition_requests: {
+        Row: AcquisitionRequestRow
+        Insert: Omit<Partial<AcquisitionRequestRow>, 'id'> & { artwork_id: string; name: string; email: string }
+        Update: Partial<AcquisitionRequestRow>
+        Relationships: []
+      }
+      employees: {
+        Row: EmployeeRow
+        Insert: Omit<Partial<EmployeeRow>, 'id'> & { name_en: string; name_ar: string }
+        Update: Partial<EmployeeRow>
+        Relationships: []
+      }
+      store_products: {
+        Row: StoreProductRow
+        Insert: Omit<Partial<StoreProductRow>, 'id'> & { channel: ProdChannelRow; name_en: string; name_ar: string }
+        Update: Partial<StoreProductRow>
+        Relationships: []
+      }
+      store_variants: {
+        Row: StoreVariantRow
+        Insert: Omit<Partial<StoreVariantRow>, 'id'> & {
+          product_id: string; net_weight_g: number
+          retail_price_minor: number; b2b_price_minor: number
+        }
+        Update: Partial<StoreVariantRow>
+        Relationships: []
+      }
+      products: {
+        Row: ProductRow
+        Insert: Partial<ProductRow> & { id: string; sku: string; slug: string }
+        Update: Partial<ProductRow>
+        Relationships: []
+      }
+      product_variants: {
+        Row: ProductVariantFullRow
+        Insert: Partial<ProductVariantFullRow> & { id: string; product_id: string }
+        Update: Partial<ProductVariantFullRow>
+        Relationships: []
+      }
+      product_reviews: {
+        Row: ProductReviewRow
+        Insert: Omit<Partial<ProductReviewRow>, 'id'> & { product_id: string; rating: number }
+        Update: Partial<ProductReviewRow>
+        Relationships: []
+      }
+      customers: {
+        Row: CustomerRow
+        Insert: Partial<CustomerRow> & { id: string; name_en: string; name_ar: string }
+        Update: Partial<CustomerRow>
+        Relationships: []
+      }
+      orders: {
+        Row: OrderRow
+        Insert: Omit<Partial<OrderRow>, 'id'> & { order_no: string; channel: OrderChannelRow }
+        Update: Partial<OrderRow>
+        Relationships: []
+      }
+      order_items: {
+        Row: OrderItemRow
+        Insert: Omit<Partial<OrderItemRow>, 'id'> & { order_id: string; variant_id: string; qty: number }
+        Update: Partial<OrderItemRow>
+        Relationships: []
+      }
+      loyalty_ledger: {
+        Row: LoyaltyLedgerRow
+        Insert: Omit<Partial<LoyaltyLedgerRow>, 'id'> & { customer_id: string; kind: LoyaltyLedgerRow['kind']; points: number }
+        Update: Partial<LoyaltyLedgerRow>
+        Relationships: []
+      }
+      accounts: {
+        Row: AccountRow
+        Insert: Partial<AccountRow> & { code: string; name_en: string; name_ar: string; type: AccountTypeRow; normal: NormalBalanceRow }
+        Update: Partial<AccountRow>
+        Relationships: []
+      }
+      accounting_periods: {
+        Row: AccountingPeriodRow
+        Insert: Partial<AccountingPeriodRow> & { key: string }
+        Update: Partial<AccountingPeriodRow>
+        Relationships: []
+      }
+      journal_entries: {
+        Row: JournalEntryRow
+        // `period` is generated: it is readable but never sent.
+        Insert: Omit<Partial<JournalEntryRow>, 'id' | 'period'> & { no: string; entry_date: string; source: JournalSourceRow }
+        Update: Omit<Partial<JournalEntryRow>, 'period'>
+        Relationships: []
+      }
+      journal_lines: {
+        Row: JournalLineRow
+        Insert: Omit<Partial<JournalLineRow>, 'id'> & { entry_id: string; account_code: string }
+        Update: Partial<JournalLineRow>
+        Relationships: []
+      }
+    }
+    Views: Record<string, never>
+    Functions: {
+      current_app_role: { Args: Record<string, never>; Returns: AppRole }
+      is_staff: { Args: Record<string, never>; Returns: boolean }
+      is_privileged: { Args: Record<string, never>; Returns: boolean }
+      is_admin: { Args: Record<string, never>; Returns: boolean }
+      order_owner_stage: { Args: { s: OrderStatusRow }; Returns: number }
+      period_of: { Args: { d: string }; Returns: string }
+      can_keep_books: { Args: Record<string, never>; Returns: boolean }
+      can_read_books: { Args: Record<string, never>; Returns: boolean }
+      can_edit_content: { Args: Record<string, never>; Returns: boolean }
+    }
+    Enums: {
+      app_role: AppRole; artwork_status: ArtworkStatusRow
+      team_permission: TeamPermissionRow; job_role: JobRoleRow
+      prod_channel: ProdChannelRow; store_badge: StoreBadgeRow; store_packaging: StorePackagingRow
+      loyalty_tier: LoyaltyTierRow; order_channel: OrderChannelRow; order_status: OrderStatusRow
+      account_type: AccountTypeRow; normal_balance: NormalBalanceRow
+      entry_status: EntryStatusRow; journal_source: JournalSourceRow
+    }
+    CompositeTypes: Record<string, never>
+  }
+}
+
+// ---------------------------------------------------------------- gallery
+// Matches supabase/migrations/20260923020000_artworks.sql.
+
+export type ArtworkStatusRow = 'available' | 'reserved' | 'sold'
+
+export type ArtworkRow = {
+  id: string
+  title_en: string
+  title_ar: string
+  artist_en: string
+  artist_ar: string
+  description_en: string
+  description_ar: string
+  medium_en: string
+  medium_ar: string
+  flavor_id: string
+  bar_slugs: string[]
+  year: number
+  width_cm: number
+  height_cm: number
+  price_minor: number
+  status: ArtworkStatusRow
+  image: string | null
+  hidden: boolean
+  created_at: string
+  updated_at: string
+}
+
+/** Every column but artwork_id is nullable: null means "not overridden". */
+export type ArtworkOverrideRow = {
+  artwork_id: string
+  title_en: string | null
+  title_ar: string | null
+  artist_en: string | null
+  artist_ar: string | null
+  description_en: string | null
+  description_ar: string | null
+  medium_en: string | null
+  medium_ar: string | null
+  year: number | null
+  width_cm: number | null
+  height_cm: number | null
+  price_minor: number | null
+  status: ArtworkStatusRow | null
+  image: string | null
+  hidden: boolean | null
+  updated_at: string
+}
+
+export type AcquisitionRequestRow = {
+  id: string
+  artwork_id: string
+  name: string
+  email: string
+  phone: string
+  note: string
+  handled: boolean
+  created_at: string
+}
+
+// ---------------------------------------------------------------- team
+// Matches supabase/migrations/20260926000000_team.sql.
+
+export type TeamPermissionRow =
+  | 'orders' | 'purchases' | 'raw' | 'production' | 'waste'
+  | 'products' | 'customers' | 'suppliers' | 'reports' | 'accounting' | 'ledger'
+
+export type JobRoleRow =
+  | 'sys_admin' | 'finance_mgr' | 'accountant' | 'chef'
+  | 'production' | 'warehouse' | 'purchasing' | 'sales' | 'auditor'
+
+export type EmployeeRow = {
+  id: string
+  name_en: string
+  name_ar: string
+  title_en: string
+  title_ar: string
+  phone: string
+  email: string
+  perms: TeamPermissionRow[]
+  active: boolean
+  job_role: JobRoleRow | null
+  manager_id: string | null
+  profile_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+// ---------------------------------------------------------------- catalogue
+// Matches supabase/migrations/20260926010000_store_products.sql.
+
+export type ProdChannelRow    = 'b2c' | 'b2b' | 'mega'
+export type StoreBadgeRow     = 'bestseller' | 'new' | 'seasonal' | 'limited'
+export type StorePackagingRow = 'standard' | 'gift' | 'bulk_case'
+
+export type StoreProductRow = {
+  id: string
+  channel: ProdChannelRow
+  /** The catalogue entry this listing sells. Null for a channel-only SKU. */
+  product_id: string | null
+  /** Null when product_id is set — the name then comes from the product. */
+  name_en: string | null
+  name_ar: string | null
+  desc_en: string
+  desc_ar: string
+  category_en: string
+  category_ar: string
+  price_minor: number
+  color: string
+  image: string | null
+  badges: StoreBadgeRow[]
+  visible: boolean
+  country: string | null
+  sku: string | null
+  moq: number | null
+  net_weight: string | null
+  shelf_life: string | null
+  barcode: string | null
+  notes: string | null
+  components: { name: string; qty: number; unit: string }[]
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export type StoreVariantRow = {
+  id: string
+  product_id: string
+  position: number
+  net_weight_g: number
+  packaging: StorePackagingRow
+  case_qty: number | null
+  retail_price_minor: number
+  b2b_price_minor: number
+  in_stock: boolean
+  requires_cold_chain: boolean
+  created_at: string
+}
+
+// ---------------------------------------------------------------- public catalogue
+// Matches supabase/migrations/20260926030000_products.sql.
+
+export type ProductRow = {
+  id: string
+  sku: string
+  slug: string
+  type: string
+  line: string
+  title_en: string
+  title_ar: string
+  flavor_id: string
+  cocoa_pct: number | null
+  ingredients_en: string
+  ingredients_ar: string
+  story_en: string
+  story_ar: string
+  allergens: { en: string; ar: string }[]
+  badges: StoreBadgeRow[]
+  art_card: unknown | null
+  rating: number
+  review_count: number
+  pairs_with: string[]
+  occasions: string[]
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export type ProductVariantFullRow = {
+  id: string
+  product_id: string
+  position: number
+  net_weight_g: number
+  packaging: StorePackagingRow
+  case_qty: number | null
+  retail_price_minor: number
+  b2b_price_minor: number
+  in_stock: boolean
+  requires_cold_chain: boolean
+}
+
+export type ProductReviewRow = {
+  id: string
+  product_id: string
+  author_en: string
+  author_ar: string
+  rating: number
+  body_en: string
+  body_ar: string
+  verified: boolean
+  review_date: string
+  created_at: string
+}
+
+// ---------------------------------------------------------------- orders
+// Matches supabase/migrations/20260927010000_orders.sql.
+
+export type LoyaltyTierRow  = 'basic' | 'silver' | 'gold' | 'elite'
+export type OrderChannelRow = 'B2C' | 'B2B' | 'MEGA'
+export type OrderStatusRow =
+  | 'new' | 'confirmed' | 'processing' | 'ready'
+  | 'shipped' | 'out_for_delivery' | 'delivered' | 'cancelled'
+
+export type CustomerRow = {
+  id: string
+  profile_id: string | null
+  name_en: string
+  name_ar: string
+  email: string | null
+  phone: string | null
+  kind: OrderChannelRow
+  tier: LoyaltyTierRow
+  spend_minor: number
+  member_since: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type OrderRow = {
+  id: string
+  order_no: string
+  customer_id: string | null
+  channel: OrderChannelRow
+  status: OrderStatusRow
+  placed_at: string
+  total_minor: number
+  qty: number
+  is_gift: boolean
+  cold_chain: boolean
+  carrier_en: string | null
+  carrier_ar: string | null
+  tracking_no: string | null
+  sla_met: boolean
+  department_en: string | null
+  department_ar: string | null
+  items_summary_en: string | null
+  items_summary_ar: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type OrderItemRow = {
+  id: string
+  order_id: string
+  variant_id: string
+  qty: number
+  unit_minor: number
+  position: number
+}
+
+export type LoyaltyLedgerRow = {
+  id: string
+  customer_id: string
+  kind: 'order' | 'grant' | 'campaign' | 'redeem'
+  source_en: string
+  source_ar: string
+  points: number
+  at_date: string
+  created_at: string
+}
+
+// ---------------------------------------------------------------- the books
+// Matches supabase/migrations/20260927020000_books.sql.
+
+export type AccountTypeRow    = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense'
+export type NormalBalanceRow  = 'debit' | 'credit'
+export type EntryStatusRow    = 'posted' | 'reversed'
+export type JournalSourceRow =
+  | 'opening' | 'sale' | 'purchase' | 'receipt' | 'payment' | 'waste' | 'production'
+  | 'cost_center' | 'depreciation' | 'vat' | 'closing' | 'manual' | 'reversal'
+
+export type AccountRow = {
+  code: string
+  name_en: string
+  name_ar: string
+  type: AccountTypeRow
+  normal: NormalBalanceRow
+  parent: string | null
+  postable: boolean
+  active: boolean
+  is_control: boolean
+  contra: boolean
+  cash: boolean
+  vat_role: 'input' | 'output' | 'payable' | null
+  sort_order: number
+}
+
+export type AccountingPeriodRow = {
+  key: string
+  closed: boolean
+  closed_at: string | null
+  closed_by: string | null
+}
+
+export type JournalEntryRow = {
+  id: string
+  no: string
+  entry_date: string
+  /** Generated from entry_date — never written. */
+  period: string
+  source: JournalSourceRow
+  source_ref: string | null
+  memo_en: string
+  memo_ar: string
+  party_en: string | null
+  party_ar: string | null
+  status: EntryStatusRow
+  reversal_of: string | null
+  reversed_by: string | null
+  posted_by: string | null
+  created_at: string
+}
+
+export type JournalLineRow = {
+  id: string
+  entry_id: string
+  account_code: string
+  debit_minor: number
+  credit_minor: number
+  center_id: string | null
+  memo_en: string | null
+  memo_ar: string | null
+  position: number
+}

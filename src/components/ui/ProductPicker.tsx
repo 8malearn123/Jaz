@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, Check } from 'lucide-react'
 import { useLocale } from '@/i18n/LocaleContext'
-import { products } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
 import type { FlavorId, ProductType } from '@/data/types'
 import { ProductArt } from '@/components/brand/ProductArt'
 import { cn } from '@/lib/cn'
@@ -31,6 +31,7 @@ interface ProductPickerProps {
  * inline (never an absolute overlay) so it can't be clipped inside a scrolling modal.
  */
 export function ProductPicker({ value, onChange, placeholder, className }: ProductPickerProps) {
+  const { products } = useCatalogue()
   const { t, pick, money } = useLocale()
   const [open, setOpen] = useState(false)
   const selected = products.find((p) => p.id === value)

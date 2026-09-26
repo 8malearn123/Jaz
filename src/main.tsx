@@ -4,7 +4,9 @@ import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App'
 import { LocaleProvider } from '@/i18n/LocaleContext'
+import { AuthProvider } from '@/state/AuthContext'
 import { ChannelProvider } from '@/state/ChannelContext'
+import { CatalogueProvider } from '@/state/CatalogueContext'
 import { CartProvider } from '@/state/CartContext'
 import { BillingProvider } from '@/state/BillingContext'
 import { StatementsProvider } from '@/state/StatementsContext'
@@ -18,7 +20,11 @@ import { ArtworksProvider } from '@/state/ArtworksContext'
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <LocaleProvider>
+      {/* Owns the real session; ChannelProvider reads the role from it. */}
+      <AuthProvider>
       <ChannelProvider>
+        {/* The catalogue sits above the cart and the gallery: both read from it. */}
+        <CatalogueProvider>
         <CartProvider>
           <BillingProvider>
            <StatementsProvider>
@@ -44,7 +50,9 @@ createRoot(document.getElementById('root')!).render(
            </StatementsProvider>
           </BillingProvider>
         </CartProvider>
+        </CatalogueProvider>
       </ChannelProvider>
+      </AuthProvider>
     </LocaleProvider>
   </StrictMode>,
 )

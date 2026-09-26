@@ -2,7 +2,8 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, ArrowUpRight, Check, Copy, Leaf, Palette } from 'lucide-react'
 import { useLocale, toArabicDigits } from '@/i18n/LocaleContext'
-import { products } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
+import type { Product } from '@/data/types'
 import { flavorList, flavors } from '@/data/flavors'
 import { buttonClass } from '@/components/ui/Button'
 import { SectionHeader } from '@/components/ui/SectionHeader'
@@ -198,6 +199,7 @@ function Marquee() {
 
 /* ─────────────────────────── Showcase (flavors + spotlight + rail) ─────────────────────────── */
 function ShowcaseSection() {
+  const { products } = useCatalogue()
   const { t, pick, money } = useLocale()
   const spotlight = products.find((p) => p.id === 'p-milk') ?? products[0]
   const sFlavor = flavors[spotlight.flavorId]
@@ -289,6 +291,7 @@ function ShowcaseSection() {
 
 /* ─────────────────────────── Art on every wrapper ─────────────────────────── */
 function ArtSection() {
+  const { products } = useCatalogue()
   const { t, pick } = useLocale()
   const featured = ['p-dark60', 'p-coffee', 'p-mango']
     .map((id) => products.find((p) => p.id === id))
@@ -360,6 +363,7 @@ function ArtSection() {
 
 /* ─────────────────────────── Gifts ─────────────────────────── */
 function GiftsSection() {
+  const { products } = useCatalogue()
   const { t, pick, money, locale } = useLocale()
   const boxes = products.filter((p) => p.type === 'gift_box')
   // The 500 g box leads because it is the two 250 g boxes together — the page's own point.
@@ -494,7 +498,7 @@ function HeritageSection() {
 }
 
 /* ─────────────────────────── Reviews ─────────────────────────── */
-type ReviewProduct = (typeof products)[number]
+type ReviewProduct = Product
 
 function initialsOf(name: string): string {
   return name
@@ -507,6 +511,7 @@ function initialsOf(name: string): string {
 }
 
 function ReviewsSection() {
+  const { products } = useCatalogue()
   const { t } = useLocale()
   const items = products.flatMap((p) => p.reviews.map((review) => ({ review, product: p })))
   const railRef = useRef<HTMLDivElement>(null)
@@ -623,6 +628,7 @@ function Postmark({ label }: { label: string }) {
 }
 
 function NewsletterSection() {
+  const { products } = useCatalogue()
   const { t, locale } = useLocale()
   const [stage, setStage] = useState<'idle' | 'sealing' | 'sent'>('idle')
   const [email, setEmail] = useState('')

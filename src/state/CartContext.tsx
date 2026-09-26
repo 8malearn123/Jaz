@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { variantById } from '@/data/products'
+import { useCatalogue } from '@/state/CatalogueContext'
 import { wholesaleBySku, wholesaleUnitPrice } from '@/data/wholesale'
 import { useChannel } from './ChannelContext'
 
@@ -49,6 +49,7 @@ const PROMOS: Record<string, { pct?: number; fixed?: number }> = {
 }
 
 export function CartProvider({ children }: { children: ReactNode }) {
+  const { variantById } = useCatalogue()
   const { channel } = useChannel()
   const [lines, setLines] = useState<CartLine[]>(() => {
     if (typeof window === 'undefined') return []

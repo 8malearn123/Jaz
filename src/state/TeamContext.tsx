@@ -1,6 +1,11 @@
-import { createContext, useContext, useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Employee, TeamPermission } from '@/data/ownerTeam'
 import { jobRoleOf, type JobRole } from '@/data/governance'
+import { isSupabaseConfigured } from '@/lib/supabase'
+import {
+  fetchEmployees, createEmployee, updateEmployee, deleteEmployee,
+  type WriteResult,
+} from '@/lib/api/team'
 
 // Staff accounts live above both the role picker and the admin console: the owner
 // creates employees (with a job role, a manager and per-section permissions) from the
@@ -11,7 +16,8 @@ import { jobRoleOf, type JobRole } from '@/data/governance'
 
 interface TeamCtx {
   employees: Employee[]
-  addEmployee: (e: Omit<Employee, 'id' | 'since'>) => string
+  /** The id is assigned by the database, so nothing is returned — read it back from `employees`. */
+  addEmployee: (e: Omit<Employee, 'id' | 'since'>) => void
   removeEmployee: (id: string) => void
   toggleEmployeePerm: (id: string, perm: TeamPermission) => void
   toggleEmployeeActive: (id: string) => void
@@ -31,40 +37,105 @@ interface TeamCtx {
   activeEmployee: Employee | null
   signInEmployee: (id: string) => void
   clearEmployee: () => void
+  /** False while the first read from the server is still in flight. */
+  ready: boolean
+  /** The server's refusal, when one arrives — otherwise null. */
+  error: string | null
 }
 
 const Ctx = createContext<TeamCtx | null>(null)
 
 export function TeamProvider({ children }: { children: ReactNode }) {
+  const backed = isSupabaseConfigured
   const [employees, setEmployees] = useState<Employee[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [ready, setReady] = useState(!backed)
+  const [error, setError] = useState<string | null>(null)
   const seqRef = useRef(1)
 
+  const reload = useCallback(async () => {
+    if (!backed) return
+    setEmployees(await fetchEmployees())
+    setReady(true)
+  }, [backed])
+
+  useEffect(() => {
+    void reload()
+  }, [reload])
+
+  /** Runs a write, then re-reads so the UI shows what the server actually kept. */
+  const commit = useCallback(async (write: () => Promise<WriteResult>) => {
+    const res = await write()
+    if (!res.ok) {
+      setError(res.error)
+      return
+    }
+    setError(null)
+    await reload()
+  }, [reload])
+
   const addEmployee = useCallback((e: Omit<Employee, 'id' | 'since'>) => {
+    if (backed) {
+      void commit(() => createEmployee(e))
+      return
+    }
     const id = `E-${String(seqRef.current++).padStart(2, '0')}`
     setEmployees((prev) => [{ ...e, id, since: { en: 'Now', ar: 'الآن' } }, ...prev])
-    return id
-  }, [])
+  }, [backed, commit])
+
   const removeEmployee = useCallback((id: string) => {
+    setActiveId((cur) => (cur === id ? null : cur))
+    if (backed) {
+      // Reports are lifted to the departing person's manager by a trigger, so this
+      // is one call rather than a read-modify-write that could race.
+      void commit(() => deleteEmployee(id))
+      return
+    }
     // Reports are not orphaned: they move up to the removed person's own manager.
     setEmployees((prev) => {
       const gone = prev.find((e) => e.id === id)
       return prev.filter((e) => e.id !== id).map((e) => (e.managerId === id ? { ...e, managerId: gone?.managerId } : e))
     })
-    setActiveId((cur) => (cur === id ? null : cur))
-  }, [])
-  const toggleEmployeePerm = useCallback((id: string, perm: TeamPermission) =>
-    setEmployees((prev) => prev.map((e) => (e.id === id ? { ...e, perms: e.perms.includes(perm) ? e.perms.filter((p) => p !== perm) : [...e.perms, perm] } : e))), [])
-  const toggleEmployeeActive = useCallback((id: string) =>
-    setEmployees((prev) => prev.map((e) => (e.id === id ? { ...e, active: !e.active } : e))), [])
+  }, [backed, commit])
 
-  const setEmployeeRole = useCallback((id: string, role: JobRole) =>
+  const toggleEmployeePerm = useCallback((id: string, perm: TeamPermission) => {
+    if (backed) {
+      const cur = employees.find((e) => e.id === id)
+      if (!cur) return
+      const perms = cur.perms.includes(perm) ? cur.perms.filter((p) => p !== perm) : [...cur.perms, perm]
+      void commit(() => updateEmployee(id, { perms }))
+      return
+    }
+    setEmployees((prev) => prev.map((e) => (e.id === id ? { ...e, perms: e.perms.includes(perm) ? e.perms.filter((p) => p !== perm) : [...e.perms, perm] } : e)))
+  }, [backed, commit, employees])
+
+  const toggleEmployeeActive = useCallback((id: string) => {
+    if (backed) {
+      const cur = employees.find((e) => e.id === id)
+      if (!cur) return
+      void commit(() => updateEmployee(id, { active: !cur.active }))
+      return
+    }
+    setEmployees((prev) => prev.map((e) => (e.id === id ? { ...e, active: !e.active } : e)))
+  }, [backed, commit, employees])
+
+  const setEmployeeRole = useCallback((id: string, role: JobRole) => {
+    // A job role seeds its sections; it never takes away what was granted by hand.
+    if (backed) {
+      const cur = employees.find((e) => e.id === id)
+      if (!cur) return
+      const def = jobRoleOf(role)
+      const perms = def ? Array.from(new Set([...cur.perms, ...def.perms])) : cur.perms
+      void commit(() => updateEmployee(id, { role, perms }))
+      return
+    }
     setEmployees((prev) => prev.map((e) => {
       if (e.id !== id) return e
       const def = jobRoleOf(role)
       const perms = def ? Array.from(new Set([...e.perms, ...def.perms])) : e.perms
       return { ...e, role, perms }
-    })), [])
+    }))
+  }, [backed, commit, employees])
 
   // Walk up from `managerId`; if we meet `id` on the way, the link would close a loop.
   const wouldCycleIn = (list: Employee[], id: string, managerId: string): boolean => {
@@ -80,13 +151,20 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   }
 
   const setEmployeeManager = useCallback((id: string, managerId: string | null): boolean => {
+    // Checked here so the UI can refuse immediately and say why. The database
+    // checks it again, because a direct API call never passes through this.
+    if (backed) {
+      if (managerId && wouldCycleIn(employees, id, managerId)) return false
+      void commit(() => updateEmployee(id, { managerId: managerId ?? undefined }))
+      return true
+    }
     let ok = true
     setEmployees((prev) => {
       if (managerId && wouldCycleIn(prev, id, managerId)) { ok = false; return prev }
       return prev.map((e) => (e.id === id ? { ...e, managerId: managerId ?? undefined } : e))
     })
     return ok
-  }, [])
+  }, [backed, commit, employees])
 
   const reportsOf = useCallback((id: string) => employees.filter((e) => e.managerId === id), [employees])
   const managersOf = useCallback((id: string) => {
@@ -127,10 +205,10 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const value = useMemo<TeamCtx>(() => ({
     employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive,
     setEmployeeRole, setEmployeeManager, reportsOf, managersOf, descendantsOf, wouldCycle,
-    activeEmployee, signInEmployee, clearEmployee,
+    activeEmployee, signInEmployee, clearEmployee, ready, error,
   }), [employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive,
     setEmployeeRole, setEmployeeManager, reportsOf, managersOf, descendantsOf, wouldCycle,
-    activeEmployee, signInEmployee, clearEmployee])
+    activeEmployee, signInEmployee, clearEmployee, ready, error])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
