@@ -335,8 +335,74 @@ and would break `p.artCard!`), that two bars carrying one card collapse to a sin
 canvas with both slugs while the same title with a different artist stays two, and
 that deriving from DB-shaped rows yields the same twelve ids as the seed.
 
+## Slice 6 — the duplication closed
+
+`store_products` is now a **listings** table: what a product costs and whether it is
+on sale in a given channel. Identity and copy live in `products`, reached through a
+new nullable `product_id`.
+
+### Why `products` won, with evidence
+
+Not a preference. The catalogue records **Damascena Rose, Jazan Jasmine, Lavender,
+Sun Papaya, Jazani Mango and Khawlani Coffee as MILK chocolate** — whole milk
+powder, 38% cacao — while the operational listing names call all six "Dark chocolate
+with …". "Dark 70% bar" is the catalogue's Single-Origin Dark 72%.
+
+So the listing names are not a different voice for the same facts; they are **wrong
+about the chocolate base and the percentage**. A milk product labelled dark is an
+allergen problem, not a copy problem.
+
+### What was and was not linked
+
+There is no data key joining the two — `store_products` carries no flavour — so the
+mapping is authored and spelled out row by row in the migration, and limited to
+where it is unambiguous.
+
+| | count | |
+|---|---|---|
+| linked | 12 | the b2c bars, by the flavour in the listing name |
+| unlinked | 10 | b2b 4, b2c 3, mega 3 |
+
+The three b2c **boxes** are deliberately not linked: "Jasmine luxury box" (220 g),
+"Rose gift box" (260 g) and "Founding Day box" (300 g) are not the catalogue's
+Orchard / Mountain / Full Library (250 / 250 / 500 g) — different weights, different
+contents. Whether they are the same products renamed is a question about the client's
+product line, and guessing it would put the wrong name on a card. **This is still
+open.**
+
+The b2b and mega listings ("Hotel amenity bar", "Assorted bar pallet", …) have no
+public product page at all. They are channel-only SKUs and keep their own names.
+
+### Two constraints hold it together
+
+* `store_products_named_or_linked` — a listing either points at a product or carries
+  its own name. Never neither, so a listing can never be unidentifiable. Tested: an
+  insert with neither is refused.
+* `on delete restrict` on `product_id` — a catalogue entry that something is selling
+  cannot be deleted out from under its listing. Tested: refused.
+
+Once linked, the duplicate name and description are set to null/empty, because
+leaving them is what let the two drift apart in the first place.
+
+### Verified behaviour
+
+| Case | Result |
+|---|---|
+| listings linked / unlinked | 12 / 10 |
+| unlinked by channel | b2b 4, b2c 3, mega 3 |
+| a product listed twice | none |
+| a linked row still holding a name | 0 |
+| an unlinked row missing a name | 0 |
+| insert with neither name nor link | refused |
+| delete a product that has a listing | refused |
+| a linked listing resolves its name | «Damascena Rose / الورد الدمشقي» |
+
+`smoke:catalogue` gained five checks for this, including the dangerous one: a row
+that *is* linked but whose join came back empty must yield empty strings, never
+`null`, or a product card renders with no title.
+
 ## Not yet on the server
 
 Orders, cart, customers, accounting, governance and supply are still seeded data in
-`src/data/` and React state. The five slices done so far are the pattern for the
+`src/data/` and React state. The six slices done so far are the pattern for the
 rest.

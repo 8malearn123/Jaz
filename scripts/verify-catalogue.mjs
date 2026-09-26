@@ -100,6 +100,42 @@ check('derivation from DB-shaped rows yields the same twelve ids',
   derivedFromRows.map(a => a.id).sort().join(',') === derived.map(a => a.id).sort().join(','),
   `${derivedFromRows.length} vs ${derived.length}`)
 
+// ---------------------------------------------------------------- listings
+// A linked listing must take its copy from the catalogue, and an unlinked one from
+// its own columns. Getting this backwards puts the wrong name on a product card, or
+// an empty one.
+const listingRow = {
+  id: 'sp-1', channel: 'b2c', product_id: 'p-rose',
+  name_en: null, name_ar: null, desc_en: '', desc_ar: '',
+  category_en: 'Bars', category_ar: 'ألواح', price_minor: 6500,
+  color: '#000', image: null, badges: [], visible: true, country: null,
+  sku: null, moq: null, net_weight: null, shelf_life: null, barcode: null,
+  notes: null, components: [], sort_order: 0, created_at: 'a', updated_at: 'b',
+}
+const storeVariantRow = {
+  id: 'sv-1', product_id: 'sp-1', position: 0, net_weight_g: 90,
+  packaging: 'standard', case_qty: null,
+  retail_price_minor: 6500, b2b_price_minor: 4550, in_stock: true, requires_cold_chain: true,
+}
+const linkedProduct = { title_en: 'Damascena Rose', title_ar: 'الورد الدمشقي', story_en: 'petals', story_ar: 'بتلات' }
+
+const linked = api.rowToProduct(listingRow, [storeVariantRow], linkedProduct)
+check('a linked listing takes the catalogue name', linked.name.en === 'Damascena Rose', linked.name.en)
+check('a linked listing takes the catalogue story', linked.desc.ar === 'بتلات')
+
+const standalone = api.rowToProduct(
+  { ...listingRow, product_id: null, name_en: 'Hotel amenity bar', name_ar: 'لوح ضيافة', desc_en: 'turn-down', desc_ar: 'للغرف' },
+  [storeVariantRow], null,
+)
+check('a channel-only listing keeps its own name', standalone.name.en === 'Hotel amenity bar', standalone.name.en)
+check('a channel-only listing keeps its own copy', standalone.desc.en === 'turn-down')
+
+// The dangerous case: linked in the row but the join missed. Falling through to the
+// nulled-out columns must not produce a card titled "".
+const orphaned = api.rowToProduct(listingRow, [storeVariantRow], null)
+check('a linked row with no join yields empty strings, never null',
+  orphaned.name.en === '' && orphaned.name.ar === '', JSON.stringify(orphaned.name))
+
 await server.close()
 console.log('')
 if (failures) { console.log(`${failures} check(s) failed.`); process.exit(1) }

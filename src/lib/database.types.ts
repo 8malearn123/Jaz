@@ -224,8 +224,11 @@ export type StorePackagingRow = 'standard' | 'gift' | 'bulk_case'
 export type StoreProductRow = {
   id: string
   channel: ProdChannelRow
-  name_en: string
-  name_ar: string
+  /** The catalogue entry this listing sells. Null for a channel-only SKU. */
+  product_id: string | null
+  /** Null when product_id is set — the name then comes from the product. */
+  name_en: string | null
+  name_ar: string | null
   desc_en: string
   desc_ar: string
   category_en: string

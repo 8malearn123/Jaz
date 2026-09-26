@@ -33,11 +33,24 @@ export function rowToVariant(r: StoreVariantRow): StoreVariant {
   }
 }
 
-export function rowToProduct(r: StoreProductRow, variants: StoreVariantRow[]): StoreProduct {
+/**
+ * A listing's display copy comes from the catalogue entry when it has one, and from
+ * its own columns when it is a channel-only SKU. `linked` is the product row, joined
+ * by the caller.
+ */
+export function rowToProduct(
+  r: StoreProductRow,
+  variants: StoreVariantRow[],
+  linked?: { title_en: string; title_ar: string; story_en: string; story_ar: string } | null,
+): StoreProduct {
   return {
     id: r.id,
-    name: { en: r.name_en, ar: r.name_ar },
-    desc: { en: r.desc_en, ar: r.desc_ar },
+    name: linked
+      ? { en: linked.title_en, ar: linked.title_ar }
+      : { en: r.name_en ?? '', ar: r.name_ar ?? '' },
+    desc: linked
+      ? { en: linked.story_en, ar: linked.story_ar }
+      : { en: r.desc_en, ar: r.desc_ar },
     category: { en: r.category_en, ar: r.category_ar },
     priceMinor: Number(r.price_minor),
     color: r.color,
@@ -67,6 +80,9 @@ export function rowToProduct(r: StoreProductRow, variants: StoreVariantRow[]): S
 export function productToRow(chan: ProdChannel, p: Omit<StoreProduct, 'id' | 'visible'> & { visible?: boolean }) {
   return {
     channel: chan as ProdChannelRow,
+    // A listing created in the console is channel-only until someone links it to a
+    // catalogue entry, so it carries its own name.
+    product_id: null,
     name_en: p.name.en,
     name_ar: p.name.ar,
     desc_en: p.desc?.en ?? '',
@@ -131,9 +147,11 @@ export async function fetchCatalogue(): Promise<Record<ProdChannel, StoreProduct
   if (!isSupabaseConfigured) return { ...EMPTY_CATALOGUE }
   const db = requireSupabase()
 
-  const [products, variants] = await Promise.all([
+  const [products, variants, catalogue] = await Promise.all([
     db.from('store_products').select('*').order('channel').order('sort_order'),
     db.from('store_variants').select('*').order('position'),
+    // Linked listings take their name and story from here rather than duplicating it.
+    db.from('products').select('id, title_en, title_ar, story_en, story_ar'),
   ])
 
   if (products.error) {
@@ -149,9 +167,13 @@ export async function fetchCatalogue(): Promise<Record<ProdChannel, StoreProduct
     else byProduct.set(v.product_id, [v])
   }
 
+  if (catalogue.error) console.error('[catalogue] linked products:', catalogue.error.message)
+  const linkedById = new Map((catalogue.data ?? []).map((p) => [p.id, p]))
+
   const out: Record<ProdChannel, StoreProduct[]> = { b2c: [], b2b: [], mega: [] }
   for (const r of products.data ?? []) {
-    out[r.channel as ProdChannel].push(rowToProduct(r, byProduct.get(r.id) ?? []))
+    const linked = r.product_id ? linkedById.get(r.product_id) ?? null : null
+    out[r.channel as ProdChannel].push(rowToProduct(r, byProduct.get(r.id) ?? [], linked))
   }
   return out
 }
