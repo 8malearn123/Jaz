@@ -75,6 +75,21 @@ export type Database = {
         Update: Partial<EmployeeRow>
         Relationships: []
       }
+      store_products: {
+        Row: StoreProductRow
+        Insert: Omit<Partial<StoreProductRow>, 'id'> & { channel: ProdChannelRow; name_en: string; name_ar: string }
+        Update: Partial<StoreProductRow>
+        Relationships: []
+      }
+      store_variants: {
+        Row: StoreVariantRow
+        Insert: Omit<Partial<StoreVariantRow>, 'id'> & {
+          product_id: string; net_weight_g: number
+          retail_price_minor: number; b2b_price_minor: number
+        }
+        Update: Partial<StoreVariantRow>
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: {
@@ -84,7 +99,11 @@ export type Database = {
       is_admin: { Args: Record<string, never>; Returns: boolean }
       can_edit_content: { Args: Record<string, never>; Returns: boolean }
     }
-    Enums: { app_role: AppRole; artwork_status: ArtworkStatusRow; team_permission: TeamPermissionRow; job_role: JobRoleRow }
+    Enums: {
+      app_role: AppRole; artwork_status: ArtworkStatusRow
+      team_permission: TeamPermissionRow; job_role: JobRoleRow
+      prod_channel: ProdChannelRow; store_badge: StoreBadgeRow; store_packaging: StorePackagingRow
+    }
     CompositeTypes: Record<string, never>
   }
 }
@@ -175,4 +194,52 @@ export type EmployeeRow = {
   profile_id: string | null
   created_at: string
   updated_at: string
+}
+
+// ---------------------------------------------------------------- catalogue
+// Matches supabase/migrations/20260926010000_store_products.sql.
+
+export type ProdChannelRow    = 'b2c' | 'b2b' | 'mega'
+export type StoreBadgeRow     = 'bestseller' | 'new' | 'seasonal' | 'limited'
+export type StorePackagingRow = 'standard' | 'gift' | 'bulk_case'
+
+export type StoreProductRow = {
+  id: string
+  channel: ProdChannelRow
+  name_en: string
+  name_ar: string
+  desc_en: string
+  desc_ar: string
+  category_en: string
+  category_ar: string
+  price_minor: number
+  color: string
+  image: string | null
+  badges: StoreBadgeRow[]
+  visible: boolean
+  country: string | null
+  sku: string | null
+  moq: number | null
+  net_weight: string | null
+  shelf_life: string | null
+  barcode: string | null
+  notes: string | null
+  components: { name: string; qty: number; unit: string }[]
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export type StoreVariantRow = {
+  id: string
+  product_id: string
+  position: number
+  net_weight_g: number
+  packaging: StorePackagingRow
+  case_qty: number | null
+  retail_price_minor: number
+  b2b_price_minor: number
+  in_stock: boolean
+  requires_cold_chain: boolean
+  created_at: string
 }

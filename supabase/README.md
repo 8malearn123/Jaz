@@ -173,8 +173,75 @@ SQL `job_role` and `team_permission` enums still match their TypeScript unions �
 so a value added on one side and forgotten on the other is caught here rather than
 at runtime.
 
+## Slice 4 — the storefront catalogue (first pass)
+
+`store_products`, `store_variants`, and the `prod_channel` / `store_badge` /
+`store_packaging` enums. Seeded with the 22 products and 23 variants from
+`storeProductsSeed`.
+
+Unlike the gallery, this is not derived from anything: `storeProducts` was a plain
+clone of the seed in a bare `useState`, so the seed is initial content rather than
+a source to stay in step with. A real table is therefore right.
+
+### The headline price is derived, not stored by hand
+
+`StoreProduct` carried this in a comment: `priceMinor` is "kept in sync with the
+default (first) variant". Checked against the seed before building, it holds for
+all 22 products and is always the **retail** price of the first variant, never the
+b2b one. A comment cannot enforce that, so `store_products_sync_headline()` does,
+recomputing on every variant insert, update and delete. Consequences:
+
+* `productPatchToRow()` deliberately ignores `priceMinor` — the trigger owns it.
+* The seed migration deliberately does not write `price_minor`. It came out correct
+  for 22/22 products with no zeros, which is the proof the trigger actually runs;
+  writing the column too would have hidden a broken trigger behind a plausible value.
+* A product whose last variant is deleted **keeps** its previous headline rather
+  than dropping to 0, because 0 reads as "free".
+
+`case_qty` is constrained to `bulk_case` packaging only, since it means units per
+case.
+
+RLS: the storefront is public, so a visitor reads `visible = true`. A variant is
+only as public as its product — otherwise a held-back product's prices would leak
+through its variants. Staff read everything; only `can_edit_content()` writes.
+
+### Verified behaviour
+
+| Case | Result |
+|---|---|
+| seed writes no price | 22/22 headlines correct, 0 zeros |
+| anon sees products / variants | 21 of 22, 22 of 23 — the held-back one withheld |
+| a hidden product's variant | 0 rows — prices do not leak |
+| anon reprices a variant | 0 rows |
+| `content_editor` sees products | 22, including held back |
+| reprice the **default** variant | headline follows |
+| reprice a **non-default** variant | headline unchanged |
+| reorder variants | headline moves to the new first |
+| `case_qty` on a non-case variant | refused by the check |
+| delete the last variant | headline kept, not zeroed |
+| customer hides a product | 0 rows |
+
+Test edits were reverted and the deleted variant restored; the tables are back to
+22 / 23 with every headline matching.
+
+### What this does NOT yet do
+
+**The public storefront still reads `src/data/products.ts`, not this table.**
+`ShopPage`, `ProductPage`, the cart and checkout all read the static `Product`
+type; `store_products` currently feeds only the console's Products tab, which is
+what `storeProducts` fed before. So editing a product in the console now persists,
+but it does not yet change what a shopper sees.
+
+Joining the two is the second pass, and it is not a wiring job: `Product` (slug,
+art card, reviews, flavour, cold-chain copy) and `StoreProduct` (channel, variants,
+badges, MOQ) are different shapes serving different screens. They need one model
+before one table can serve both.
+
+Also still in code: `b2cCatalog` / `stdCatalog` / `megaCatalog` (the wholesale
+price lists), the category tree (`catTree`), and `OwnerProduct` with its BOM.
+
 ## Not yet on the server
 
-Catalogue, orders, cart, accounting and governance are still seeded data in
-`src/data/` and React state — roughly 180 types and 225 context mutators. The
-three slices done so far are the pattern for the rest.
+Orders, cart, customers, accounting, governance and supply are still seeded data in
+`src/data/` and React state. The four slices done so far are the pattern for the
+rest.

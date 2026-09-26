@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Bilingual } from '@/data/types'
 import { ownerOrdersSeed, ownerOrderStatuses, type OwnerOrder, type OwnerChannel, type OwnerOrderStage } from '@/data/ownerOrders'
 import { rawMaterials, finishedBatches, bomBySku, purchaseInvoices, suppliers as suppliersSeed, stockMovementsSeed, stockUnits, unitFactor, currencies, type RawKey, type FinishedBatch, type PurchaseInvoice, type ExtraRaw, type Supplier, type SupplierContact, type StockMovement, type StockTakeReport, type BatchDisposition, type RecipeVersion } from '@/data/ownerSupply'
@@ -21,6 +21,11 @@ import { ownerVendors as ownerVendorsSeed, onboardingStages, vendorDocsSeed, typ
 import type { Employee, TeamPermission } from '@/data/ownerTeam'
 import type { JobRole } from '@/data/governance'
 import { useTeam } from '@/state/TeamContext'
+import { isSupabaseConfigured } from '@/lib/supabase'
+import {
+  fetchCatalogue, createProduct, updateProduct as apiUpdateProduct,
+  setProductVisible, EMPTY_CATALOGUE, type WriteResult,
+} from '@/lib/api/catalogue'
 
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
 
@@ -182,9 +187,14 @@ interface OwnerStateValue {
   catNodes: (chan: ProdChannel) => CatNode[]
   // storefront products (owner "Products" tab — customer-facing appearance, per channel)
   storeProducts: Record<ProdChannel, StoreProduct[]>
-  addStoreProduct: (chan: ProdChannel, p: Omit<StoreProduct, 'id' | 'visible'>) => string
+  /** The id is assigned by the database when backed, so nothing is returned. */
+  addStoreProduct: (chan: ProdChannel, p: Omit<StoreProduct, 'id' | 'visible'>) => void
   updateStoreProduct: (chan: ProdChannel, id: string, patch: Partial<Omit<StoreProduct, 'id'>>) => void
   toggleStoreVisible: (chan: ProdChannel, id: string) => void
+  /** False while the catalogue's first read from the server is still in flight. */
+  catalogueReady: boolean
+  /** The server's refusal on a catalogue write, when one arrives. */
+  catalogueError: string | null
   // exec alerts
   dismissedExpiry: string[]
   dismissExpiry: (key: string) => void
@@ -241,7 +251,14 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     order: clone(catIds),
     added: {},
   }))
-  const [storeProducts, setStoreProducts] = useState<Record<ProdChannel, StoreProduct[]>>(() => clone(storeProductsSeed))
+  // Backed by store_products / store_variants when Supabase is configured; the
+  // in-code seed is the whole story otherwise, exactly as before.
+  const catalogueBacked = isSupabaseConfigured
+  const [storeProducts, setStoreProducts] = useState<Record<ProdChannel, StoreProduct[]>>(
+    () => (catalogueBacked ? { ...EMPTY_CATALOGUE } : clone(storeProductsSeed)),
+  )
+  const [catalogueReady, setCatalogueReady] = useState(!catalogueBacked)
+  const [catalogueError, setCatalogueError] = useState<string | null>(null)
   const [storeSeq, setStoreSeq] = useState(1)
   const [dismissedExpiry, setDismissedExpiry] = useState<string[]>([])
   const [cocoaDelta, setCocoa] = useState(8)
@@ -678,16 +695,55 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   }, [catalog])
 
   /* ── storefront products (per channel) ── */
+  const reloadCatalogue = useCallback(async () => {
+    if (!catalogueBacked) return
+    setStoreProducts(await fetchCatalogue())
+    setCatalogueReady(true)
+  }, [catalogueBacked])
+
+  useEffect(() => {
+    void reloadCatalogue()
+  }, [reloadCatalogue])
+
+  /** Runs a write, then re-reads so the UI shows what the server actually kept —
+   *  which matters here because the headline price is derived server-side. */
+  const commitCatalogue = useCallback(async (write: () => Promise<WriteResult>) => {
+    const res = await write()
+    if (!res.ok) {
+      setCatalogueError(res.error)
+      return
+    }
+    setCatalogueError(null)
+    await reloadCatalogue()
+  }, [reloadCatalogue])
+
   const addStoreProduct = useCallback((chan: ProdChannel, p: Omit<StoreProduct, 'id' | 'visible'>) => {
+    if (catalogueBacked) {
+      void commitCatalogue(() => createProduct(chan, p))
+      return
+    }
     const id = `sp-new-${storeSeq}`
     setStoreSeq((s) => s + 1)
     setStoreProducts((prev) => ({ ...prev, [chan]: [{ ...p, id, visible: true }, ...prev[chan]] }))
-    return id
-  }, [storeSeq])
-  const updateStoreProduct = useCallback((chan: ProdChannel, id: string, patch: Partial<Omit<StoreProduct, 'id'>>) =>
-    setStoreProducts((prev) => ({ ...prev, [chan]: prev[chan].map((sp) => (sp.id === id ? { ...sp, ...patch } : sp)) })), [])
-  const toggleStoreVisible = useCallback((chan: ProdChannel, id: string) =>
-    setStoreProducts((prev) => ({ ...prev, [chan]: prev[chan].map((sp) => (sp.id === id ? { ...sp, visible: !sp.visible } : sp)) })), [])
+  }, [catalogueBacked, commitCatalogue, storeSeq])
+
+  const updateStoreProduct = useCallback((chan: ProdChannel, id: string, patch: Partial<Omit<StoreProduct, 'id'>>) => {
+    if (catalogueBacked) {
+      void commitCatalogue(() => apiUpdateProduct(id, patch))
+      return
+    }
+    setStoreProducts((prev) => ({ ...prev, [chan]: prev[chan].map((sp) => (sp.id === id ? { ...sp, ...patch } : sp)) }))
+  }, [catalogueBacked, commitCatalogue])
+
+  const toggleStoreVisible = useCallback((chan: ProdChannel, id: string) => {
+    if (catalogueBacked) {
+      const cur = storeProducts[chan].find((sp) => sp.id === id)
+      if (!cur) return
+      void commitCatalogue(() => setProductVisible(id, !cur.visible))
+      return
+    }
+    setStoreProducts((prev) => ({ ...prev, [chan]: prev[chan].map((sp) => (sp.id === id ? { ...sp, visible: !sp.visible } : sp)) }))
+  }, [catalogueBacked, commitCatalogue, storeProducts])
 
   const value = useMemo<OwnerStateValue>(() => ({
     orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor,
@@ -709,10 +765,10 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment,
     vendorDocs, attachVendorDoc,
     catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes,
-    storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible,
+    storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, catalogueReady, catalogueError,
     dismissedExpiry, dismissExpiry,
     cocoaDelta, setCocoa,
-  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, stockTakeReports, addStockTakeReport, movements, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, fxRates, fxUpdatedAt, setFxRate, wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor, expenses, recordExpense, opexTotalMinor, customers, rewardCustomer, loyaltyLedgers, loyalty, setLoyalty, employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive, setEmployeeRole, setEmployeeManager, reportsOf, managersOf, releaseBatch, rejectBatch, shelfLife, bomHistory, applyApproved, creditLimits, setCreditLimit, contracts, renewContract, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment, vendorDocs, attachVendorDoc, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, dismissedExpiry, dismissExpiry, cocoaDelta])
+  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, stockTakeReports, addStockTakeReport, movements, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, fxRates, fxUpdatedAt, setFxRate, wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor, expenses, recordExpense, opexTotalMinor, customers, rewardCustomer, loyaltyLedgers, loyalty, setLoyalty, employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive, setEmployeeRole, setEmployeeManager, reportsOf, managersOf, releaseBatch, rejectBatch, shelfLife, bomHistory, applyApproved, creditLimits, setCreditLimit, contracts, renewContract, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment, vendorDocs, attachVendorDoc, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, catalogueReady, catalogueError, dismissedExpiry, dismissExpiry, cocoaDelta])
 
   return <OwnerStateContext.Provider value={value}>{children}</OwnerStateContext.Provider>
 }
