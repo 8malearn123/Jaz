@@ -139,7 +139,7 @@ interface OwnerStateValue {
   setLoyalty: (patch: Partial<LoyaltyConfig>) => void
   // team & staff — add/remove employees, set their job role and reporting line, grant permissions
   employees: Employee[]
-  addEmployee: (e: Omit<Employee, 'id' | 'since'>) => string
+  addEmployee: (e: Omit<Employee, 'id' | 'since'>) => void
   removeEmployee: (id: string) => void
   toggleEmployeePerm: (id: string, perm: TeamPermission) => void
   toggleEmployeeActive: (id: string) => void

@@ -69,6 +69,12 @@ export type Database = {
         Update: Partial<AcquisitionRequestRow>
         Relationships: []
       }
+      employees: {
+        Row: EmployeeRow
+        Insert: Omit<Partial<EmployeeRow>, 'id'> & { name_en: string; name_ar: string }
+        Update: Partial<EmployeeRow>
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: {
@@ -78,7 +84,7 @@ export type Database = {
       is_admin: { Args: Record<string, never>; Returns: boolean }
       can_edit_content: { Args: Record<string, never>; Returns: boolean }
     }
-    Enums: { app_role: AppRole; artwork_status: ArtworkStatusRow }
+    Enums: { app_role: AppRole; artwork_status: ArtworkStatusRow; team_permission: TeamPermissionRow; job_role: JobRoleRow }
     CompositeTypes: Record<string, never>
   }
 }
@@ -141,4 +147,32 @@ export type AcquisitionRequestRow = {
   note: string
   handled: boolean
   created_at: string
+}
+
+// ---------------------------------------------------------------- team
+// Matches supabase/migrations/20260926000000_team.sql.
+
+export type TeamPermissionRow =
+  | 'orders' | 'purchases' | 'raw' | 'production' | 'waste'
+  | 'products' | 'customers' | 'suppliers' | 'reports' | 'accounting' | 'ledger'
+
+export type JobRoleRow =
+  | 'sys_admin' | 'finance_mgr' | 'accountant' | 'chef'
+  | 'production' | 'warehouse' | 'purchasing' | 'sales' | 'auditor'
+
+export type EmployeeRow = {
+  id: string
+  name_en: string
+  name_ar: string
+  title_en: string
+  title_ar: string
+  phone: string
+  email: string
+  perms: TeamPermissionRow[]
+  active: boolean
+  job_role: JobRoleRow | null
+  manager_id: string | null
+  profile_id: string | null
+  created_at: string
+  updated_at: string
 }

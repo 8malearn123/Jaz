@@ -111,8 +111,70 @@ Test rows were deleted afterwards; all five tables are empty.
 that a null override column yields **no key**, so merging a patch over a seeded
 work cannot erase the catalogue's title, story or price.
 
+## Slice 3 — staff, permissions and the org chart
+
+`employees`, plus `team_permission` and `job_role` enums.
+
+`TeamContext` kept every staff account in a bare `useState` with **no persistence
+at all** — the owner's whole team vanished on reload. That was the largest gap of
+the three slices. It also closes the manual step flagged earlier: an app role can
+now be granted from the console (`grantAppRole`) instead of the Supabase
+dashboard.
+
+Two invariants lived only in the client. Both are real and both are now the
+database's job too, because a direct API call never passes through the UI:
+
+* **No loops in the reporting line.** An approval that a person cannot sign climbs
+  the line until someone can, so a cycle would never terminate. A `CHECK` catches
+  only self-management; a longer loop (a → b → a) needs a walk, which a `CHECK`
+  may not do. `employees_reject_cycle()` walks it, with a hop ceiling so a
+  pre-existing loop cannot spin forever.
+* **No orphaned reports.** Deleting someone lifts their reports to *that person's*
+  manager. `ON DELETE SET NULL` would instead dump everyone on the owner and lose
+  the middle of the chart, so `employees_reparent_reports()` does it on the way out.
+
+`profile_id` links a staff record to a real account once one exists. Until then the
+record is a definition the owner made and grants nothing by itself.
+
+RLS: **staff read** the whole chart, because they need to see who is above them to
+escalate. **Only admin/owner write** — a sales agent must not grant itself the
+ledger. Nobody outside staff sees any of it; these rows carry names, phones and
+email addresses.
+
+### Verified behaviour
+
+| Case | Result |
+|---|---|
+| set self as manager | refused |
+| close a three-deep loop | refused |
+| legitimate re-parent | allowed |
+| delete the middle of the chart | report lifted to the grandparent, not orphaned |
+| `perms` / `job_role` round trip | intact |
+| owner creates staff, grants the ledger | 1 row each |
+| **owner grants an app role** | 1 row — the console replaces the dashboard |
+| `sales_agent` reads the chart | sees all (escalation line) |
+| `sales_agent` grants itself the ledger | 0 rows |
+| `sales_agent` deletes staff | 0 rows |
+| `content_editor` reads the chart | sees all |
+| `content_editor` edits staff | 0 rows — staff is not admin |
+| customer reads employees | 0 rows |
+| customer creates staff | refused by RLS |
+| anon reads employees | 0 rows |
+
+One earlier run appeared to show a customer reading the chart. It was the test at
+fault, not the policy: an earlier step in the same run had granted that user
+`content_editor`, so they were staff by then. Re-run with a user nothing promotes,
+it returns 0.
+
+Test rows deleted; all six tables empty.
+
+`npm run smoke:team` asserts 15 invariants with no database, including that the
+SQL `job_role` and `team_permission` enums still match their TypeScript unions —
+so a value added on one side and forgotten on the other is caught here rather than
+at runtime.
+
 ## Not yet on the server
 
 Catalogue, orders, cart, accounting and governance are still seeded data in
-`src/data/` and React state — roughly 180 types and 225 context mutators. The two
-slices done so far are the pattern for the rest.
+`src/data/` and React state — roughly 180 types and 225 context mutators. The
+three slices done so far are the pattern for the rest.
