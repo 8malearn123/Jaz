@@ -168,6 +168,25 @@ export function makeEntry(draft: JournalDraft, seq: number): JournalEntry {
 }
 
 /**
+ * Where numbering resumes from. Against a database the counter cannot start at 1 — `no`
+ * is unique, so the first posting would collide with the JV-0001 already in the book.
+ *
+ * It reads the highest number present rather than counting the entries, because the two
+ * differ exactly when it matters: if the book holds JV-0001 and JV-0003 — an entry
+ * posted by someone else and not yet seen, or one whose transaction rolled back after
+ * taking a number — a count would hand out 3 again and the write would be rejected.
+ * Anything not shaped JV-nnnn is ignored rather than guessed at.
+ */
+export function nextVoucherSeq(entries: Pick<JournalEntry, 'no'>[]): number {
+  let top = 0
+  for (const e of entries) {
+    const m = /^JV-(\d+)$/.exec(e.no)
+    if (m) top = Math.max(top, parseInt(m[1], 10))
+  }
+  return top + 1
+}
+
+/**
  * Number a run of drafts, skipping any that would not balance. A rule that produced a
  * lopsided entry is dropped here rather than allowed to corrupt the book — and the
  * verification script asserts that nothing was in fact dropped.
