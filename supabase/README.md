@@ -401,8 +401,87 @@ leaving them is what let the two drift apart in the first place.
 that *is* linked but whose join came back empty must yield empty strings, never
 `null`, or a product card renders with no title.
 
+## Slice 7 — orders and customers
+
+`customers`, `orders`, `order_items`, `loyalty_ledger`, and the `loyalty_tier` /
+`order_channel` / `order_status` enums.
+
+### Three disjoint datasets, not three views
+
+Checked before designing, and the id overlap is **zero**:
+
+| source | rows | shape |
+|---|---|---|
+| `ownerOrdersSeed` | 14 (EX-*, JZ-*) | console rows whose `items` is a bilingual **summary string** |
+| `customer.orders` | 3 (JAZ-2026-*) | real orders with line items and tracking, for the one demo account |
+| `customerOrders` | 5 of 10 customers | per-customer summaries only |
+
+So this was not a duplication to collapse but three separate demo datasets that
+should be one table. One table now serves both views: the console list and the
+account list are two queries over it. An order that only ever had a summary keeps it
+in `items_summary_*`; orders with real lines get `order_items`, and every seeded line
+item was verified against `product_variants` first, so that foreign key is genuine.
+
+`order_items.unit_minor` is the price charged, stored, so a later price change cannot
+rewrite what someone paid.
+
+### Two things are derived, not stored
+
+* **The tracking timeline.** `account.ts` computes the steps from the status, so
+  storing them would be a second source of truth for one fact. `stepsOf()` now dates
+  them off the real `placed_at` instead of fixed demo dates.
+* **The console's 0..5 stage.** Derived by `order_owner_stage()` in SQL *and* by a
+  map in TypeScript — `smoke:orders` parses the migration and asserts the two agree
+  for all eight statuses, so they cannot drift into showing an order at one position
+  to the owner and another to the query behind it.
+
+`order_status` is the **union** of both vocabularies, so neither view loses a state.
+`new` and `ready` exist only for the console and are shown to a shopper as
+`confirmed` and `processing` rather than leaking an internal state onto a tracking
+page.
+
+### The security invariant that matters most here
+
+This is the most personal data in the schema — names, phones, what someone bought and
+where it is. A customer sees their own orders and nothing else, enforced through
+`profile_id` rather than trusted from the client.
+
+`customers_update_own` lets someone correct their phone and email. On its own that
+would also let them set `tier = 'elite'` and `spend_minor = 99999999`, which is the
+same defect the role guard exists for: a row-level UPDATE policy sees the new row, not
+which column moved. `customers_guard_standing()` holds tier, lifetime spend, the
+account link and the id immutable for them — same shape as `profiles_guard_role()`,
+including reading the caller from the verified JWT rather than `current_user`. **This
+guard was written before the tests ran, not after one caught it.**
+
+### Verified behaviour
+
+| Case | Result |
+|---|---|
+| Layla sees orders / line items | 1 / 2 — hers only |
+| Layla sees customers / ledger | 1 / 2 — hers only |
+| Layla names another order explicitly | 0 rows |
+| **Layla promotes her own tier** | refused |
+| **Layla inflates her lifetime spend** | refused |
+| Layla corrects her own phone | 1 row |
+| **Layla grants herself points** | refused |
+| Layla marks her order delivered | 0 rows |
+| `support_agent` sees orders / items | 2 / 3 |
+| `support_agent` advances an order | 1 row |
+| `support_agent` sets a tier | 1 row |
+| anon sees orders / customers | 0 / 0 |
+
+Test rows removed; the catalogue was untouched (15 products still).
+
+`smoke:orders` asserts 28 invariants. One found a real bug in this code rather than
+confirming it: `rowToOwnerOrder` built its items summary in arrival order, while its
+customer-facing sibling sorted by position — so the console would have listed an
+order's items in whatever order one query happened to return them. Fixed.
+
 ## Not yet on the server
 
-Orders, cart, customers, accounting, governance and supply are still seeded data in
-`src/data/` and React state. The six slices done so far are the pattern for the
-rest.
+Cart, accounting, governance and supply are still seeded data in `src/data/` and
+React state, and the contexts for orders and customers (`CustomerContext`,
+`OwnerStateContext`'s order half) still read the seeds — this slice built the schema,
+the API layer and the tests, not the context rewiring. The seven slices done so far
+are the pattern for the rest.

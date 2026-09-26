@@ -108,6 +108,30 @@ export type Database = {
         Update: Partial<ProductReviewRow>
         Relationships: []
       }
+      customers: {
+        Row: CustomerRow
+        Insert: Partial<CustomerRow> & { id: string; name_en: string; name_ar: string }
+        Update: Partial<CustomerRow>
+        Relationships: []
+      }
+      orders: {
+        Row: OrderRow
+        Insert: Omit<Partial<OrderRow>, 'id'> & { order_no: string; channel: OrderChannelRow }
+        Update: Partial<OrderRow>
+        Relationships: []
+      }
+      order_items: {
+        Row: OrderItemRow
+        Insert: Omit<Partial<OrderItemRow>, 'id'> & { order_id: string; variant_id: string; qty: number }
+        Update: Partial<OrderItemRow>
+        Relationships: []
+      }
+      loyalty_ledger: {
+        Row: LoyaltyLedgerRow
+        Insert: Omit<Partial<LoyaltyLedgerRow>, 'id'> & { customer_id: string; kind: LoyaltyLedgerRow['kind']; points: number }
+        Update: Partial<LoyaltyLedgerRow>
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: {
@@ -115,12 +139,14 @@ export type Database = {
       is_staff: { Args: Record<string, never>; Returns: boolean }
       is_privileged: { Args: Record<string, never>; Returns: boolean }
       is_admin: { Args: Record<string, never>; Returns: boolean }
+      order_owner_stage: { Args: { s: OrderStatusRow }; Returns: number }
       can_edit_content: { Args: Record<string, never>; Returns: boolean }
     }
     Enums: {
       app_role: AppRole; artwork_status: ArtworkStatusRow
       team_permission: TeamPermissionRow; job_role: JobRoleRow
       prod_channel: ProdChannelRow; store_badge: StoreBadgeRow; store_packaging: StorePackagingRow
+      loyalty_tier: LoyaltyTierRow; order_channel: OrderChannelRow; order_status: OrderStatusRow
     }
     CompositeTypes: Record<string, never>
   }
@@ -317,5 +343,72 @@ export type ProductReviewRow = {
   body_ar: string
   verified: boolean
   review_date: string
+  created_at: string
+}
+
+// ---------------------------------------------------------------- orders
+// Matches supabase/migrations/20260927010000_orders.sql.
+
+export type LoyaltyTierRow  = 'basic' | 'silver' | 'gold' | 'elite'
+export type OrderChannelRow = 'B2C' | 'B2B' | 'MEGA'
+export type OrderStatusRow =
+  | 'new' | 'confirmed' | 'processing' | 'ready'
+  | 'shipped' | 'out_for_delivery' | 'delivered' | 'cancelled'
+
+export type CustomerRow = {
+  id: string
+  profile_id: string | null
+  name_en: string
+  name_ar: string
+  email: string | null
+  phone: string | null
+  kind: OrderChannelRow
+  tier: LoyaltyTierRow
+  spend_minor: number
+  member_since: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type OrderRow = {
+  id: string
+  order_no: string
+  customer_id: string | null
+  channel: OrderChannelRow
+  status: OrderStatusRow
+  placed_at: string
+  total_minor: number
+  qty: number
+  is_gift: boolean
+  cold_chain: boolean
+  carrier_en: string | null
+  carrier_ar: string | null
+  tracking_no: string | null
+  sla_met: boolean
+  department_en: string | null
+  department_ar: string | null
+  items_summary_en: string | null
+  items_summary_ar: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type OrderItemRow = {
+  id: string
+  order_id: string
+  variant_id: string
+  qty: number
+  unit_minor: number
+  position: number
+}
+
+export type LoyaltyLedgerRow = {
+  id: string
+  customer_id: string
+  kind: 'order' | 'grant' | 'campaign' | 'redeem'
+  source_en: string
+  source_ar: string
+  points: number
+  at_date: string
   created_at: string
 }
