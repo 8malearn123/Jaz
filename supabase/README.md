@@ -478,10 +478,40 @@ confirming it: `rowToOwnerOrder` built its items summary in arrival order, while
 customer-facing sibling sorted by position — so the console would have listed an
 order's items in whatever order one query happened to return them. Fixed.
 
+### The contexts now read it
+
+`OwnerStateContext`'s order half — `orders`, `advanceOrder`, `setOrderStage`,
+`cancelOrder`, `assignDepartment`, `customers`, `loyaltyLedgers`, `rewardCustomer` —
+reads and writes the tables, and `CustomerContext` reads the account side.
+
+Three things were not obvious going in:
+
+* **The console addresses an order by `order_no`**, which is what it displays, while
+  the row is keyed by uuid. `setOrderStatusByNo` resolves it so no caller holds both.
+* **`advanceOrder` needed an inverse that does not exist.** The stage is derived from
+  the status, and `ownerStageOf` is not injective — stage 4 is both `shipped` and
+  `out_for_delivery`, stage 5 both `delivered` and `cancelled`. `statusForStage()`
+  names one canonical status per stage, and `smoke:orders` asserts the round trip
+  lands where it started for all six, plus that `out_for_delivery` and `cancelled`
+  are reachable only by setting them directly. Without that, "advance" could move an
+  order sideways into a state the console did not ask for.
+* **A customer's points balance is summed from the ledger, not stored.** A redemption
+  is a negative row, so summing is the only reading that cannot drift from its
+  sources.
+* **`rewardCustomer` writes only the ledger row** when backed. Recomputing spend and
+  tier in the browser and pushing them back would be refused anyway —
+  `customers_guard_standing()` holds both — and it is the ledger that is the record.
+
+`updateProfile` sends only email and phone, the two fields the database lets a
+customer change about themselves.
+
+### What in CustomerContext is still on the seed
+
+Stated rather than left to be discovered: subscriptions, addresses, the wallet, the
+wishlist, occasions, gift recipients, consents and notification preferences have no
+tables yet. Only identity and loyalty come from the server.
+
 ## Not yet on the server
 
-Cart, accounting, governance and supply are still seeded data in `src/data/` and
-React state, and the contexts for orders and customers (`CustomerContext`,
-`OwnerStateContext`'s order half) still read the seeds — this slice built the schema,
-the API layer and the tests, not the context rewiring. The seven slices done so far
-are the pattern for the rest.
+Cart, accounting, governance and supply, plus the seven customer-account areas listed
+above. The seven slices done so far are the pattern for the rest.

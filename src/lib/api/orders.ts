@@ -34,6 +34,24 @@ const OWNER_STAGE: Record<OrderStatusRow, OwnerOrderStage> = {
 export const ownerStageOf = (s: OrderStatusRow): OwnerOrderStage => OWNER_STAGE[s]
 
 /**
+ * The inverse the console needs when it moves an order to a stage. ownerStageOf is
+ * not injective — stage 4 is both shipped and out_for_delivery, stage 5 both
+ * delivered and cancelled — so one status per stage is named canonical here.
+ * out_for_delivery and cancelled are reached by setting them directly, never by
+ * advancing.
+ */
+const STAGE_STATUS: Record<OwnerOrderStage, OrderStatusRow> = {
+  0: 'new',
+  1: 'confirmed',
+  2: 'processing',
+  3: 'ready',
+  4: 'shipped',
+  5: 'delivered',
+}
+
+export const statusForStage = (stage: OwnerOrderStage): OrderStatusRow => STAGE_STATUS[stage]
+
+/**
  * The customer-facing status. `new` and `ready` exist only in the console's
  * vocabulary, so they are shown as the nearest thing a shopper understands rather
  * than leaking an internal state onto a tracking page.
@@ -217,6 +235,43 @@ export async function setOrderStatus(orderId: string, status: OrderStatusRow): P
   if (!isSupabaseConfigured) return bad('orders.notConfigured')
   const { error } = await requireSupabase().from('orders').update({ status }).eq('id', orderId)
   return error ? bad(error.message) : OK
+}
+
+/**
+ * The console addresses an order by its order_no, which is what it displays; the row
+ * is keyed by uuid. Resolved here so no caller has to hold both.
+ */
+export async function setOrderStatusByNo(orderNo: string, status: OrderStatusRow): Promise<WriteResult> {
+  if (!isSupabaseConfigured) return bad('orders.notConfigured')
+  const { error } = await requireSupabase().from('orders').update({ status }).eq('order_no', orderNo)
+  return error ? bad(error.message) : OK
+}
+
+export async function assignDepartmentByNo(
+  orderNo: string,
+  department: { en: string; ar: string } | null,
+): Promise<WriteResult> {
+  if (!isSupabaseConfigured) return bad('orders.notConfigured')
+  const { error } = await requireSupabase()
+    .from('orders')
+    .update({ department_en: department?.en ?? null, department_ar: department?.ar ?? null })
+    .eq('order_no', orderNo)
+  return error ? bad(error.message) : OK
+}
+
+/**
+ * The signed-in person's own customer row, or null. RLS already narrows `customers`
+ * to their row, so this does not filter by profile — it takes what it is given, which
+ * means it cannot accidentally ask for someone else's.
+ */
+export async function fetchOwnCustomer(): Promise<CustomerRow | null> {
+  if (!isSupabaseConfigured) return null
+  const { data, error } = await requireSupabase().from('customers').select('*').limit(1).maybeSingle()
+  if (error) {
+    console.error('[orders] own customer:', error.message)
+    return null
+  }
+  return data
 }
 
 export async function assignDepartment(

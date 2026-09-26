@@ -26,6 +26,11 @@ import {
   fetchCatalogue, createProduct, updateProduct as apiUpdateProduct,
   setProductVisible, EMPTY_CATALOGUE, type WriteResult,
 } from '@/lib/api/catalogue'
+import {
+  fetchOrders, setOrderStatusByNo, assignDepartmentByNo, recordLoyalty,
+  rowToOwnerOrder, rowToOwnerCustomer, rowToLoyaltyEntry, statusForStage,
+} from '@/lib/api/orders'
+import { useCatalogue } from '@/state/CatalogueContext'
 
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
 
@@ -195,6 +200,10 @@ interface OwnerStateValue {
   catalogueReady: boolean
   /** The server's refusal on a catalogue write, when one arrives. */
   catalogueError: string | null
+  /** False while the first orders read is still in flight. */
+  ordersReady: boolean
+  /** The server's refusal on an order or loyalty write. */
+  ordersError: string | null
   // exec alerts
   dismissedExpiry: string[]
   dismissExpiry: (key: string) => void
@@ -206,7 +215,7 @@ interface OwnerStateValue {
 const OwnerStateContext = createContext<OwnerStateValue | null>(null)
 
 export function OwnerStateProvider({ children }: { children: ReactNode }) {
-  const [orders, setOrders] = useState<OwnerOrder[]>(() => clone(ownerOrdersSeed))
+  const [orders, setOrders] = useState<OwnerOrder[]>(() => (isSupabaseConfigured ? [] : clone(ownerOrdersSeed)))
   const [seq, setSeq] = useState(2619)
   const [rawQty, setRawQty] = useState<Record<RawKey, number>>(() => rawMaterials.reduce((a, m) => { a[m.key] = m.systemQty; return a }, {} as Record<RawKey, number>))
   // Balances as they stand right now — an approved decision posts against today's stock,
@@ -238,7 +247,7 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   const [extraSeq, setExtraSeq] = useState(1)
   const [wasteLog, setWasteLog] = useState<WasteEntry[]>(() => clone(wasteSeed))
   const [wasteSeq, setWasteSeq] = useState(100)
-  const [customers, setCustomers] = useState<OwnerCustomer[]>(() => clone(ownerCustomers))
+  const [customers, setCustomers] = useState<OwnerCustomer[]>(() => (isSupabaseConfigured ? [] : clone(ownerCustomers)))
   const [creditLimits, setCreditLimits] = useState<Record<string, number>>({})
   const [contracts, setContracts] = useState<Contract[]>(() => clone(contractsSeed))
   const [catSeq, setCatSeq] = useState(1)
@@ -253,12 +262,18 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   }))
   // Backed by store_products / store_variants when Supabase is configured; the
   // in-code seed is the whole story otherwise, exactly as before.
+  const ordersBacked = isSupabaseConfigured
+  // Needed to turn a line item's variant id into a bilingual title for the console's
+  // items summary.
+  const { variantById } = useCatalogue()
   const catalogueBacked = isSupabaseConfigured
   const [storeProducts, setStoreProducts] = useState<Record<ProdChannel, StoreProduct[]>>(
     () => (catalogueBacked ? { ...EMPTY_CATALOGUE } : clone(storeProductsSeed)),
   )
   const [catalogueReady, setCatalogueReady] = useState(!catalogueBacked)
   const [catalogueError, setCatalogueError] = useState<string | null>(null)
+  const [ordersReady, setOrdersReady] = useState(!isSupabaseConfigured)
+  const [ordersError, setOrdersError] = useState<string | null>(null)
   const [storeSeq, setStoreSeq] = useState(1)
   const [dismissedExpiry, setDismissedExpiry] = useState<string[]>([])
   const [cocoaDelta, setCocoa] = useState(8)
@@ -284,10 +299,83 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   const bomOf = useCallback((sku: string): BOM => bomOverride[sku] ?? bomBySku[sku] ?? {}, [bomOverride])
 
   /* ── orders ── */
-  const advanceOrder = useCallback((id: string) => setOrders((prev) => prev.map((o) => (o.id === id && !o.cancelled && o.stage < LAST ? { ...o, stage: (o.stage + 1) as OwnerOrderStage } : o))), [])
-  const setOrderStage = useCallback((id: string, stage: OwnerOrderStage) => setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, stage, cancelled: false } : o))), [])
-  const cancelOrder = useCallback((id: string) => setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, cancelled: true } : o))), [])
-  const assignDepartment = useCallback((id: string, dept: Bilingual) => setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, department: dept } : o))), [])
+  /* ── orders, customers and the loyalty ledger (one read; RLS sets the scope) ── */
+  const reloadOrders = useCallback(async () => {
+    if (!ordersBacked) return
+    const snap = await fetchOrders()
+    const nameOf = new Map(snap.customers.map((c) => [c.id, { name_en: c.name_en, name_ar: c.name_ar }]))
+    const titleOf = (variantId: string) => variantById(variantId)?.product.title
+
+    setOrders(snap.orders.map((o) => rowToOwnerOrder(
+      o,
+      snap.itemsByOrder.get(o.id) ?? [],
+      o.customer_id ? nameOf.get(o.customer_id) ?? null : null,
+      titleOf,
+    )))
+
+    // The console shows an order count per customer, which is a fact about the orders
+    // rather than a column to keep in step.
+    const counts = new Map<string, number>()
+    for (const o of snap.orders) {
+      if (o.customer_id) counts.set(o.customer_id, (counts.get(o.customer_id) ?? 0) + 1)
+    }
+    setCustomers(snap.customers.map((c) => rowToOwnerCustomer(c, counts.get(c.id) ?? 0)))
+
+    const byCustomer: Record<string, LoyaltyLedgerEntry[]> = {}
+    for (const e of snap.ledger) {
+      ;(byCustomer[e.customer_id] ??= []).push(rowToLoyaltyEntry(e))
+    }
+    setLoyaltyLedgers(byCustomer)
+    setOrdersReady(true)
+  }, [ordersBacked, variantById])
+
+  useEffect(() => {
+    void reloadOrders()
+  }, [reloadOrders])
+
+  const commitOrders = useCallback(async (write: () => Promise<WriteResult>) => {
+    const res = await write()
+    if (!res.ok) {
+      setOrdersError(res.error)
+      return
+    }
+    setOrdersError(null)
+    await reloadOrders()
+  }, [reloadOrders])
+
+  const advanceOrder = useCallback((id: string) => {
+    if (ordersBacked) {
+      const cur = orders.find((o) => o.id === id)
+      if (!cur || cur.cancelled || cur.stage >= LAST) return
+      void commitOrders(() => setOrderStatusByNo(id, statusForStage((cur.stage + 1) as OwnerOrderStage)))
+      return
+    }
+    setOrders((prev) => prev.map((o) => (o.id === id && !o.cancelled && o.stage < LAST ? { ...o, stage: (o.stage + 1) as OwnerOrderStage } : o)))
+  }, [ordersBacked, commitOrders, orders])
+
+  const setOrderStage = useCallback((id: string, stage: OwnerOrderStage) => {
+    if (ordersBacked) {
+      void commitOrders(() => setOrderStatusByNo(id, statusForStage(stage)))
+      return
+    }
+    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, stage, cancelled: false } : o)))
+  }, [ordersBacked, commitOrders])
+
+  const cancelOrder = useCallback((id: string) => {
+    if (ordersBacked) {
+      void commitOrders(() => setOrderStatusByNo(id, 'cancelled'))
+      return
+    }
+    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, cancelled: true } : o)))
+  }, [ordersBacked, commitOrders])
+
+  const assignDepartment = useCallback((id: string, dept: Bilingual) => {
+    if (ordersBacked) {
+      void commitOrders(() => assignDepartmentByNo(id, dept))
+      return
+    }
+    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, department: dept } : o)))
+  }, [ordersBacked, commitOrders])
   const createOrder = useCallback((o: { customer: Bilingual; chan: OwnerChannel; items: Bilingual; qty: number; amountMinor: number }) => {
     const id = `JZ-${seq}`
     setSeq((s) => s + 1)
@@ -522,9 +610,18 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
   })
   const setLoyalty = useCallback((patch: Partial<LoyaltyConfig>) => setLoyaltyState((prev) => ({ ...prev, ...patch, thresholds: { ...prev.thresholds, ...(patch.thresholds ?? {}) } })), [])
 
-  const [loyaltyLedgers, setLoyaltyLedgers] = useState<Record<string, LoyaltyLedgerEntry[]>>(() => clone(loyaltyLedgerSeed))
+  const [loyaltyLedgers, setLoyaltyLedgers] = useState<Record<string, LoyaltyLedgerEntry[]>>(
+    () => (isSupabaseConfigured ? {} : clone(loyaltyLedgerSeed)),
+  )
   const ledgerSeqRef = useRef(1)
   const rewardCustomer = useCallback((id: string, points: number, note?: string) => {
+    if (ordersBacked) {
+      // The ledger row is the record; spend and tier follow from it on the server
+      // side rather than being recomputed in the browser and pushed back.
+      const source = note ? { en: note, ar: note } : { en: 'Owner grant', ar: 'منح من المالك' }
+      void commitOrders(() => recordLoyalty(id, 'grant', Math.round(points / 100), source))
+      return
+    }
     setCustomers((prev) => prev.map((c) => {
       if (c.id !== id) return c
       const spend = c.spendMinor + points
@@ -536,7 +633,7 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
       ...prev,
       [id]: [{ id: `lg-g${ledgerSeqRef.current++}`, kind: 'grant', source: note ? { en: note, ar: note } : { en: 'Owner grant', ar: 'منح من المالك' }, points: Math.round(points / 100), at: { en: 'Just now', ar: 'الآن' } }, ...(prev[id] ?? [])],
     }))
-  }, [loyalty])
+  }, [loyalty, ordersBacked, commitOrders])
 
   /* ── team & staff — lives in the root TeamProvider (shared with the role picker);
         re-exposed here so owner panels keep a single state entry point ── */
@@ -765,10 +862,10 @@ export function OwnerStateProvider({ children }: { children: ReactNode }) {
     vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment,
     vendorDocs, attachVendorDoc,
     catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes,
-    storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, catalogueReady, catalogueError,
+    storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, catalogueReady, catalogueError, ordersReady, ordersError,
     dismissedExpiry, dismissExpiry,
     cocoaDelta, setCocoa,
-  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, stockTakeReports, addStockTakeReport, movements, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, fxRates, fxUpdatedAt, setFxRate, wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor, expenses, recordExpense, opexTotalMinor, customers, rewardCustomer, loyaltyLedgers, loyalty, setLoyalty, employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive, setEmployeeRole, setEmployeeManager, reportsOf, managersOf, releaseBatch, rejectBatch, shelfLife, bomHistory, applyApproved, creditLimits, setCreditLimit, contracts, renewContract, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment, vendorDocs, attachVendorDoc, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, catalogueReady, catalogueError, dismissedExpiry, dismissExpiry, cocoaDelta])
+  }), [orders, advanceOrder, setOrderStage, cancelOrder, createOrder, assignDepartment, pendingOrders, pipelineValueMinor, rawQty, rawPct, reorderRaw, finalizeStockTake, lowRaw, buildable, bomOf, extraRaws, extraCats, addRawMaterial, addRawCategory, reorderExtra, products, addProduct, updateProduct, addBomComponent, finished, produceBatch, addFinishedBatch, recordFinishedCount, finishedStockTakeDate, stockTakeReports, addStockTakeReport, movements, suppliers, addSupplier, invoices, reconcileInvoice, addPurchaseInvoice, receivePurchase, fxRates, fxUpdatedAt, setFxRate, wasteLog, logWaste, recordWaste, wasteTotalMinor, netProfitMinor, expenses, recordExpense, opexTotalMinor, customers, rewardCustomer, loyaltyLedgers, loyalty, setLoyalty, employees, addEmployee, removeEmployee, toggleEmployeePerm, toggleEmployeeActive, setEmployeeRole, setEmployeeManager, reportsOf, managersOf, releaseBatch, rejectBatch, shelfLife, bomHistory, applyApproved, creditLimits, setCreditLimit, contracts, renewContract, vendors, advanceVendorStage, rejectVendor, inviteVendor, recordVendorPayment, vendorDocs, attachVendorDoc, catalog, setCatalogPrice, toggleCatalogItem, setCatalogMoq, toggleCategory, renameCategory, addCategory, moveCategory, catNodes, storeProducts, addStoreProduct, updateStoreProduct, toggleStoreVisible, catalogueReady, catalogueError, ordersReady, ordersError, dismissedExpiry, dismissExpiry, cocoaDelta])
 
   return <OwnerStateContext.Provider value={value}>{children}</OwnerStateContext.Provider>
 }

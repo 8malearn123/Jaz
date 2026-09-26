@@ -97,6 +97,29 @@ check('a MEGA customer folds to B2B for the console', rowToOwnerCustomer(custRow
 check('spend comes back a number', rowToOwnerCustomer(custRow, 4).spendMinor === 420000)
 check('the order count is passed through, not guessed', rowToOwnerCustomer(custRow, 4).orders === 4)
 
+// ---------------------------------------------------------------- stage inverse
+// The console advances an order by stage; the row stores a status. ownerStageOf is
+// not injective, so statusForStage names one canonical status per stage — and the
+// round trip must land where it started, or "advance" would move an order sideways.
+const { statusForStage } = api
+for (const n of [0, 1, 2, 3, 4, 5]) {
+  check(`stage ${n} round-trips through its canonical status`,
+    ownerStageOf(statusForStage(n)) === n,
+    `${n} -> ${statusForStage(n)} -> ${ownerStageOf(statusForStage(n))}`)
+}
+// The two statuses that are NOT reachable by advancing must be set directly, or an
+// order could never be marked cancelled or out for delivery from the console.
+check('out_for_delivery is not what advancing to stage 4 produces',
+  statusForStage(4) === 'shipped', statusForStage(4))
+check('cancelled is not what advancing to stage 5 produces',
+  statusForStage(5) === 'delivered', statusForStage(5))
+
+// Advancing from each stage must reach the next, never skip or stall.
+for (const n of [0, 1, 2, 3, 4]) {
+  check(`advancing from stage ${n} reaches ${n + 1}`,
+    ownerStageOf(statusForStage((n + 1))) === n + 1)
+}
+
 await server.close()
 console.log('')
 if (failures) { console.log(`${failures} check(s) failed.`); process.exit(1) }

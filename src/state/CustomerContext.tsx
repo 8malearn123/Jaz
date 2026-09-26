@@ -1,10 +1,12 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   customer as seed,
   type ConsentRecord, type SavedAddress, type Subscription, type LoyaltyTier,
   type Wallet, type WishlistItem, type Occasion, type OccasionChannel, type GiftRecipient,
 } from '@/data/account'
 import type { Bilingual } from '@/data/types'
+import { isSupabaseConfigured } from '@/lib/supabase'
+import { fetchOwnCustomer, fetchOrders, updateOwnContact, rowToLoyaltyEntry } from '@/lib/api/orders'
 
 export interface RedeemOption {
   id: string
@@ -68,6 +70,54 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
   const [generatedCode, setGeneratedCode] = useState<string | null>(null)
   const [consents, setConsents] = useState<ConsentRecord[]>(() => clone(seed.consents))
   const [notifications, setNotifications] = useState(() => clone(seed.notifications))
+
+  /*
+   * Only the parts with tables come from the server: identity (customers) and the
+   * points balance and its history (loyalty_ledger). Subscriptions, addresses, the
+   * wallet, the wishlist, occasions, gift recipients, consents and notification
+   * preferences have no tables yet and stay on the seed — stated here rather than
+   * left to be discovered.
+   */
+  const backed = isSupabaseConfigured
+  const [customerId, setCustomerId] = useState<string | null>(null)
+  const [tier, setTier] = useState<LoyaltyTier>(seed.loyalty.tier)
+  const [lifetimeSpendMinor, setLifetimeSpend] = useState(seed.loyalty.lifetimeSpendMinor)
+
+  useEffect(() => {
+    if (!backed) return
+    let cancelled = false
+    void (async () => {
+      const [row, snap] = await Promise.all([fetchOwnCustomer(), fetchOrders()])
+      if (cancelled) return
+      if (row) {
+        setCustomerId(row.id)
+        setProfile({
+          name: { en: row.name_en, ar: row.name_ar },
+          email: row.email ?? '',
+          phone: row.phone ?? '',
+        })
+        setTier(row.tier)
+        setLifetimeSpend(Number(row.spend_minor))
+      }
+      // The balance is the sum of the ledger, not a stored number — a redemption is a
+      // negative row, so summing is the only reading that cannot drift from its
+      // sources.
+      const mine = snap.ledger.filter((e) => !row || e.customer_id === row.id)
+      if (mine.length > 0) {
+        setPoints(mine.reduce((n, e) => n + e.points, 0))
+        setPointsHistory(mine.map((e) => {
+          const entry = rowToLoyaltyEntry(e)
+          return {
+            type: e.points < 0 ? ('redeem' as const) : ('earn' as const),
+            points: Math.abs(e.points),
+            reason: entry.source,
+            at: e.at_date,
+          }
+        }))
+      }
+    })()
+    return () => { cancelled = true }
+  }, [backed])
 
   const redeem = useCallback((opt: RedeemOption) => {
     let ok = false
@@ -134,7 +184,15 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
       email: patch.email ?? p.email,
       phone: patch.phone ?? p.phone,
     }))
-  }, [])
+    // Email and phone are the two fields the database lets a customer change about
+    // themselves; the name is not one of them, and the guard refuses tier and spend.
+    if (backed && customerId && (patch.email !== undefined || patch.phone !== undefined)) {
+      void updateOwnContact(customerId, {
+        ...(patch.email !== undefined ? { email: patch.email } : {}),
+        ...(patch.phone !== undefined ? { phone: patch.phone } : {}),
+      })
+    }
+  }, [backed, customerId])
 
   const toggleRestockNotify = useCallback((variantId: string) => {
     setWishlist((prev) => prev.map((w) => (w.variantId === variantId ? { ...w, notifyOnRestock: !w.notifyOnRestock } : w)))
@@ -184,8 +242,8 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
       email: profile.email,
       phone: profile.phone,
       points,
-      tier: seed.loyalty.tier,
-      lifetimeSpendMinor: seed.loyalty.lifetimeSpendMinor,
+      tier,
+      lifetimeSpendMinor,
       pointsHistory,
       subscriptions,
       addresses,
@@ -214,7 +272,7 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
       setConsent,
       setNotif,
     }),
-    [profile, points, pointsHistory, subscriptions, addresses, wishlist, occasions, giftRecipients, generatedCode, consents, notifications, redeem, redeemPointsForCode, toggleSubscription, cancelSubscription, addAddress, updateAddress, makeDefaultAddress, updateProfile, toggleRestockNotify, removeFromWishlist, addOccasion, removeOccasion, toggleGiftAnonymous, addGiftRecipient, removeGiftRecipient, setConsent, setNotif],
+    [profile, tier, lifetimeSpendMinor, points, pointsHistory, subscriptions, addresses, wishlist, occasions, giftRecipients, generatedCode, consents, notifications, redeem, redeemPointsForCode, toggleSubscription, cancelSubscription, addAddress, updateAddress, makeDefaultAddress, updateProfile, toggleRestockNotify, removeFromWishlist, addOccasion, removeOccasion, toggleGiftAnonymous, addGiftRecipient, removeGiftRecipient, setConsent, setNotif],
   )
 
   return <CustomerContext.Provider value={value}>{children}</CustomerContext.Provider>
