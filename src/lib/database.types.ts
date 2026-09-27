@@ -152,6 +152,12 @@ export type Database = {
         Update: Omit<Partial<JournalEntryRow>, 'period'>
         Relationships: []
       }
+      fixed_assets: {
+        Row: FixedAssetRow
+        Insert: Omit<Partial<FixedAssetRow>, 'created_at'> & { id: string; name_en: string; name_ar: string; category: AssetCategoryRow; cost_minor: number; life_months: number }
+        Update: Partial<FixedAssetRow>
+        Relationships: []
+      }
       journal_lines: {
         Row: JournalLineRow
         Insert: Omit<Partial<JournalLineRow>, 'id'> & { entry_id: string; account_code: string }
@@ -187,7 +193,7 @@ export type Database = {
       can_edit_content: { Args: Record<string, never>; Returns: boolean }
     }
     Enums: {
-      app_role: AppRole; artwork_status: ArtworkStatusRow
+      app_role: AppRole; artwork_status: ArtworkStatusRow; asset_category: AssetCategoryRow
       team_permission: TeamPermissionRow; job_role: JobRoleRow
       prod_channel: ProdChannelRow; store_badge: StoreBadgeRow; store_packaging: StorePackagingRow
       loyalty_tier: LoyaltyTierRow; order_channel: OrderChannelRow; order_status: OrderStatusRow
@@ -510,6 +516,22 @@ export type JournalEntryRow = {
   reversed_by: string | null
   posted_by_en: string | null
   posted_by_ar: string | null
+  created_at: string
+}
+
+export type AssetCategoryRow = 'equipment' | 'vehicles' | 'fixtures'
+
+export type FixedAssetRow = {
+  id: string
+  name_en: string
+  name_ar: string
+  category: AssetCategoryRow
+  cost_minor: number
+  life_months: number
+  in_service_en: string
+  in_service_ar: string
+  opening_months: number
+  center_id: string | null
   created_at: string
 }
 

@@ -708,15 +708,76 @@ role-check helpers (`is_staff`, `can_keep_books`, …). Each returns a boolean a
 caller themselves and leaks nothing, and RLS needs them callable. `post_journal_entry`
 is absent from that list, which is the point of its being `SECURITY INVOKER`.
 
-### Still seed-only inside the books
+## Slice 10 — the fixed-asset register
 
-The **fixed-asset register**. There is no table for it, so `assets`, `addAsset` and
-`removeAsset` work on local state in both modes; the register is one of the nine panels
-and it is the one that does not persist. `depreciationRuns` is derived from the journal,
-so that half is real.
+`fixed_assets`, the last of the nine accounting panels to live only in the browser.
+Migrations `20260929000000_fixed_assets.sql` and `20260929010000_fixed_assets_seed.sql`.
+
+### No depreciation figure is stored
+
+The table holds cost, life, what the book opened with, and which cost centre carries the
+charge. The monthly charge, the accumulated total and the net book value stay derived by
+`src/data/fixedAssets.ts` — a derived figure stored twice is a figure that can disagree
+with itself, and `accumulatedAfter()` deliberately computes from the whole cost so an
+asset lands exactly on nil rather than drifting a few halalas. `smoke:books` asserts the
+column list, so a depreciation column cannot creep in later.
+
+`opening_months` is **not** capped at `life_months`, which looks like a missing check and
+is not: a book can open holding an asset already written off, the arithmetic clamps, and
+forbidding it would make a legacy asset unrecordable.
+
+### An asset the books account for is not deleted
+
+The console offers a delete, for an asset typed in by mistake. Once the journal accounts
+for one, deleting the row stops being a correction: it leaves 1410/1420/1430 carrying a
+cost the register does not list, and stops the schedule charging something 1490 is still
+accumulating against. The books would disagree with the register silently.
+
+Two ways the journal accounts for an asset, both refused:
+
+* **A posted entry names it.** `assetPurchaseEntry()` files the acquisition under the
+  asset's own id, so `source_ref = id` finds it.
+* **The book opened with it,** so its cost is inside the opening entry, in aggregate,
+  where no reference can find it. `opening_months > 0` is exactly that set: the console
+  always creates an asset with `opening_months = 0`, because an asset bought now starts
+  its life now. Both the generator and `smoke:books` assert that rather than trusting it.
+
+**A bug my own test found, in the error message.** The refusal says "reverse that entry
+before removing the asset" — and that was impossible to follow. A reversal carries the
+reversed entry's `source_ref`, so after reversing, the reversal itself still named the
+asset and the guard never cleared. Fixed by matching how the provider already defines
+booked — `entryForRef()` ignores reversals — so the guard is now
+`status = 'posted' and source <> 'reversal'`. Verified end to end: refused, reversed,
+then accepted.
+
+### The register explains the balance sheet, so it is generated too
+
+`npm run seed:books` writes it from `fixedAssetsSeed`. The four assets' costs **are** the
+opening entry's debits to 1410/1420/1430 — 231,000,000 — and the sum of
+`openingAccumulated()` over them **is** its credit to 1490 — 59,950,000. Both are checked
+against the opening entry itself, so a hand-typed register drifting from the balance sheet
+it explains would fail the build.
+
+References resume with `nextAssetRef()`, reading the highest `FA-nn` present rather than
+counting rows — the same defect class as the voucher counter, fixed the same way.
+
+### Verified behaviour
+
+| Case | Result |
+| --- | --- |
+| finance / auditor read the register | 4 assets |
+| customer reads the register | 0 |
+| auditor inserts an asset | `new row violates row-level security policy` |
+| finance inserts FA-05 | accepted — and `nextAssetRef` hands out that same reference |
+| delete FA-01 (`opening_months` 30) | `the book opened holding FA-01 …` |
+| delete an unbooked asset | accepted |
+| delete one a posted entry names | `the journal accounts for FA-99 …` |
+| reverse that entry, then delete | accepted |
+
+`npm run smoke:books` is 115 checks (was 81).
 
 ## Not yet on the server
 
-Cart, governance, supply and cost centres, the fixed-asset register, and the seven
-customer-account areas listed above. The nine slices done so far are the pattern for the
-rest.
+Cart, governance, supply and cost centres, and the seven customer-account areas listed
+above. All nine accounting panels now persist. The ten slices done so far are the pattern
+for the rest.

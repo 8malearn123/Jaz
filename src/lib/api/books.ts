@@ -12,10 +12,12 @@
 
 import { requireSupabase, isSupabaseConfigured } from '@/lib/supabase'
 import type {
-  AccountRow, AccountingPeriodRow, JournalEntryRow, JournalLineRow, JournalSourceRow,
+  AccountRow, AccountingPeriodRow, FixedAssetRow, JournalEntryRow, JournalLineRow,
+  JournalSourceRow,
 } from '@/lib/database.types'
 import type { Account, AccountType, NormalBalance } from '@/data/coa'
 import type { JournalEntry, JournalLine, AccountingPeriod, JournalSource } from '@/data/ledger'
+import type { FixedAsset, AssetCategory } from '@/data/fixedAssets'
 import { periodLabel } from '@/data/ledger'
 
 export interface WriteResult { ok: boolean; error: string | null }
@@ -108,15 +110,35 @@ export function rowToPeriod(r: AccountingPeriodRow): AccountingPeriod {
   }
 }
 
+/**
+ * The register. Depreciation is NOT read from here — there is nothing to read, because
+ * the monthly charge, the accumulated total and the net book value are all derived from
+ * cost and life by src/data/fixedAssets.ts. A derived figure stored twice is a figure
+ * that can disagree with itself.
+ */
+export function rowToAsset(r: FixedAssetRow): FixedAsset {
+  return {
+    id: r.id,
+    name: { en: r.name_en, ar: r.name_ar },
+    category: r.category as AssetCategory,
+    costMinor: Number(r.cost_minor),
+    lifeMonths: r.life_months,
+    inService: { en: r.in_service_en, ar: r.in_service_ar },
+    openingMonths: r.opening_months,
+    ...(r.center_id === null ? {} : { centerId: r.center_id }),
+  }
+}
+
 // ---------------------------------------------------------------- reads
 
 export interface BooksSnapshot {
   accounts: Account[]
   entries: JournalEntry[]
   periods: AccountingPeriod[]
+  assets: FixedAsset[]
 }
 
-export const EMPTY_BOOKS: BooksSnapshot = { accounts: [], entries: [], periods: [] }
+export const EMPTY_BOOKS: BooksSnapshot = { accounts: [], entries: [], periods: [], assets: [] }
 
 /**
  * Empty for anyone outside finance / auditor / admin / owner — RLS filters it, which
@@ -126,11 +148,12 @@ export async function fetchBooks(): Promise<BooksSnapshot> {
   if (!isSupabaseConfigured) return EMPTY_BOOKS
   const db = requireSupabase()
 
-  const [accounts, entries, lines, periods] = await Promise.all([
+  const [accounts, entries, lines, periods, assets] = await Promise.all([
     db.from('accounts').select('*').order('code'),
     db.from('journal_entries').select('*').order('entry_date').order('no'),
     db.from('journal_lines').select('*').order('position'),
     db.from('accounting_periods').select('*').order('key'),
+    db.from('fixed_assets').select('*').order('id'),
   ])
 
   if (accounts.error) {
@@ -140,6 +163,7 @@ export async function fetchBooks(): Promise<BooksSnapshot> {
   if (entries.error) console.error('[books] entries:', entries.error.message)
   if (lines.error) console.error('[books] lines:', lines.error.message)
   if (periods.error) console.error('[books] periods:', periods.error.message)
+  if (assets.error) console.error('[books] assets:', assets.error.message)
 
   const byEntry = new Map<string, JournalLineRow[]>()
   for (const l of lines.data ?? []) {
@@ -152,6 +176,7 @@ export async function fetchBooks(): Promise<BooksSnapshot> {
     accounts: (accounts.data ?? []).map(rowToAccount),
     entries: (entries.data ?? []).map((e) => rowToEntry(e, byEntry.get(e.id) ?? [])),
     periods: (periods.data ?? []).map(rowToPeriod),
+    assets: (assets.data ?? []).map(rowToAsset),
   }
 }
 
@@ -254,6 +279,38 @@ export async function setPeriodClosed(
       closed_by_ar: closed ? (by?.ar ?? null) : null,
     }, { onConflict: 'key' })
     .select('key')
+  return error ? bad(error.message) : tookEffect(data)
+}
+
+/** Puts an asset into the register. Only finance/admin/owner get past RLS. */
+export async function upsertAsset(a: FixedAsset): Promise<WriteResult> {
+  if (!isSupabaseConfigured) return bad('books.notConfigured')
+  const { data, error } = await requireSupabase().from('fixed_assets').upsert({
+    id: a.id,
+    name_en: a.name.en,
+    name_ar: a.name.ar,
+    category: a.category,
+    cost_minor: a.costMinor,
+    life_months: a.lifeMonths,
+    in_service_en: a.inService.en,
+    in_service_ar: a.inService.ar,
+    opening_months: a.openingMonths,
+    center_id: a.centerId ?? null,
+  }, { onConflict: 'id' })
+    .select('id')
+  return error ? bad(error.message) : tookEffect(data)
+}
+
+/**
+ * Removes an asset from the register. The database refuses this once the journal accounts
+ * for the asset — an entry filed under its id, or an opening balance that capitalised it —
+ * because then deleting the row would leave the books carrying a cost the register does
+ * not list. The refusal is the database's own message, and it says which of the two it is.
+ */
+export async function deleteAsset(id: string): Promise<WriteResult> {
+  if (!isSupabaseConfigured) return bad('books.notConfigured')
+  const { data, error } = await requireSupabase()
+    .from('fixed_assets').delete().eq('id', id).select('id')
   return error ? bad(error.message) : tookEffect(data)
 }
 

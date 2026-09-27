@@ -6,12 +6,12 @@ import {
   reversalLines, type AccountingPeriod, type JournalDraft, type JournalEntry,
 } from '@/data/ledger'
 import { openingBook, periodsSeed } from '@/data/ledgerSeed'
-import { fixedAssetsSeed, type FixedAsset } from '@/data/fixedAssets'
+import { fixedAssetsSeed, nextAssetRef, type FixedAsset } from '@/data/fixedAssets'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useOptionalAuth } from '@/state/AuthContext'
 import {
   fetchBooks, postEntry, markReversed, setPeriodClosed, upsertAccount,
-  type WriteResult,
+  upsertAsset, deleteAsset, type WriteResult,
 } from '@/lib/api/books'
 import {
   balanceOf as balanceOfEntries, balanceSheet, cashFlow, incomeStatement,
@@ -48,9 +48,11 @@ import { useTeam } from '@/state/TeamContext'
 //     what the screen shows goes back to being what the database holds. The optimism
 //     never outlives the round trip.
 //
-// STILL SEED-ONLY: the fixed-asset register. There is no table for it yet, so assets,
-// addAsset and removeAsset work on local state in both modes. depreciationRuns is
-// derived from the journal, so that half is real.
+// THE REGISTER is on the server too, in fixed_assets. What is NOT stored there is any
+// depreciation figure: the monthly charge, the accumulated total and the net book value
+// are derived from cost and life by src/data/fixedAssets.ts, and depreciationRuns is
+// counted from the journal. A derived figure stored twice is a figure that can disagree
+// with itself.
 
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
 
@@ -144,9 +146,9 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   const [periods, setPeriods] = useState<AccountingPeriod[]>(
     () => (booksAreServerOwned ? [] : clone(periodsSeed)),
   )
-  // No table for the register yet, so this half stays local in both modes.
-  const [assets, setAssets] = useState<FixedAsset[]>(() => clone(fixedAssetsSeed))
-  const [assetSeq, setAssetSeq] = useState(fixedAssetsSeed.length + 1)
+  const [assets, setAssets] = useState<FixedAsset[]>(
+    () => (booksAreServerOwned ? [] : clone(fixedAssetsSeed)),
+  )
   const [booksReady, setBooksReady] = useState(!booksAreServerOwned)
   const [booksError, setBooksError] = useState<string | null>(null)
 
@@ -163,6 +165,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     // fetchBooks returns them oldest first; the journal reads newest first.
     setEntries(snap.entries.slice().reverse())
     setPeriods(snap.periods)
+    setAssets(snap.assets)
     // Numbering resumes above whatever the book already holds — see nextVoucherSeq.
     seq.current = nextVoucherSeq(snap.entries)
     setBooksReady(true)
@@ -415,13 +418,22 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
 
   /* ── fixed assets ──────────────────────────────────────────────────────── */
 
+  // Returns the reference synchronously, because the caller posts the acquisition entry
+  // with it: assetPurchaseEntry() files the entry under the asset's own id.
   const addAsset = useCallback((a: Omit<FixedAsset, 'id'>) => {
-    const id = `FA-${String(assetSeq).padStart(2, '0')}`
-    setAssetSeq((n) => n + 1)
-    setAssets((prev) => [...prev, { ...a, id }])
-    return id
-  }, [assetSeq])
-  const removeAsset = useCallback((id: string) => setAssets((prev) => prev.filter((a) => a.id !== id)), [])
+    const added: FixedAsset = { ...a, id: nextAssetRef(assets) }
+    setAssets((prev) => [...prev, added])
+    if (booksAreServerOwned) void commitBooks(() => upsertAsset(added))
+    return added.id
+  }, [assets, booksAreServerOwned, commitBooks])
+
+  const removeAsset = useCallback((id: string) => {
+    setAssets((prev) => prev.filter((a) => a.id !== id))
+    // The database refuses this once the journal accounts for the asset, and the reload
+    // in commitBooks puts it back — with the refusal shown rather than the row quietly
+    // reappearing.
+    if (booksAreServerOwned) void commitBooks(() => deleteAsset(id))
+  }, [booksAreServerOwned, commitBooks])
   // The opening book already charged one month, so the register stands that many months
   // further on than the assets' own opening position — and the next run continues from here.
   const depreciationRuns = useMemo(

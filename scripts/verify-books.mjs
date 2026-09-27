@@ -17,6 +17,8 @@ const sql = await readFile('supabase/migrations/20260927020000_books.sql', 'utf8
 const sqlActor = await readFile('supabase/migrations/20260928000000_books_bilingual_actor.sql', 'utf8')
 const sqlAtomic = await readFile('supabase/migrations/20260928010000_post_entry_atomically.sql', 'utf8')
 const sqlSeed = await readFile('supabase/migrations/20260928020000_books_seed.sql', 'utf8')
+const sqlAssets = await readFile('supabase/migrations/20260929000000_fixed_assets.sql', 'utf8')
+const sqlAssetsSeed = await readFile('supabase/migrations/20260929010000_fixed_assets_seed.sql', 'utf8')
 const apiSrc = await readFile('src/lib/api/books.ts', 'utf8')
 const ctxSrc = await readFile('src/state/LedgerContext.tsx', 'utf8')
 const panelSrc = await readFile('src/pages/admin/owner/OwnerAccounting.tsx', 'utf8')
@@ -150,8 +152,10 @@ check('a lineless header can be deleted; one with lines cannot',
   /if exists \(select 1 from public\.journal_lines where entry_id = old\.id\) then[\s\S]*?raise exception 'a posted entry is never deleted/.test(sqlAtomic))
 check('postEntry sends the id it minted, so the row carries the entry the console holds',
   /p_id: input\.id/.test(apiSrc) && /id: string/.test(apiSrc))
+const postEntryBody = apiSrc.slice(apiSrc.indexOf('export async function postEntry'))
+  .split('\nexport ')[0]
 check('postEntry no longer deletes anything to clean up after itself',
-  !/\.delete\(\)/.test(apiSrc))
+  !/\.delete\(\)/.test(postEntryBody))
 
 /* ── a write RLS filters away is a refusal, not a success ─────────────────── */
 // An INSERT blocked by WITH CHECK raises; an UPDATE blocked by USING matches no rows and
@@ -247,10 +251,116 @@ check('a reversal posts the reversing entry BEFORE marking the original',
 check('closing writes the closing entry before shutting the period',
   ctxSrc.indexOf('result = post(closingDraft)') < ctxSrc.indexOf('setPeriodClosed(period, true'))
 check('reopening clears who closed it', /setPeriodClosed\(period, false\)/.test(ctxSrc))
-check('the fixed-asset register is admitted as still seed-only',
-  /no table for it yet/i.test(ctxSrc) || /STILL SEED-ONLY/.test(ctxSrc))
 check('the accounting section shows the book’s state rather than silent zeros',
   /booksReady/.test(panelSrc) && /booksError/.test(panelSrc))
+
+/* ── the fixed-asset register ─────────────────────────────────────────────── */
+const fa = await server.ssrLoadModule('/src/data/fixedAssets.ts')
+
+check('the register reads and writes with the books',
+  /fixed_assets_select_books[\s\S]*?can_read_books/.test(sqlAssets)
+  && /fixed_assets_write_books[\s\S]*?can_keep_books/.test(sqlAssets))
+// No depreciation figure is stored: every one of them is derived from cost and life, and
+// a derived figure stored twice is a figure that can disagree with itself. Asserted on the
+// column list rather than the file, or the prose explaining this would fail the check.
+const assetColumns = sqlAssets
+  .slice(sqlAssets.indexOf('create table public.fixed_assets'))
+  .split(');')[0]
+  .split('\n')
+  .slice(1)
+  .map((l) => l.replace(/--.*$/, '').trim())
+  .filter((l) => /^[a-z_]+\s/.test(l))
+  .map((l) => l.split(/\s/)[0])
+check('the register has exactly the columns it needs',
+  assetColumns.join(',') === 'id,name_en,name_ar,category,cost_minor,life_months,in_service_en,in_service_ar,opening_months,center_id,created_at',
+  assetColumns.join(','))
+for (const word of ['monthly', 'accumulated', 'net_book', 'depreciation']) {
+  check(`no column stores ${word}`, !assetColumns.some((c) => c.includes(word)))
+}
+check('cost and life cannot be zero', /cost_minor > 0/.test(sqlAssets) && /life_months > 0/.test(sqlAssets))
+// Deliberately unbounded: a book can open holding an asset already written off.
+check('opening_months is NOT capped at life_months',
+  !/opening_months <= life_months/.test(sqlAssets))
+check('an already written-off asset is still representable',
+  fa.netBookValue({ costMinor: 1000, lifeMonths: 12 }, 99) === 0)
+
+/* the delete guard */
+check('an asset the book opened with is not deleted',
+  /old\.opening_months > 0[\s\S]*?raise exception 'the book opened holding/.test(sqlAssets))
+check('an asset the journal accounts for is not deleted',
+  /source_ref = old\.id[\s\S]*?raise exception 'the journal accounts for/.test(sqlAssets))
+// Both exclusions are load-bearing. Without `source <> 'reversal'` the guard can never
+// clear — a reversal carries the reversed entry's source_ref — so the message's own
+// instruction ("reverse that entry") becomes impossible to follow. Found by testing it.
+check('the guard ignores reversed entries', /status = 'posted'/.test(sqlAssets))
+check('the guard ignores the reversal itself', /source <> 'reversal'/.test(sqlAssets))
+// Same definition of "booked" as the provider's, so the two cannot drift apart.
+check('entryForRef defines booked the same way',
+  /e\.sourceRef === sourceRef && e\.source !== 'reversal'/.test(ctxSrc))
+
+/* the seed is the register the opening entry explains */
+const seedAssetIds = [...sqlAssetsSeed.matchAll(/^ {2}\('(FA-\d+)'/gm)].map((m) => m[1])
+check('the seed carries every asset in fixedAssetsSeed',
+  seedAssetIds.join(',') === fa.fixedAssetsSeed.map((a) => a.id).join(','),
+  `sql=[${seedAssetIds}]`)
+const seedAssetCost = [...sqlAssetsSeed.matchAll(/'(equipment|vehicles|fixtures)',(\d+),(\d+),/g)]
+check('the seeded costs match the TypeScript',
+  seedAssetCost.reduce((t, m) => t + Number(m[2]), 0) === fa.fixedAssetsSeed.reduce((t, a) => t + a.costMinor, 0))
+// The register is not decoration beside the balance sheet: it is what explains it.
+const openingEntry = book.entries.find((e) => e.source === 'opening')
+const assetAccounts = ['1410', '1420', '1430']
+const capitalised = openingEntry.lines
+  .filter((l) => assetAccounts.includes(l.accountCode))
+  .reduce((t, l) => t + l.debitMinor, 0)
+check('the register’s cost is exactly what the opening entry capitalises',
+  capitalised === fa.fixedAssetsSeed.reduce((t, a) => t + a.costMinor, 0),
+  `opening=${capitalised} register=${fa.fixedAssetsSeed.reduce((t, a) => t + a.costMinor, 0)}`)
+const openingAccum = openingEntry.lines
+  .filter((l) => l.accountCode === '1490')
+  .reduce((t, l) => t + l.creditMinor, 0)
+check('and its opening accumulated depreciation is exactly the credit to 1490',
+  openingAccum === fa.fixedAssetsSeed.reduce((t, a) => t + fa.openingAccumulated(a), 0),
+  `opening=${openingAccum}`)
+// What makes the delete guard cover the seeded four at all.
+check('every seeded asset has opening_months > 0, so the guard protects it',
+  fa.fixedAssetsSeed.every((a) => a.openingMonths > 0))
+
+/* references resume above the register, not from a count */
+check('an empty register starts at FA-01', fa.nextAssetRef([]) === 'FA-01')
+check('the seeded register hands out FA-05', fa.nextAssetRef(fa.fixedAssetsSeed) === 'FA-05')
+check('a GAP does not hand out a reference twice',
+  fa.nextAssetRef([{ id: 'FA-01' }, { id: 'FA-03' }]) === 'FA-04',
+  fa.nextAssetRef([{ id: 'FA-01' }, { id: 'FA-03' }]))
+check('anything not shaped FA-nn is ignored',
+  fa.nextAssetRef([{ id: 'LEGACY' }, { id: 'FA-07' }]) === 'FA-08')
+
+/* the round trip and the provider */
+const assetRow = {
+  id: 'FA-09', name_en: 'Conche', name_ar: 'كونش', category: 'equipment',
+  cost_minor: '5500000', life_months: 120, in_service_en: 'Sep 2026', in_service_ar: 'سبتمبر ٢٠٢٦',
+  opening_months: 0, center_id: null, created_at: 'x',
+}
+const mapped = api.rowToAsset(assetRow)
+check('an asset maps its bilingual name', mapped.name.ar === 'كونش')
+check('cost comes back a number', typeof mapped.costMinor === 'number' && mapped.costMinor === 5500000)
+check('a null cost centre is absent', !('centerId' in mapped))
+check('a cost centre is carried when present',
+  api.rowToAsset({ ...assetRow, center_id: 'CC-01' }).centerId === 'CC-01')
+check('the mapped asset feeds the schedule unchanged',
+  fa.depreciationSchedule([mapped], 0)[0].monthlyMinor === fa.monthlyDepreciation(mapped))
+
+check('fetchBooks reads the register in the same round trip', /from\('fixed_assets'\)/.test(apiSrc))
+check('the snapshot carries it', /assets: FixedAsset\[\]/.test(apiSrc))
+check('deleteAsset reports an RLS-filtered delete as a refusal',
+  /delete\(\)\.eq\('id', id\)\.select\('id'\)/.test(apiSrc))
+check('the provider reads the register from the server',
+  /setAssets\(snap\.assets\)/.test(ctxSrc))
+check('it no longer keeps a local counter for references',
+  !/assetSeq/.test(ctxSrc) && /nextAssetRef\(assets\)/.test(ctxSrc))
+check('addAsset still returns the reference synchronously, because the caller posts with it',
+  /return added\.id/.test(ctxSrc))
+check('the register is no longer described as seed-only',
+  !/STILL SEED-ONLY/.test(ctxSrc))
 
 await server.close()
 console.log('')
