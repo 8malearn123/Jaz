@@ -18,32 +18,80 @@ Two things decide whether it works, and both are easy to get wrong:
 
 ---
 
+## Setting up the SSH key
+
+Do this on **your own machine**, not here: the private key should never travel through a
+chat, a screen share or anyone else's computer. It is two commands.
+
+```bash
+# 1. Make a key that exists only to deploy this site. No passphrase, because GitHub
+#    Actions has no way to type one.
+ssh-keygen -t ed25519 -C "jaz-deploy" -f ~/.ssh/jaz_deploy -N ""
+
+# 2. Print the PUBLIC half — this is the safe one to paste anywhere.
+cat ~/.ssh/jaz_deploy.pub
+```
+
+Paste that one line into hPanel → **Advanced → SSH Access → إضافة مفتاح SSH**.
+
+Then check it works, from your own terminal:
+
+```bash
+ssh -i ~/.ssh/jaz_deploy -p 65002 u871605686@82.198.229.91 'pwd && ls -A public_html | head'
+```
+
+It should sign you in **without asking for a password**. If it still asks, the public key
+did not register — paste it again, whole, with no line breaks.
+
 ## The automatic way
 
-`.github/workflows/deploy-hostinger.yml` builds on a GitHub runner and mirrors `dist/`
-into the document root over FTPS on every push to `main`.
+`.github/workflows/deploy-hostinger.yml` builds on a GitHub runner and rsyncs `dist/`
+into the document root over SSH on every push to `main`.
 
-Set these repository secrets (Settings → Secrets and variables → Actions):
+Set these repository secrets (Settings → Secrets and variables → Actions → New secret):
 
-| Secret | Where to find it |
+| Secret | Value |
 | --- | --- |
-| `HOSTINGER_FTP_HOST` | hPanel → Files → FTP Accounts |
-| `HOSTINGER_FTP_USER` | same page |
-| `HOSTINGER_FTP_PASSWORD` | same page (set a new one if unknown) |
-| `HOSTINGER_FTP_DIR` | usually `/public_html`, or `/domains/<domain>/public_html` on a multi-site plan |
+| `HOSTINGER_SSH_HOST` | `82.198.229.91` |
+| `HOSTINGER_SSH_PORT` | `65002` |
+| `HOSTINGER_SSH_USER` | `u871605686` |
+| `HOSTINGER_SSH_KEY` | the whole of `~/.ssh/jaz_deploy` — the **private** half, including the `-----BEGIN` and `-----END` lines. `cat ~/.ssh/jaz_deploy` and paste all of it. |
+| `HOSTINGER_SSH_DIR` | `/home/u871605686/public_html` |
 | `VITE_SUPABASE_URL` | Supabase → Project Settings → Data API |
 | `VITE_SUPABASE_ANON_KEY` | the **publishable** key on that page |
 
-With any FTP secret missing the run **skips and says so loudly** rather than going green
-without uploading. Three things are then verified for you on each run:
+A GitHub secret cannot be read back once saved, only replaced — and if the key is ever
+lost or exposed, deleting the public half in hPanel revokes it instantly. Nothing else
+depends on it.
 
-* the built bundle really contains the Supabase URL — the only proof the secret was in
-  scope, since a missing one produces a working site on seed data instead of an error;
-* `--delete` refuses to run against a directory that is neither empty nor already holding
-  an `index.html`, because a wrong `HOSTINGER_FTP_DIR` plus `--delete` is destructive;
-* `index.html`, `.htaccess` and `assets/` are all present afterwards.
+With any secret missing the run **skips and says so loudly** rather than going green
+without uploading. Each run also:
 
-## The manual way
+* pins the server's host key with `ssh-keyscan` instead of disabling the check, because
+  `StrictHostKeyChecking=no` would accept any machine answering on that address — and
+  this connection carries a key worth stealing;
+* proves the built bundle really contains the Supabase URL, the only evidence the secret
+  was in scope, since a missing one yields a working site on seed data rather than an error;
+* refuses `--delete` against a directory that is neither empty nor already holding an
+  `index.html`, because a wrong `HOSTINGER_SSH_DIR` plus `--delete` is destructive;
+* uses `--delete-after`, so removals happen only once the new files are in place — with
+  Vite's hashed filenames that means nobody loading the page mid-deploy gets a half-site;
+* confirms `.htaccess` arrived, and deletes the key from the runner even if a step fails.
+
+## Deploying by hand over SSH
+
+Once the key works, one command from the repository root:
+
+```bash
+npm run build
+rsync -az --delete-after -e 'ssh -i ~/.ssh/jaz_deploy -p 65002' \
+  dist/ u871605686@82.198.229.91:/home/u871605686/public_html/
+```
+
+The trailing slash on `dist/` matters: without it rsync copies the folder rather than its
+contents, and the site ends up at `/dist/`.
+
+## The manual way (File Manager, no SSH)
 
 ```bash
 # Build with the keys present. Do NOT commit this file — .gitignore already covers it.
@@ -58,7 +106,8 @@ npm run build          # typechecks, then builds into dist/
 
 Upload **the contents of `dist/`** — not the folder itself — into `public_html`. In
 hPanel's File Manager, turn on "show hidden files" first, or `.htaccess` will not be
-uploaded and only the home page will work.
+uploaded and only the home page will work. This is the route to use only if SSH is
+unavailable; rsync above is faster and cannot skip a dotfile.
 
 ## Never put the service_role key in a VITE_ variable
 

@@ -1,22 +1,33 @@
 name: Deploy to Hostinger
 
-# Builds the app on the runner and mirrors dist/ into the Hostinger document root over
-# FTPS. FTP rather than SSH because every Hostinger plan has it, including the shared
-# ones; SSH is Business and above only.
+# Builds the app on the runner and rsyncs dist/ into the Hostinger document root over
+# SSH. The runner can reach the server; this repository's development container cannot,
+# which is why the automation lives here rather than in a script someone runs by hand.
+#
+# SSH rather than FTP, now that the plan has it:
+#   * rsync sends only what changed, so a redeploy is seconds rather than 10 MB.
+#   * dotfiles are handled like any other file. .htaccess is THE file that makes every
+#     route but / work, and it is the one FTP clients quietly skip.
+#   * --delete-after removes files that are gone only AFTER the new ones are in place.
+#     Combined with Vite's hashed filenames that means a visitor who loads the page
+#     mid-deploy still finds the assets their index.html asked for.
 #
 # The build has to happen HERE, not on Hostinger. Shared hosting runs no build step, and
-# Vite bakes VITE_* variables into the bundle at build time — so the Supabase URL and
-# publishable key must be present on this runner, as repository secrets, or the uploaded
-# site will silently run on its in-code seed instead of the database.
+# Vite bakes VITE_* into the bundle at build time — so the Supabase URL and publishable
+# key must be present on this runner, or the uploaded site silently runs on its in-code
+# seed instead of the database.
 #
 # Required secrets:
-#   HOSTINGER_FTP_HOST      e.g. ftp.yourdomain.com
-#   HOSTINGER_FTP_USER
-#   HOSTINGER_FTP_PASSWORD
-#   HOSTINGER_FTP_DIR       e.g. /public_html  (or /domains/<domain>/public_html)
+#   HOSTINGER_SSH_HOST        82.198.229.91
+#   HOSTINGER_SSH_PORT        65002
+#   HOSTINGER_SSH_USER        u871605686
+#   HOSTINGER_SSH_KEY         the PRIVATE half of the deploy key, whole file including
+#                             the BEGIN/END lines. Its public half goes in hPanel under
+#                             Advanced → SSH Access → add SSH key.
+#   HOSTINGER_SSH_DIR         /home/u871605686/public_html  (an absolute path)
 #   VITE_SUPABASE_URL
-#   VITE_SUPABASE_ANON_KEY  the PUBLISHABLE key. Never the service_role key: it bypasses
-#                           RLS, and anything baked into the bundle is public.
+#   VITE_SUPABASE_ANON_KEY    the PUBLISHABLE key. Never service_role: it bypasses RLS,
+#                             and anything baked into the bundle is public.
 on:
   push:
     branches: [main]
@@ -26,19 +37,20 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      FTP_HOST: ${{ secrets.HOSTINGER_FTP_HOST }}
-      FTP_USER: ${{ secrets.HOSTINGER_FTP_USER }}
-      FTP_PASSWORD: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
-      FTP_DIR: ${{ secrets.HOSTINGER_FTP_DIR }}
+      SSH_HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+      SSH_PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
+      SSH_USER: ${{ secrets.HOSTINGER_SSH_USER }}
+      SSH_DIR: ${{ secrets.HOSTINGER_SSH_DIR }}
       VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
       VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
     steps:
       - name: Check secrets
         run: |
           MISSING=""
-          for v in FTP_HOST FTP_USER FTP_PASSWORD FTP_DIR; do
-            [ -z "${!v}" ] && MISSING="$MISSING $v"
+          for v in SSH_HOST SSH_PORT SSH_USER SSH_DIR; do
+            [ -z "${!v}" ] && MISSING="$MISSING HOSTINGER_${v}"
           done
+          [ -z "${{ secrets.HOSTINGER_SSH_KEY }}" ] && MISSING="$MISSING HOSTINGER_SSH_KEY"
           if [ -n "$MISSING" ]; then
             # Loud, because a workflow that quietly "succeeds" without deploying is worse
             # than one that fails: the run goes green and nothing reaches the server.
@@ -65,15 +77,15 @@ jobs:
         if: env.SKIP != '1'
         run: npm run build
 
-      # Vite bakes VITE_* at build time, so whether the bundle can reach Supabase is
-      # decided here and is checkable here. Grepping the built bundle for the project URL
-      # is the only proof that the secret was actually in scope — a missing secret does
-      # not fail the build, it produces a bundle that quietly falls back to the seed.
+      # Whether the bundle can reach Supabase is decided at build time, so it is checkable
+      # here. Grepping the built files for the project URL is the only proof the secret was
+      # actually in scope: a missing one does not fail the build, it produces a bundle that
+      # quietly falls back to the seed.
       - name: Say whether the bundle is wired to Supabase
         if: env.SKIP != '1'
         run: |
           if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
-            echo "::warning title=Seed mode::VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY not set — the uploaded site will run on its in-code seed, not the database."
+            echo "::warning title=Seed mode::VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are not set — the uploaded site will run on its in-code seed, not the database."
           elif grep -rqF "$VITE_SUPABASE_URL" dist/assets; then
             echo "The bundle carries the Supabase URL — the site will read the database."
           else
@@ -81,56 +93,63 @@ jobs:
             exit 1
           fi
 
-      - name: Install lftp
+      # The host key is pinned by fetching it once and writing it to known_hosts, rather
+      # than disabling the check. StrictHostKeyChecking=no would make this deploy accept
+      # any server answering on that address, which is the whole attack it protects
+      # against — and it is a deploy, so it carries a key worth stealing.
+      - name: Trust the host key
         if: env.SKIP != '1'
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          if ! [ -s ~/.ssh/known_hosts ]; then
+            echo "Could not read a host key from $SSH_HOST:$SSH_PORT — check the host and port." >&2
+            exit 1
+          fi
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o BatchMode=yes "$SSH_USER@$SSH_HOST" \
+            'echo "signed in as $(whoami) on $(hostname)"'
 
-      # Mirrored with --delete so the document root ends up matching dist/ exactly,
-      # which is what makes a removed page actually disappear. The guard below is because
-      # --delete pointed at the wrong directory is destructive: the target must either be
-      # empty or already look like this site.
-      - name: Upload to Hostinger
+      # --delete-after and not --delete: the removals happen once the new files are all
+      # in place, so there is no moment where index.html names a bundle that is gone.
+      # The guard is because --delete pointed at the wrong directory is destructive.
+      - name: Upload
         if: env.SKIP != '1'
         run: |
           set -euo pipefail
-          LISTING=$(lftp -c "
-            set ssl:verify-certificate no;
-            open -u \"$FTP_USER\",\"$FTP_PASSWORD\" \"$FTP_HOST\";
-            cls -1 \"$FTP_DIR\" 2>/dev/null || true;
-          ")
-          if [ -n "$LISTING" ] && ! echo "$LISTING" | grep -q 'index.html'; then
-            echo "Refusing to mirror with --delete into '$FTP_DIR': it is not empty and has no index.html," >&2
-            echo "so it does not look like this site's document root. Check HOSTINGER_FTP_DIR." >&2
-            echo "It currently holds:" >&2
-            echo "$LISTING" >&2
+          SSH="ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o BatchMode=yes"
+
+          if ! $SSH "$SSH_USER@$SSH_HOST" "test -d '$SSH_DIR'"; then
+            echo "'$SSH_DIR' does not exist on the server." >&2
+            exit 1
+          fi
+          if $SSH "$SSH_USER@$SSH_HOST" "ls -A '$SSH_DIR' | grep -q ." \
+             && ! $SSH "$SSH_USER@$SSH_HOST" "test -f '$SSH_DIR/index.html'"; then
+            echo "Refusing to sync with --delete into '$SSH_DIR': it is not empty and holds no" >&2
+            echo "index.html, so it does not look like this site's document root." >&2
+            $SSH "$SSH_USER@$SSH_HOST" "ls -A '$SSH_DIR' | head -20" >&2
             exit 1
           fi
 
-          lftp -c "
-            set ssl:verify-certificate no;
-            set ftp:ssl-protect-data true;
-            open -u \"$FTP_USER\",\"$FTP_PASSWORD\" \"$FTP_HOST\";
-            mirror --reverse --delete --verbose --parallel=4 \
-              --exclude-glob .git/ \
-              dist/ \"$FTP_DIR\";
-          "
+          rsync -az --delete-after --human-readable --stats \
+            -e "$SSH" \
+            dist/ "$SSH_USER@$SSH_HOST:$SSH_DIR/"
 
       - name: Confirm what is live
         if: env.SKIP != '1'
         run: |
-          # The upload succeeding is not the same as the site working: .htaccess is what
-          # makes every route but / resolve, and it is a dotfile, which is exactly the
-          # kind of thing an FTP client skips.
-          lftp -c "
-            set ssl:verify-certificate no;
-            open -u \"$FTP_USER\",\"$FTP_PASSWORD\" \"$FTP_HOST\";
-            cls -1 \"$FTP_DIR\";
-          " | tee /tmp/live.txt
+          SSH="ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o BatchMode=yes"
+          $SSH "$SSH_USER@$SSH_HOST" "ls -A '$SSH_DIR'" | tee /tmp/live.txt
           for f in index.html .htaccess assets; do
-            if ! grep -qx "$f" /tmp/live.txt && ! grep -qx "$f/" /tmp/live.txt; then
-              echo "'$f' is not in $FTP_DIR after the upload." >&2
+            if ! grep -qx "$f" /tmp/live.txt; then
+              echo "'$f' is missing from $SSH_DIR after the upload." >&2
               [ "$f" = ".htaccess" ] && echo "Without it, every route except / returns Apache's 404." >&2
               exit 1
             fi
           done
           echo "index.html, .htaccess and assets/ are all present."
+
+      - name: Remove the key from the runner
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
