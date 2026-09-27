@@ -1,12 +1,18 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Bilingual } from '@/data/types'
 import { chartOfAccounts, type Account, type AccountType, type NormalBalance } from '@/data/coa'
 import {
-  entryProblems, makeEntry, periodOf, periodLabel, realLines,
+  entryProblems, makeEntry, nextVoucherSeq, periodOf, periodLabel, realLines,
   reversalLines, type AccountingPeriod, type JournalDraft, type JournalEntry,
 } from '@/data/ledger'
 import { openingBook, periodsSeed } from '@/data/ledgerSeed'
-import { fixedAssetsSeed, type FixedAsset } from '@/data/fixedAssets'
+import { fixedAssetsSeed, nextAssetRef, type FixedAsset } from '@/data/fixedAssets'
+import { isSupabaseConfigured } from '@/lib/supabase'
+import { useOptionalAuth } from '@/state/AuthContext'
+import {
+  fetchBooks, postEntry, markReversed, setPeriodClosed, upsertAccount,
+  upsertAsset, deleteAsset, type WriteResult,
+} from '@/lib/api/books'
 import {
   balanceOf as balanceOfEntries, balanceSheet, cashFlow, incomeStatement,
   ledgerRows as ledgerRowsOf, movementOf, trialBalance, vatReturn,
@@ -21,6 +27,32 @@ import { useTeam } from '@/state/TeamContext'
 // It deliberately exposes no way to edit or delete a posted entry: the only corrections
 // are reversals, and the only bar to posting is a closed period. Those two rules are what
 // separate a ledger from a list.
+//
+// WHERE THE BOOK LIVES. With Supabase configured, the chart, the journal and the periods
+// are the database's: accounts, journal_entries, journal_lines, accounting_periods, all
+// behind RLS that only finance, the auditor, admin and the owner get past. Without it,
+// the in-code opening book is the whole story, exactly as before — which is what keeps
+// a fresh clone and the SSR harnesses working.
+//
+// POSTING IS OPTIMISTIC, AND HAS TO BE. post() returns the entry synchronously because
+// fifteen call sites read its number the moment it is raised — an order that has just
+// been invoiced shows "JV-0042" on the spot. So the entry is added locally first and
+// written after. Three things keep that honest:
+//
+//   · The id is minted here, not by the database, so the entry the console is holding
+//     and the row that lands share an id — otherwise reversing it later would name a
+//     row that does not exist.
+//   · The client checks the same rules the database enforces (problemsWith), so a
+//     server refusal is the exception, not the routine case.
+//   · When the server does refuse, the error is surfaced AND the book is reloaded, so
+//     what the screen shows goes back to being what the database holds. The optimism
+//     never outlives the round trip.
+//
+// THE REGISTER is on the server too, in fixed_assets. What is NOT stored there is any
+// depreciation figure: the monthly charge, the accumulated total and the net book value
+// are derived from cost and life by src/data/fixedAssets.ts, and depreciationRuns is
+// counted from the journal. A derived figure stored twice is a figure that can disagree
+// with itself.
 
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
 
@@ -74,32 +106,89 @@ interface LedgerCtx {
   vatReturn: VatReturn
   /** Who the book will record as having made the next posting. */
   actingAccount: Bilingual
+
+  /* where the book is */
+  /** True when the chart, the journal and the periods come from the database. */
+  booksAreServerOwned: boolean
+  /** False while the first read is in flight; always true when there is no server. */
+  booksReady: boolean
+  /** The database's own words when it refused a write, or null. */
+  booksError: string | null
 }
 
 const Ctx = createContext<LedgerCtx | null>(null)
 
 export function LedgerProvider({ children }: { children: ReactNode }) {
   const { activeEmployee } = useTeam()
-  const [accounts, setAccounts] = useState<Account[]>(() => clone(chartOfAccounts))
-  // The opening book is built once, by the same numbering the live postings use.
+  // The session decides what the book reads: RLS shows finance/auditor/admin/owner the
+  // whole book and everyone else nothing, so the read is redone when the user changes.
+  const { ready: authReady, session } = useOptionalAuth()
+  const booksAreServerOwned = isSupabaseConfigured
+
+  const [accounts, setAccounts] = useState<Account[]>(
+    () => (booksAreServerOwned ? [] : clone(chartOfAccounts)),
+  )
+  // The opening book is built once, by the same numbering the live postings use. With a
+  // server it is only the fallback shape, never the displayed book.
   const seeded = useMemo(openingBook, [])
-  const [entries, setEntries] = useState<JournalEntry[]>(() => seeded.entries)
+  const [entries, setEntries] = useState<JournalEntry[]>(
+    () => (booksAreServerOwned ? [] : seeded.entries),
+  )
   // The voucher counter is a ref, not state: one document often produces several entries in
   // a single handler — a sale and the cost-centre load it carries — and state would not have
   // advanced between them, so both would be numbered the same.
-  const seq = useRef(seeded.nextSeq)
+  const seq = useRef(booksAreServerOwned ? 1 : seeded.nextSeq)
   const nextNo = useCallback(() => {
     const n = seq.current
     seq.current = n + 1
     return n
   }, [])
-  const [periods, setPeriods] = useState<AccountingPeriod[]>(() => clone(periodsSeed))
-  const [assets, setAssets] = useState<FixedAsset[]>(() => clone(fixedAssetsSeed))
-  const [assetSeq, setAssetSeq] = useState(fixedAssetsSeed.length + 1)
+  const [periods, setPeriods] = useState<AccountingPeriod[]>(
+    () => (booksAreServerOwned ? [] : clone(periodsSeed)),
+  )
+  const [assets, setAssets] = useState<FixedAsset[]>(
+    () => (booksAreServerOwned ? [] : clone(fixedAssetsSeed)),
+  )
+  const [booksReady, setBooksReady] = useState(!booksAreServerOwned)
+  const [booksError, setBooksError] = useState<string | null>(null)
 
   const actingAccount: Bilingual = activeEmployee
     ? { en: `${activeEmployee.name.en} — ${activeEmployee.title.en}`, ar: `${activeEmployee.name.ar} — ${activeEmployee.title.ar}` }
     : { en: 'Owner — admin console', ar: 'المالك — لوحة التحكم' }
+
+  /* ── reading the book ──────────────────────────────────────────────────── */
+
+  const reloadBooks = useCallback(async () => {
+    if (!booksAreServerOwned) return
+    const snap = await fetchBooks()
+    setAccounts(snap.accounts)
+    // fetchBooks returns them oldest first; the journal reads newest first.
+    setEntries(snap.entries.slice().reverse())
+    setPeriods(snap.periods)
+    setAssets(snap.assets)
+    // Numbering resumes above whatever the book already holds — see nextVoucherSeq.
+    seq.current = nextVoucherSeq(snap.entries)
+    setBooksReady(true)
+  }, [booksAreServerOwned])
+
+  // Waits for the session to settle first: reading before then would run as the
+  // anonymous user, get nothing back from RLS, and report an empty book as the truth.
+  useEffect(() => {
+    if (!authReady) return
+    void reloadBooks()
+  }, [authReady, session?.user.id, reloadBooks])
+
+  /**
+   * Sends one write, then re-reads. `revert` undoes the optimistic local change when
+   * the server refuses — needed because the reload that follows is what restores the
+   * truth, and a caller must not be left looking at an entry that was never accepted.
+   */
+  const commitBooks = useCallback(async (write: () => Promise<WriteResult>) => {
+    const res = await write()
+    if (!res.ok) setBooksError(res.error)
+    else setBooksError(null)
+    await reloadBooks()
+  }, [reloadBooks])
 
   /* ── the chart ─────────────────────────────────────────────────────────── */
 
@@ -107,14 +196,28 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   const postableAccounts = useMemo(() => accounts.filter((a) => a.postable && a.active), [accounts])
 
   const addAccount = useCallback((a: Omit<Account, 'active'>) => {
-    setAccounts((prev) => (prev.some((x) => x.code === a.code) ? prev : [...prev, { ...a, active: true }].sort((x, y) => x.code.localeCompare(y.code))))
-  }, [])
+    if (accounts.some((x) => x.code === a.code)) return
+    const added: Account = { ...a, active: true }
+    setAccounts((prev) => [...prev, added].sort((x, y) => x.code.localeCompare(y.code)))
+    // sort_order follows the code, which is how the chart is read anyway.
+    if (booksAreServerOwned) void commitBooks(() => upsertAccount(added, accounts.length))
+  }, [accounts, booksAreServerOwned, commitBooks])
+
   const updateAccount = useCallback((code: string, patch: Partial<Omit<Account, 'code'>>) => {
-    setAccounts((prev) => prev.map((a) => (a.code === code ? { ...a, ...patch } : a)))
-  }, [])
+    const cur = accounts.find((a) => a.code === code)
+    if (!cur) return
+    const next: Account = { ...cur, ...patch }
+    setAccounts((prev) => prev.map((a) => (a.code === code ? next : a)))
+    if (booksAreServerOwned) void commitBooks(() => upsertAccount(next))
+  }, [accounts, booksAreServerOwned, commitBooks])
+
   const toggleAccount = useCallback((code: string) => {
-    setAccounts((prev) => prev.map((a) => (a.code === code ? { ...a, active: !a.active } : a)))
-  }, [])
+    const cur = accounts.find((a) => a.code === code)
+    if (!cur) return
+    const next: Account = { ...cur, active: !cur.active }
+    setAccounts((prev) => prev.map((a) => (a.code === code ? next : a)))
+    if (booksAreServerOwned) void commitBooks(() => upsertAccount(next))
+  }, [accounts, booksAreServerOwned, commitBooks])
 
   /* ── periods ───────────────────────────────────────────────────────────── */
 
@@ -161,16 +264,49 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     return problems
   }, [accounts, isLocked])
 
+  /**
+   * Numbers a draft into an entry. Against a server the id is a uuid minted HERE rather
+   * than the seed's JE-0001 shape, because journal_entries.id is a uuid and the console
+   * hands that id straight back when it reverses the entry — so the two must be the
+   * same value, not merely the same entry.
+   */
+  const numbered = useCallback((draft: JournalDraft): JournalEntry => {
+    const entry = makeEntry({ ...draft, by: draft.by ?? actingAccount }, nextNo())
+    return booksAreServerOwned ? { ...entry, id: crypto.randomUUID() } : entry
+  }, [actingAccount, nextNo, booksAreServerOwned])
+
+  /** The write behind one entry — used by post(), postMany() and reverse() alike. */
+  const writeEntry = useCallback((e: JournalEntry) => postEntry({
+    id: e.id,
+    no: e.no,
+    date: e.date,
+    source: e.source,
+    memo: e.memo,
+    lines: e.lines,
+    sourceRef: e.sourceRef,
+    party: e.party,
+    reversalOf: e.reversalOf,
+    postedBy: e.by,
+  }), [])
+
   const post = useCallback((draft: JournalDraft): PostResult => {
     const problems = problemsWith(draft)
     if (problems.length > 0) return { ok: false, problems }
-    const entry = makeEntry({ ...draft, by: draft.by ?? actingAccount }, nextNo())
+    const entry = numbered(draft)
     setEntries((prev) => [entry, ...prev])
     registerPeriod(entry.period)
+    if (booksAreServerOwned) void commitBooks(() => writeEntry(entry))
     return { ok: true, entry }
-  }, [problemsWith, nextNo, actingAccount, registerPeriod])
+  }, [problemsWith, numbered, registerPeriod, booksAreServerOwned, commitBooks, writeEntry])
 
-  /** Post a run of drafts as one commit, so a document that makes several entries makes them together. */
+  /**
+   * Post a run of drafts as one commit, so a document that makes several entries makes
+   * them together. Each entry is still its own transaction on the server — the database
+   * has no notion of "these three belong to one document" — so they are written in
+   * sequence and the first refusal is what the console is told about. That is weaker
+   * than the local behaviour, and deliberately not hidden: a partially posted run is
+   * visible in the journal, where a reversal can correct it.
+   */
   const postMany = useCallback((drafts: JournalDraft[]): PostResult[] => {
     const results: PostResult[] = []
     const made: JournalEntry[] = []
@@ -180,16 +316,25 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         results.push({ ok: false, problems })
         continue
       }
-      const entry = makeEntry({ ...d, by: d.by ?? actingAccount }, nextNo())
+      const entry = numbered(d)
       made.push(entry)
       results.push({ ok: true, entry })
     }
     if (made.length > 0) {
       setEntries((prev) => [...made.slice().reverse(), ...prev])
       for (const e of made) registerPeriod(e.period)
+      if (booksAreServerOwned) {
+        void commitBooks(async () => {
+          for (const e of made) {
+            const res = await writeEntry(e)
+            if (!res.ok) return res
+          }
+          return { ok: true, error: null }
+        })
+      }
     }
     return results
-  }, [problemsWith, nextNo, actingAccount, registerPeriod])
+  }, [problemsWith, numbered, registerPeriod, booksAreServerOwned, commitBooks, writeEntry])
 
   const entryOf = useCallback((id: string) => entries.find((e) => e.id === id), [entries])
   const entryForRef = useCallback(
@@ -213,7 +358,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       return { ok: false, problems: [{ en: `${label.en} is closed.`, ar: `فترة ${label.ar} مقفلة.` }] }
     }
     const entry: JournalEntry = {
-      ...makeEntry({
+      ...numbered({
         date: original.date,
         source: 'reversal',
         sourceRef: original.sourceRef,
@@ -223,12 +368,22 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         party: original.party,
         lines: reversalLines(original.lines),
         by: actingAccount,
-      }, nextNo()),
+      }),
       reversalOf: original.id,
     }
     setEntries((prev) => [entry, ...prev.map((e) => (e.id === original.id ? { ...e, status: 'reversed' as const, reversedBy: entry.id } : e))])
+    // Two writes, in this order. The reversing entry has to exist before the original
+    // can point at it: reversed_by is a foreign key, and the append-only trigger lets
+    // that one field be set exactly once.
+    if (booksAreServerOwned) {
+      void commitBooks(async () => {
+        const posted = await writeEntry(entry)
+        if (!posted.ok) return posted
+        return markReversed(original.id, entry.id)
+      })
+    }
     return { ok: true, entry }
-  }, [entries, isLocked, nextNo, actingAccount])
+  }, [entries, isLocked, numbered, actingAccount, booksAreServerOwned, commitBooks, writeEntry])
 
   const closePeriod = useCallback((period: string, closingDraft?: JournalDraft): PostResult | null => {
     let result: PostResult | null = null
@@ -250,22 +405,35 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         ? prev.map((p) => (p.key === period ? { ...p, closed: true, closedAt, closedBy: actingAccount } : p))
         : [...prev, closed].sort((a, b) => a.key.localeCompare(b.key))
     })
+    // After the closing entry, never before it: closing first would have the period lock
+    // refuse the very entry that closes the period.
+    if (booksAreServerOwned) void commitBooks(() => setPeriodClosed(period, true, actingAccount, closedAt))
     return result
-  }, [post, actingAccount])
+  }, [post, actingAccount, booksAreServerOwned, commitBooks])
 
   const reopenPeriod = useCallback((period: string) => {
     setPeriods((prev) => prev.map((p) => (p.key === period ? { ...p, closed: false, closedAt: undefined, closedBy: undefined } : p)))
-  }, [])
+    if (booksAreServerOwned) void commitBooks(() => setPeriodClosed(period, false))
+  }, [booksAreServerOwned, commitBooks])
 
   /* ── fixed assets ──────────────────────────────────────────────────────── */
 
+  // Returns the reference synchronously, because the caller posts the acquisition entry
+  // with it: assetPurchaseEntry() files the entry under the asset's own id.
   const addAsset = useCallback((a: Omit<FixedAsset, 'id'>) => {
-    const id = `FA-${String(assetSeq).padStart(2, '0')}`
-    setAssetSeq((n) => n + 1)
-    setAssets((prev) => [...prev, { ...a, id }])
-    return id
-  }, [assetSeq])
-  const removeAsset = useCallback((id: string) => setAssets((prev) => prev.filter((a) => a.id !== id)), [])
+    const added: FixedAsset = { ...a, id: nextAssetRef(assets) }
+    setAssets((prev) => [...prev, added])
+    if (booksAreServerOwned) void commitBooks(() => upsertAsset(added))
+    return added.id
+  }, [assets, booksAreServerOwned, commitBooks])
+
+  const removeAsset = useCallback((id: string) => {
+    setAssets((prev) => prev.filter((a) => a.id !== id))
+    // The database refuses this once the journal accounts for the asset, and the reload
+    // in commitBooks puts it back — with the refusal shown rather than the row quietly
+    // reappearing.
+    if (booksAreServerOwned) void commitBooks(() => deleteAsset(id))
+  }, [booksAreServerOwned, commitBooks])
   // The opening book already charged one month, so the register stands that many months
   // further on than the assets' own opening position — and the next run continues from here.
   const depreciationRuns = useMemo(
@@ -292,12 +460,14 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     balanceOf, ledgerRowsOf: rowsOf,
     trialBalance: tb, incomeStatement: pnl, balanceSheet: bs, cashFlow: cf, vatReturn: vat,
     actingAccount,
+    booksAreServerOwned, booksReady, booksError,
   }), [
     accounts, postableAccounts, accountOf, addAccount, updateAccount, toggleAccount,
     entries, post, postMany, reverse, entryOf, entryForRef, alreadyBooked,
     periods, isLocked, bookDate, closePeriod, reopenPeriod,
     assets, addAsset, removeAsset, depreciationRuns,
     balanceOf, rowsOf, tb, pnl, bs, cf, vat, actingAccount,
+    booksAreServerOwned, booksReady, booksError,
   ])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

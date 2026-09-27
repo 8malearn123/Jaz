@@ -146,9 +146,16 @@ export type Database = {
       }
       journal_entries: {
         Row: JournalEntryRow
-        // `period` is generated: it is readable but never sent.
-        Insert: Omit<Partial<JournalEntryRow>, 'id' | 'period'> & { no: string; entry_date: string; source: JournalSourceRow }
+        // `period` is generated: it is readable but never sent. `id` IS sent — the
+        // client mints it so the entry it shows and the row it wrote share an id.
+        Insert: Omit<Partial<JournalEntryRow>, 'period'> & { no: string; entry_date: string; source: JournalSourceRow }
         Update: Omit<Partial<JournalEntryRow>, 'period'>
+        Relationships: []
+      }
+      fixed_assets: {
+        Row: FixedAssetRow
+        Insert: Omit<Partial<FixedAssetRow>, 'created_at'> & { id: string; name_en: string; name_ar: string; category: AssetCategoryRow; cost_minor: number; life_months: number }
+        Update: Partial<FixedAssetRow>
         Relationships: []
       }
       journal_lines: {
@@ -167,11 +174,26 @@ export type Database = {
       order_owner_stage: { Args: { s: OrderStatusRow }; Returns: number }
       period_of: { Args: { d: string }; Returns: string }
       can_keep_books: { Args: Record<string, never>; Returns: boolean }
+      post_journal_entry: {
+        Args: {
+          p_id: string; p_no: string; p_date: string; p_source: JournalSourceRow
+          p_memo_en: string; p_memo_ar: string
+          p_lines: {
+            account_code: string; debit_minor: number; credit_minor: number
+            center_id: string | null; memo_en: string | null; memo_ar: string | null
+          }[]
+          p_source_ref: string | null
+          p_party_en: string | null; p_party_ar: string | null
+          p_reversal_of: string | null
+          p_posted_by_en: string | null; p_posted_by_ar: string | null
+        }
+        Returns: string
+      }
       can_read_books: { Args: Record<string, never>; Returns: boolean }
       can_edit_content: { Args: Record<string, never>; Returns: boolean }
     }
     Enums: {
-      app_role: AppRole; artwork_status: ArtworkStatusRow
+      app_role: AppRole; artwork_status: ArtworkStatusRow; asset_category: AssetCategoryRow
       team_permission: TeamPermissionRow; job_role: JobRoleRow
       prod_channel: ProdChannelRow; store_badge: StoreBadgeRow; store_packaging: StorePackagingRow
       loyalty_tier: LoyaltyTierRow; order_channel: OrderChannelRow; order_status: OrderStatusRow
@@ -473,7 +495,8 @@ export type AccountingPeriodRow = {
   key: string
   closed: boolean
   closed_at: string | null
-  closed_by: string | null
+  closed_by_en: string | null
+  closed_by_ar: string | null
 }
 
 export type JournalEntryRow = {
@@ -491,7 +514,24 @@ export type JournalEntryRow = {
   status: EntryStatusRow
   reversal_of: string | null
   reversed_by: string | null
-  posted_by: string | null
+  posted_by_en: string | null
+  posted_by_ar: string | null
+  created_at: string
+}
+
+export type AssetCategoryRow = 'equipment' | 'vehicles' | 'fixtures'
+
+export type FixedAssetRow = {
+  id: string
+  name_en: string
+  name_ar: string
+  category: AssetCategoryRow
+  cost_minor: number
+  life_months: number
+  in_service_en: string
+  in_service_ar: string
+  opening_months: number
+  center_id: string | null
   created_at: string
 }
 

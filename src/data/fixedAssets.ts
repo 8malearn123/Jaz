@@ -54,6 +54,22 @@ export const fixedAssetsSeed: FixedAsset[] = [
   },
 ]
 
+/**
+ * The next reference the register will hand out. Reads the highest number present rather
+ * than counting rows, for the same reason nextVoucherSeq() does: the id is a primary key,
+ * so numbering from a count collides the moment the register has a gap — an asset deleted
+ * before it was booked, or one added by someone else and not yet read. Anything not shaped
+ * FA-nn is ignored rather than guessed at.
+ */
+export function nextAssetRef(assets: Pick<FixedAsset, 'id'>[]): string {
+  let top = 0
+  for (const a of assets) {
+    const m = /^FA-(\d+)$/.exec(a.id)
+    if (m) top = Math.max(top, parseInt(m[1], 10))
+  }
+  return `FA-${String(top + 1).padStart(2, '0')}`
+}
+
 /* ── the arithmetic ───────────────────────────────────────────────────────── */
 
 /** The straight-line charge for one month. */

@@ -581,15 +581,203 @@ refuses, or stops refusing one the server would take. It also re-checks, on
 DB-shaped rows, the property `verify-accounting.mjs` checks on seeded ones: a reversal
 nets to zero on every account.
 
-### Not wired yet
+## Slice 9 — the books, wired
 
-`LedgerContext` still reads `ledgerSeed`. This slice is the schema, the API layer and
-the tests — the context rewiring is a further pass, and the nine accounting panels
-(chart, journal, ledger, trial balance, statements, VAT, aging, fixed assets, close)
-read through it.
+`LedgerContext` now reads the database. The nine accounting panels (chart, journal,
+ledger, trial balance, statements, VAT, aging, fixed assets, close) read through it, so
+they follow without being touched.
+
+Four migrations: `20260928000000_books_bilingual_actor.sql`,
+`20260928010000_post_entry_atomically.sql`, `20260928020000_books_seed.sql`,
+`20260928030000_pin_search_path.sql`.
+
+### Two bugs in slice 8, found by using it
+
+**A refused posting left wreckage that nothing could clear.** `postEntry()` wrote the
+header, then the lines, and deleted the header if the lines were refused. That delete
+was itself refused — `journal_entries_append_only_trg` raises on every DELETE, with no
+exemption — so one out-of-balance posting left a zero-line entry in the journal, visible
+and permanent. Verified on this database: the header survived, and removing it needed
+`alter table ... disable trigger`.
+
+Fixed by `post_journal_entry(...)`, which writes the entry and its lines in one
+statement. It is `SECURITY INVOKER`, so RLS and every trigger apply to the caller exactly
+as they would to a direct insert — this buys atomicity and nothing else. It also names
+the columns a caller may set, so `status`, `period`, `reversed_by` and `created_at` are
+no longer reachable from the client at all. The narrow DELETE exemption for a *lineless*
+header stays, so wreckage from any client that does not use the function is recoverable;
+it cannot reach a real entry, because `journal_lines_immutable_trg` means an entry with
+lines can never be reduced to none.
+
+**The poster was stored in one language.** `posted_by text` and `closed_by text`, while
+everything else in the schema stores a bilingual name as a pair. The console is read in
+Arabic, so one column meant an Arabic reader saw an English name. Both are now
+`_en`/`_ar` pairs, and the append-only trigger's immutable-column list learned them —
+without that, the rename would have quietly made a posted entry's author editable.
+Verified: `update ... set posted_by_ar` on a posted entry is refused.
+
+### A write RLS filters away is not a success
+
+An INSERT blocked by `WITH CHECK` raises. An **UPDATE blocked by `USING` matches no rows
+and reports success.** Verified: an auditor closing 2026-07 got no error and the period
+stayed open — so the client believed the close had happened, and the period would have
+sprung back open on the next read with no explanation.
+
+`markReversed`, `setPeriodClosed` and `upsertAccount` therefore ask for their rows back
+and treat none as a refusal.
+
+### Posting is optimistic, and has to be
+
+`post()` returns the entry synchronously because fifteen call sites read its number the
+moment a document is raised. So the entry is added locally and written after. Three
+things keep that honest:
+
+* **The id is minted in the client**, not by the database, so the entry the console holds
+  and the row that lands share an id — otherwise reversing it later would name a row that
+  does not exist. `post_journal_entry` takes the id; `gen_random_uuid()` stays the default
+  for anything else.
+* The client checks the same rules the database enforces, so a refusal is the exception.
+* On a refusal the error is surfaced **and** the book re-read, so the screen goes back to
+  what the database holds. `BooksState` in `OwnerAccounting.tsx` shows it; without that,
+  the entry would simply vanish — the worst way to fail.
+
+`postMany` is weaker here than locally, and the comment in the provider says so: each
+entry is its own transaction, because the database has no notion of "these three belong
+to one document". A partly posted run is visible in the journal, where a reversal
+corrects it.
+
+### Numbering resumes above the book, not from one
+
+`no` is unique, so a counter starting at 1 collides with the JV-0001 already there.
+`nextVoucherSeq()` reads the highest number present rather than counting entries —
+the two differ exactly when it matters: with JV-0001 and JV-0003 in the book, a count
+hands out 3 again and the write is rejected.
+
+### The seed is generated, not transcribed
+
+`npm run seed:books` writes `20260928020000_books_seed.sql` from `coa.ts` and
+`ledgerSeed.ts`. The opening book is not a list of numbers — it is the *output* of the
+posting rules applied to `finBase`, `receivables`, `purchaseInvoices`, `wasteLog`, the
+cost centres and the fixed-asset register. Transcribing 28 entries and 101 lines by hand
+would fork it immediately.
+
+The chart is not demo data: without it the books cannot accept a single entry, because
+`journal_lines_require_postable()` refuses a line whose account is absent. Ids are
+derived from the voucher number, so re-running is a no-op.
+
+One ordering the seed cannot get wrong: every period is inserted **open**, then the
+entries, then the closed ones are closed. The opening entry is dated 30 June and June is
+closed — closing first would have the period lock refuse the entry that opens the book.
+
+### Verified behaviour
+
+Against the live project, as real signed-in users:
+
+| Case | Result |
+| --- | --- |
+| finance / auditor read the book | 44 accounts, 28 entries, 101 lines, 4 periods |
+| customer reads the book | 0, 0, 0, 0 |
+| finance posts JV-0029 | accepted |
+| auditor posts | `new row violates row-level security policy` |
+| customer posts | `new row violates row-level security policy` |
+| finance posts into closed June | `period 2026-06 is closed` |
+| `set posted_by_ar` on a posted entry | `a posted entry is immutable` |
+| reversal, then `markReversed` | accepted; the pair nets to zero on 1120 and 5320 |
+| `reversed_by` re-pointed at a different entry | `the reversal of an entry is recorded once` |
+| `status` back to `posted` | `an entry goes from posted to reversed and nowhere else` |
+| auditor closes a period | **no error, no change** — hence the row-count check above |
+| out of balance / header account / one line / closed period, via the function | each refused, and **nothing left behind** (`lineless = 0`) |
+
+And the seeded book agrees with the TypeScript figure for figure: debits = credits =
+1,133,015,793; trade receivables 1200 = 73,600,000 = the collection tab's subledger;
+trade payables 2100 = 9,683,000 = the unpaid supplier invoices; 4100 + 4200 + 4300 =
+284,750,000 = `finBase.revenueMinor`; 5100 = 163,100,000 = `finBase.cogsMinor`.
+
+`npm run smoke:books` is 81 checks (was 26).
+
+### The linter, after this slice
+
+`function_search_path_mutable` is cleared. It mattered for `period_of()` beyond
+tidiness: `journal_entries.period` is a stored generated column computed by it, so a
+shadowed `lpad`/`extract` would not error — it would file entries under the wrong month,
+the one thing the generated column exists to prevent. Both bodies are byte-identical to
+the originals apart from the `SET` clause, and all 28 periods recompute unchanged.
+
+Seven `authenticated_security_definer_function_executable` warnings remain, all on the
+role-check helpers (`is_staff`, `can_keep_books`, …). Each returns a boolean about the
+caller themselves and leaks nothing, and RLS needs them callable. `post_journal_entry`
+is absent from that list, which is the point of its being `SECURITY INVOKER`.
+
+## Slice 10 — the fixed-asset register
+
+`fixed_assets`, the last of the nine accounting panels to live only in the browser.
+Migrations `20260929000000_fixed_assets.sql` and `20260929010000_fixed_assets_seed.sql`.
+
+### No depreciation figure is stored
+
+The table holds cost, life, what the book opened with, and which cost centre carries the
+charge. The monthly charge, the accumulated total and the net book value stay derived by
+`src/data/fixedAssets.ts` — a derived figure stored twice is a figure that can disagree
+with itself, and `accumulatedAfter()` deliberately computes from the whole cost so an
+asset lands exactly on nil rather than drifting a few halalas. `smoke:books` asserts the
+column list, so a depreciation column cannot creep in later.
+
+`opening_months` is **not** capped at `life_months`, which looks like a missing check and
+is not: a book can open holding an asset already written off, the arithmetic clamps, and
+forbidding it would make a legacy asset unrecordable.
+
+### An asset the books account for is not deleted
+
+The console offers a delete, for an asset typed in by mistake. Once the journal accounts
+for one, deleting the row stops being a correction: it leaves 1410/1420/1430 carrying a
+cost the register does not list, and stops the schedule charging something 1490 is still
+accumulating against. The books would disagree with the register silently.
+
+Two ways the journal accounts for an asset, both refused:
+
+* **A posted entry names it.** `assetPurchaseEntry()` files the acquisition under the
+  asset's own id, so `source_ref = id` finds it.
+* **The book opened with it,** so its cost is inside the opening entry, in aggregate,
+  where no reference can find it. `opening_months > 0` is exactly that set: the console
+  always creates an asset with `opening_months = 0`, because an asset bought now starts
+  its life now. Both the generator and `smoke:books` assert that rather than trusting it.
+
+**A bug my own test found, in the error message.** The refusal says "reverse that entry
+before removing the asset" — and that was impossible to follow. A reversal carries the
+reversed entry's `source_ref`, so after reversing, the reversal itself still named the
+asset and the guard never cleared. Fixed by matching how the provider already defines
+booked — `entryForRef()` ignores reversals — so the guard is now
+`status = 'posted' and source <> 'reversal'`. Verified end to end: refused, reversed,
+then accepted.
+
+### The register explains the balance sheet, so it is generated too
+
+`npm run seed:books` writes it from `fixedAssetsSeed`. The four assets' costs **are** the
+opening entry's debits to 1410/1420/1430 — 231,000,000 — and the sum of
+`openingAccumulated()` over them **is** its credit to 1490 — 59,950,000. Both are checked
+against the opening entry itself, so a hand-typed register drifting from the balance sheet
+it explains would fail the build.
+
+References resume with `nextAssetRef()`, reading the highest `FA-nn` present rather than
+counting rows — the same defect class as the voucher counter, fixed the same way.
+
+### Verified behaviour
+
+| Case | Result |
+| --- | --- |
+| finance / auditor read the register | 4 assets |
+| customer reads the register | 0 |
+| auditor inserts an asset | `new row violates row-level security policy` |
+| finance inserts FA-05 | accepted — and `nextAssetRef` hands out that same reference |
+| delete FA-01 (`opening_months` 30) | `the book opened holding FA-01 …` |
+| delete an unbooked asset | accepted |
+| delete one a posted entry names | `the journal accounts for FA-99 …` |
+| reverse that entry, then delete | accepted |
+
+`npm run smoke:books` is 115 checks (was 81).
 
 ## Not yet on the server
 
-Cart, governance, supply and cost centres, plus the seven customer-account areas
-listed above and the accounting contexts. The eight slices done so far are the pattern
+Cart, governance, supply and cost centres, and the seven customer-account areas listed
+above. All nine accounting panels now persist. The ten slices done so far are the pattern
 for the rest.

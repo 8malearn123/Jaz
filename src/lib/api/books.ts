@@ -12,15 +12,36 @@
 
 import { requireSupabase, isSupabaseConfigured } from '@/lib/supabase'
 import type {
-  AccountRow, AccountingPeriodRow, JournalEntryRow, JournalLineRow, JournalSourceRow,
+  AccountRow, AccountingPeriodRow, FixedAssetRow, JournalEntryRow, JournalLineRow,
+  JournalSourceRow,
 } from '@/lib/database.types'
 import type { Account, AccountType, NormalBalance } from '@/data/coa'
 import type { JournalEntry, JournalLine, AccountingPeriod, JournalSource } from '@/data/ledger'
+import type { FixedAsset, AssetCategory } from '@/data/fixedAssets'
 import { periodLabel } from '@/data/ledger'
 
 export interface WriteResult { ok: boolean; error: string | null }
 const OK: WriteResult = { ok: true, error: null }
 const bad = (error: string): WriteResult => ({ ok: false, error })
+
+/**
+ * What RLS looks like on an UPDATE, and why every update here asks for its rows back.
+ *
+ * A write RLS forbids does not always fail. An INSERT blocked by WITH CHECK raises — an
+ * auditor calling post_journal_entry() gets "new row violates row-level security policy"
+ * and the client knows. But an UPDATE blocked by USING simply matches no rows: no error,
+ * no change, and PostgREST reports success. An auditor closing a period was verified to
+ * do exactly that against this database — the period stayed open and the client was told
+ * the write had gone through.
+ *
+ * So each update returns the rows it touched and none of them means refused. The reload
+ * that follows would put the screen right either way; this is what makes the person see
+ * WHY it sprang back.
+ */
+const NOT_ALLOWED =
+  'The books refused that write. Only finance, admin or the owner may keep the books.'
+const tookEffect = (rows: unknown[] | null): WriteResult =>
+  (rows && rows.length > 0 ? OK : bad(NOT_ALLOWED))
 
 // ---------------------------------------------------------------- row -> UI
 
@@ -71,7 +92,9 @@ export function rowToEntry(r: JournalEntryRow, lines: JournalLineRow[]): Journal
     status: r.status,
     ...(r.reversal_of === null ? {} : { reversalOf: r.reversal_of }),
     ...(r.reversed_by === null ? {} : { reversedBy: r.reversed_by }),
-    ...(r.posted_by === null ? {} : { by: { en: r.posted_by, ar: r.posted_by } }),
+    ...(r.posted_by_en === null && r.posted_by_ar === null
+      ? {}
+      : { by: { en: r.posted_by_en ?? '', ar: r.posted_by_ar ?? '' } }),
   }
 }
 
@@ -81,7 +104,28 @@ export function rowToPeriod(r: AccountingPeriodRow): AccountingPeriod {
     label: periodLabel(r.key),
     closed: r.closed,
     ...(r.closed_at === null ? {} : { closedAt: r.closed_at }),
-    ...(r.closed_by === null ? {} : { closedBy: { en: r.closed_by, ar: r.closed_by } }),
+    ...(r.closed_by_en === null && r.closed_by_ar === null
+      ? {}
+      : { closedBy: { en: r.closed_by_en ?? '', ar: r.closed_by_ar ?? '' } }),
+  }
+}
+
+/**
+ * The register. Depreciation is NOT read from here — there is nothing to read, because
+ * the monthly charge, the accumulated total and the net book value are all derived from
+ * cost and life by src/data/fixedAssets.ts. A derived figure stored twice is a figure
+ * that can disagree with itself.
+ */
+export function rowToAsset(r: FixedAssetRow): FixedAsset {
+  return {
+    id: r.id,
+    name: { en: r.name_en, ar: r.name_ar },
+    category: r.category as AssetCategory,
+    costMinor: Number(r.cost_minor),
+    lifeMonths: r.life_months,
+    inService: { en: r.in_service_en, ar: r.in_service_ar },
+    openingMonths: r.opening_months,
+    ...(r.center_id === null ? {} : { centerId: r.center_id }),
   }
 }
 
@@ -91,9 +135,10 @@ export interface BooksSnapshot {
   accounts: Account[]
   entries: JournalEntry[]
   periods: AccountingPeriod[]
+  assets: FixedAsset[]
 }
 
-export const EMPTY_BOOKS: BooksSnapshot = { accounts: [], entries: [], periods: [] }
+export const EMPTY_BOOKS: BooksSnapshot = { accounts: [], entries: [], periods: [], assets: [] }
 
 /**
  * Empty for anyone outside finance / auditor / admin / owner — RLS filters it, which
@@ -103,11 +148,12 @@ export async function fetchBooks(): Promise<BooksSnapshot> {
   if (!isSupabaseConfigured) return EMPTY_BOOKS
   const db = requireSupabase()
 
-  const [accounts, entries, lines, periods] = await Promise.all([
+  const [accounts, entries, lines, periods, assets] = await Promise.all([
     db.from('accounts').select('*').order('code'),
     db.from('journal_entries').select('*').order('entry_date').order('no'),
     db.from('journal_lines').select('*').order('position'),
     db.from('accounting_periods').select('*').order('key'),
+    db.from('fixed_assets').select('*').order('id'),
   ])
 
   if (accounts.error) {
@@ -117,6 +163,7 @@ export async function fetchBooks(): Promise<BooksSnapshot> {
   if (entries.error) console.error('[books] entries:', entries.error.message)
   if (lines.error) console.error('[books] lines:', lines.error.message)
   if (periods.error) console.error('[books] periods:', periods.error.message)
+  if (assets.error) console.error('[books] assets:', assets.error.message)
 
   const byEntry = new Map<string, JournalLineRow[]>()
   for (const l of lines.data ?? []) {
@@ -129,12 +176,20 @@ export async function fetchBooks(): Promise<BooksSnapshot> {
     accounts: (accounts.data ?? []).map(rowToAccount),
     entries: (entries.data ?? []).map((e) => rowToEntry(e, byEntry.get(e.id) ?? [])),
     periods: (periods.data ?? []).map(rowToPeriod),
+    assets: (assets.data ?? []).map(rowToAsset),
   }
 }
 
 // ---------------------------------------------------------------- posting
 
 export interface PostInput {
+  /**
+   * Minted by the caller, not the database. The provider shows the entry the moment it
+   * is posted and only then writes it, so the id it hands the console must be the id
+   * the row ends up carrying — otherwise reversing that entry later would name a row
+   * that does not exist.
+   */
+  id: string
   no: string
   date: string
   source: JournalSourceRow
@@ -143,63 +198,52 @@ export interface PostInput {
   sourceRef?: string
   party?: { en: string; ar: string }
   reversalOf?: string
-  postedBy?: string
+  postedBy?: { en: string; ar: string }
 }
 
 /**
- * Posts an entry and its lines. If the lines are refused — out of balance, a header
- * account, a closed period — the entry row is removed so the book is never left with
- * a header and nothing under it.
+ * Posts an entry and its lines in one call, which is one transaction: a refusal — out
+ * of balance, a header account, a closed period, fewer than two lines — leaves nothing
+ * behind at all.
+ *
+ * It used to be two inserts with a delete to clean up after a refused second one, and
+ * that delete could never work: the append-only trigger raises on every DELETE, so a
+ * single refused posting left a zero-line entry in the journal that nothing short of
+ * disabling a trigger could remove. post_journal_entry() is SECURITY INVOKER, so RLS
+ * and every trigger still apply exactly as they would to a direct insert.
  */
 export async function postEntry(input: PostInput): Promise<WriteResult> {
   if (!isSupabaseConfigured) return bad('books.notConfigured')
-  const db = requireSupabase()
 
-  // Zero lines are dropped here, matching realLines() in the UI. The column
-  // constraint rejects them anyway; this keeps the refusal from being confusing.
+  // Zero lines are dropped here, matching realLines() in the UI. The function refuses
+  // them anyway; this keeps the refusal from being confusing.
   const real = input.lines.filter((l) => l.debitMinor > 0 || l.creditMinor > 0)
   if (real.length < 2) return bad('books.needsTwoLines')
 
-  const { data, error } = await db
-    .from('journal_entries')
-    .insert({
-      no: input.no,
-      entry_date: input.date,
-      source: input.source,
-      source_ref: input.sourceRef ?? null,
-      memo_en: input.memo.en,
-      memo_ar: input.memo.ar,
-      party_en: input.party?.en ?? null,
-      party_ar: input.party?.ar ?? null,
-      reversal_of: input.reversalOf ?? null,
-      posted_by: input.postedBy ?? null,
-    })
-    .select('id')
-    .single()
-
-  if (error) return bad(error.message)
-  if (!data) return bad('books.insertReturnedNothing')
-
-  const ins = await db.from('journal_lines').insert(
-    real.map((l, i) => ({
-      entry_id: data.id,
+  const { error } = await requireSupabase().rpc('post_journal_entry', {
+    p_id: input.id,
+    p_no: input.no,
+    p_date: input.date,
+    p_source: input.source,
+    p_memo_en: input.memo.en,
+    p_memo_ar: input.memo.ar,
+    p_lines: real.map((l) => ({
       account_code: l.accountCode,
       debit_minor: l.debitMinor,
       credit_minor: l.creditMinor,
       center_id: l.centerId ?? null,
       memo_en: l.memo?.en ?? null,
       memo_ar: l.memo?.ar ?? null,
-      position: i,
     })),
-  )
+    p_source_ref: input.sourceRef ?? null,
+    p_party_en: input.party?.en ?? null,
+    p_party_ar: input.party?.ar ?? null,
+    p_reversal_of: input.reversalOf ?? null,
+    p_posted_by_en: input.postedBy?.en ?? null,
+    p_posted_by_ar: input.postedBy?.ar ?? null,
+  })
 
-  if (ins.error) {
-    // The entry has no lines, so nothing has been posted — remove the header. The
-    // append-only guard permits this because the entry never became a real entry.
-    await db.from('journal_entries').delete().eq('id', data.id)
-    return bad(ins.error.message)
-  }
-  return OK
+  return error ? bad(error.message) : OK
 }
 
 /**
@@ -208,34 +252,72 @@ export async function postEntry(input: PostInput): Promise<WriteResult> {
  */
 export async function markReversed(entryId: string, reversalId: string): Promise<WriteResult> {
   if (!isSupabaseConfigured) return bad('books.notConfigured')
-  const { error } = await requireSupabase()
+  const { data, error } = await requireSupabase()
     .from('journal_entries')
     .update({ status: 'reversed', reversed_by: reversalId })
     .eq('id', entryId)
-  return error ? bad(error.message) : OK
+    .select('id')
+  return error ? bad(error.message) : tookEffect(data)
 }
 
 export async function setPeriodClosed(
   key: string,
   closed: boolean,
-  by?: string,
+  by?: { en: string; ar: string },
+  closedAt?: string,
 ): Promise<WriteResult> {
   if (!isSupabaseConfigured) return bad('books.notConfigured')
-  const { error } = await requireSupabase()
+  const { data, error } = await requireSupabase()
     .from('accounting_periods')
     .upsert({
       key,
       closed,
-      closed_at: closed ? new Date().toISOString() : null,
-      closed_by: closed ? (by ?? null) : null,
+      // Reopening clears the record of the close rather than leaving a stale one:
+      // a period that is open was not closed by anybody.
+      closed_at: closed ? (closedAt ?? new Date().toISOString()) : null,
+      closed_by_en: closed ? (by?.en ?? null) : null,
+      closed_by_ar: closed ? (by?.ar ?? null) : null,
     }, { onConflict: 'key' })
-  return error ? bad(error.message) : OK
+    .select('key')
+  return error ? bad(error.message) : tookEffect(data)
+}
+
+/** Puts an asset into the register. Only finance/admin/owner get past RLS. */
+export async function upsertAsset(a: FixedAsset): Promise<WriteResult> {
+  if (!isSupabaseConfigured) return bad('books.notConfigured')
+  const { data, error } = await requireSupabase().from('fixed_assets').upsert({
+    id: a.id,
+    name_en: a.name.en,
+    name_ar: a.name.ar,
+    category: a.category,
+    cost_minor: a.costMinor,
+    life_months: a.lifeMonths,
+    in_service_en: a.inService.en,
+    in_service_ar: a.inService.ar,
+    opening_months: a.openingMonths,
+    center_id: a.centerId ?? null,
+  }, { onConflict: 'id' })
+    .select('id')
+  return error ? bad(error.message) : tookEffect(data)
+}
+
+/**
+ * Removes an asset from the register. The database refuses this once the journal accounts
+ * for the asset — an entry filed under its id, or an opening balance that capitalised it —
+ * because then deleting the row would leave the books carrying a cost the register does
+ * not list. The refusal is the database's own message, and it says which of the two it is.
+ */
+export async function deleteAsset(id: string): Promise<WriteResult> {
+  if (!isSupabaseConfigured) return bad('books.notConfigured')
+  const { data, error } = await requireSupabase()
+    .from('fixed_assets').delete().eq('id', id).select('id')
+  return error ? bad(error.message) : tookEffect(data)
 }
 
 /** Adds or updates a chart account. Only finance/admin/owner get past RLS. */
 export async function upsertAccount(a: Account, sortOrder = 0): Promise<WriteResult> {
   if (!isSupabaseConfigured) return bad('books.notConfigured')
-  const { error } = await requireSupabase().from('accounts').upsert({
+  const { data, error } = await requireSupabase().from('accounts').upsert({
     code: a.code,
     name_en: a.name.en,
     name_ar: a.name.ar,
@@ -250,5 +332,6 @@ export async function upsertAccount(a: Account, sortOrder = 0): Promise<WriteRes
     vat_role: a.vatRole ?? null,
     sort_order: sortOrder,
   }, { onConflict: 'code' })
-  return error ? bad(error.message) : OK
+    .select('code')
+  return error ? bad(error.message) : tookEffect(data)
 }

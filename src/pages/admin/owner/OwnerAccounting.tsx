@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, X, Trash2, FileText, Download, Layers, Power } from 'lucide-react'
+import { Plus, X, Trash2, FileText, Download, Layers, Power, AlertTriangle } from 'lucide-react'
 import { useLocale, toAsciiDigits } from '@/i18n/LocaleContext'
 import { useToast } from '@/components/account/Toast'
 import { Modal } from '@/components/ui/Modal'
@@ -11,6 +11,7 @@ import {
   type CostCenter, type CostCenterKind, type CostProcess, type CostEntry, type ProcessBasis, type ProcessSide,
 } from '@/data/costCenters'
 import { useCostCenters } from '@/state/CostCenterContext'
+import { useLedger } from '@/state/LedgerContext'
 import { openCostCenterReportPdf } from '@/lib/costCenterPdf'
 import { cn } from '@/lib/cn'
 import { PanelHead, StatCard, Pill, FilterChips, SegTabs, UtilBar } from './_shared'
@@ -55,6 +56,7 @@ export function OwnerAccounting({ view = 'chart' }: { view?: AccountingView }) {
           ar: 'دفتر واحد بالقيد المزدوج: كل بيع وشراء وسداد وهدر يُرحَّل إليه، والقوائم المالية والإقرار الضريبي ومراكز التكلفة كلها قراءات له',
         })}
       />
+      <BooksState />
       {view === 'chart' && <ChartOfAccounts />}
       {view === 'journal' && <JournalPanel />}
       {view === 'ledger' && <GeneralLedger />}
@@ -68,6 +70,47 @@ export function OwnerAccounting({ view = 'chart' }: { view?: AccountingView }) {
       {view === 'entries' && <EntriesView />}
       {view === 'reports' && <ReportsView />}
     </div>
+  )
+}
+
+/**
+ * Where the book stands. Two states are worth saying out loud and were otherwise
+ * invisible:
+ *
+ *   · Still reading. Every panel below is a reading of the journal, so before the first
+ *     read lands they would all show zero — a balance sheet of nothing, indistinguishable
+ *     from a company with nothing in it.
+ *   · Refused. A posting the database rejects is rolled back out of the screen by the
+ *     reload that follows, so without this the entry would simply vanish: the worst way
+ *     to fail, because it looks like it worked and then did not happen. The same goes
+ *     for a period an auditor tries to close — RLS filters that update away without an
+ *     error, so it would spring back open with no explanation.
+ *
+ * The message is left as it arrives, untranslated, because it names the rule that was
+ * broken rather than paraphrasing it.
+ */
+function BooksState() {
+  const { pick } = useLocale()
+  const { booksAreServerOwned, booksReady, booksError } = useLedger()
+  if (!booksAreServerOwned) return null
+  if (!booksError && booksReady) return null
+  return (
+    <ul className={`rounded-lg p-md flex flex-col gap-xxs border ${booksError ? 'bg-danger/[0.06] border-danger/25' : 'bg-ink/[0.03] border-ink/10'}`}>
+      {!booksReady && (
+        <li className="font-sans text-caption text-ink/60">
+          {pick({ en: 'Reading the book…', ar: 'جارٍ قراءة الدفتر…' })}
+        </li>
+      )}
+      {booksError && (
+        <li className="flex items-start gap-xs font-sans text-caption text-danger">
+          <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+          <span>
+            {pick({ en: 'The book refused that: ', ar: 'الدفتر رفض ذلك: ' })}
+            <span dir="ltr" className="font-mono">{booksError}</span>
+          </span>
+        </li>
+      )}
+    </ul>
   )
 }
 
