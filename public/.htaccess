@@ -1,0 +1,90 @@
+# JAZ — Apache configuration for shared hosting (Hostinger and anything else running
+# Apache). Vite copies everything in public/ to the root of dist/, so this ships with
+# the build and does not have to be remembered at upload time.
+#
+# The site is a single-page app: React Router owns 18 routes but only one file exists,
+# index.html. Apache knows nothing about that, so /art, /admin, /shop and fourteen
+# others would return its own 404 page. The rewrite below is what makes them work, and
+# it is the difference between a site that loads and a site where only the home page
+# does.
+
+# ---------------------------------------------------------------- HTTPS
+#
+# Hostinger terminates TLS at the server, but a request can also arrive from a proxy
+# that only sets X-Forwarded-Proto. Both are checked, because redirecting on %{HTTPS}
+# alone loops forever behind such a proxy.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # ---------------------------------------------------------------- SPA routes
+  #
+  # Anything that is a real file or directory is served as itself — the two conditions
+  # below are what keep /assets/index-*.js and the product photography working. Only a
+  # path with nothing behind it falls through to index.html, where the router reads it.
+  # /assets/ is excluded from the fallback on purpose. Without this a missing bundle —
+  # which is what a browser asks for when it has cached an old index.html past a deploy —
+  # is answered with index.html and a 200, and the browser reports it as a syntax error in
+  # a JavaScript file that is really HTML. Saying 404 makes that failure legible.
+  RewriteCond %{REQUEST_URI} !^/assets/
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+# ---------------------------------------------------------------- caching
+#
+# Vite fingerprints every asset (index-Ce6qlX7t.js), so those files can be cached
+# forever: a new build produces a new name. index.html must NOT be, because it is the
+# file that names them. Caching it is the classic way to break a deployment — the
+# browser keeps yesterday's index.html, asks for an asset that no longer exists, and
+# shows a blank page.
+<IfModule mod_headers.c>
+  <FilesMatch "\.(js|css|woff2?|ttf|jpg|jpeg|png|svg|webp|avif)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+
+  <FilesMatch "^index\.html$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+
+  # The console and the account pages are behind a login; keep them out of caches and
+  # out of referrers.
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# ---------------------------------------------------------------- compression
+#
+# The bundle is around 1.5 MB uncompressed and about a third of that gzipped, which on
+# a phone over mobile data is the difference a visitor actually feels. Fonts and images
+# are already compressed and are left alone.
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css
+  # text/javascript AND application/javascript. Apache 2.4 serves .js as
+  # text/javascript, so naming only the application/ form leaves the largest file on the
+  # site — the bundle — uncompressed. Verified by request: with only the application/
+  # form there was no Content-Encoding on the bundle at all.
+  AddOutputFilterByType DEFLATE text/javascript application/javascript application/json
+  AddOutputFilterByType DEFLATE image/svg+xml font/ttf
+</IfModule>
+
+# ---------------------------------------------------------------- types
+#
+# Named explicitly because a server that serves a font as application/octet-stream
+# makes the browser refuse it, and the page then falls back to a system serif — which
+# looks like a design bug rather than a server one.
+<IfModule mod_mime.c>
+  AddType font/woff2 .woff2
+  AddType font/woff  .woff
+  AddType font/ttf   .ttf
+  AddType image/svg+xml .svg
+  AddType image/webp .webp
+</IfModule>
+
+# ---------------------------------------------------------------- listings
+Options -Indexes

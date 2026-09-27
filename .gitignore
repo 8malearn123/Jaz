@@ -23,6 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 
-# local env
+# local env — every form of it. .env.production matters as much as the rest: the
+# Hostinger runbook has you create one holding the Supabase keys, and a pattern that
+# covers only .env and .env.local would have git track it.
 .env
-.env.local
+.env.*
+!.env.example

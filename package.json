@@ -20,7 +20,8 @@
     "smoke:catalogue": "node scripts/verify-catalogue.mjs",
     "smoke:orders": "node scripts/verify-orders.mjs",
     "smoke:books": "node scripts/verify-books.mjs",
-    "seed:books": "node scripts/generate-books-seed.mjs"
+    "seed:books": "node scripts/generate-books-seed.mjs",
+    "smoke:browser": "node scripts/verify-static.mjs"
   },
   "dependencies": {
     "@fontsource/fraunces": "^5.0.20",

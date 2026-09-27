@@ -1,0 +1,136 @@
+name: Deploy to Hostinger
+
+# Builds the app on the runner and mirrors dist/ into the Hostinger document root over
+# FTPS. FTP rather than SSH because every Hostinger plan has it, including the shared
+# ones; SSH is Business and above only.
+#
+# The build has to happen HERE, not on Hostinger. Shared hosting runs no build step, and
+# Vite bakes VITE_* variables into the bundle at build time — so the Supabase URL and
+# publishable key must be present on this runner, as repository secrets, or the uploaded
+# site will silently run on its in-code seed instead of the database.
+#
+# Required secrets:
+#   HOSTINGER_FTP_HOST      e.g. ftp.yourdomain.com
+#   HOSTINGER_FTP_USER
+#   HOSTINGER_FTP_PASSWORD
+#   HOSTINGER_FTP_DIR       e.g. /public_html  (or /domains/<domain>/public_html)
+#   VITE_SUPABASE_URL
+#   VITE_SUPABASE_ANON_KEY  the PUBLISHABLE key. Never the service_role key: it bypasses
+#                           RLS, and anything baked into the bundle is public.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      FTP_HOST: ${{ secrets.HOSTINGER_FTP_HOST }}
+      FTP_USER: ${{ secrets.HOSTINGER_FTP_USER }}
+      FTP_PASSWORD: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
+      FTP_DIR: ${{ secrets.HOSTINGER_FTP_DIR }}
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+    steps:
+      - name: Check secrets
+        run: |
+          MISSING=""
+          for v in FTP_HOST FTP_USER FTP_PASSWORD FTP_DIR; do
+            [ -z "${!v}" ] && MISSING="$MISSING $v"
+          done
+          if [ -n "$MISSING" ]; then
+            # Loud, because a workflow that quietly "succeeds" without deploying is worse
+            # than one that fails: the run goes green and nothing reaches the server.
+            echo "::warning title=Hostinger deploy skipped::Missing secret(s):$MISSING"
+            echo "=============================================================="
+            echo " SKIPPED — nothing was uploaded. Missing:$MISSING"
+            echo "=============================================================="
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/checkout@v4
+        if: env.SKIP != '1'
+      - uses: actions/setup-node@v4
+        if: env.SKIP != '1'
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        if: env.SKIP != '1'
+        run: npm ci
+
+      - name: Typecheck and build
+        if: env.SKIP != '1'
+        run: npm run build
+
+      # Vite bakes VITE_* at build time, so whether the bundle can reach Supabase is
+      # decided here and is checkable here. Grepping the built bundle for the project URL
+      # is the only proof that the secret was actually in scope — a missing secret does
+      # not fail the build, it produces a bundle that quietly falls back to the seed.
+      - name: Say whether the bundle is wired to Supabase
+        if: env.SKIP != '1'
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "::warning title=Seed mode::VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY not set — the uploaded site will run on its in-code seed, not the database."
+          elif grep -rqF "$VITE_SUPABASE_URL" dist/assets; then
+            echo "The bundle carries the Supabase URL — the site will read the database."
+          else
+            echo "VITE_SUPABASE_URL is set but does not appear in the bundle." >&2
+            exit 1
+          fi
+
+      - name: Install lftp
+        if: env.SKIP != '1'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+
+      # Mirrored with --delete so the document root ends up matching dist/ exactly,
+      # which is what makes a removed page actually disappear. The guard below is because
+      # --delete pointed at the wrong directory is destructive: the target must either be
+      # empty or already look like this site.
+      - name: Upload to Hostinger
+        if: env.SKIP != '1'
+        run: |
+          set -euo pipefail
+          LISTING=$(lftp -c "
+            set ssl:verify-certificate no;
+            open -u \"$FTP_USER\",\"$FTP_PASSWORD\" \"$FTP_HOST\";
+            cls -1 \"$FTP_DIR\" 2>/dev/null || true;
+          ")
+          if [ -n "$LISTING" ] && ! echo "$LISTING" | grep -q 'index.html'; then
+            echo "Refusing to mirror with --delete into '$FTP_DIR': it is not empty and has no index.html," >&2
+            echo "so it does not look like this site's document root. Check HOSTINGER_FTP_DIR." >&2
+            echo "It currently holds:" >&2
+            echo "$LISTING" >&2
+            exit 1
+          fi
+
+          lftp -c "
+            set ssl:verify-certificate no;
+            set ftp:ssl-protect-data true;
+            open -u \"$FTP_USER\",\"$FTP_PASSWORD\" \"$FTP_HOST\";
+            mirror --reverse --delete --verbose --parallel=4 \
+              --exclude-glob .git/ \
+              dist/ \"$FTP_DIR\";
+          "
+
+      - name: Confirm what is live
+        if: env.SKIP != '1'
+        run: |
+          # The upload succeeding is not the same as the site working: .htaccess is what
+          # makes every route but / resolve, and it is a dotfile, which is exactly the
+          # kind of thing an FTP client skips.
+          lftp -c "
+            set ssl:verify-certificate no;
+            open -u \"$FTP_USER\",\"$FTP_PASSWORD\" \"$FTP_HOST\";
+            cls -1 \"$FTP_DIR\";
+          " | tee /tmp/live.txt
+          for f in index.html .htaccess assets; do
+            if ! grep -qx "$f" /tmp/live.txt && ! grep -qx "$f/" /tmp/live.txt; then
+              echo "'$f' is not in $FTP_DIR after the upload." >&2
+              [ "$f" = ".htaccess" ] && echo "Without it, every route except / returns Apache's 404." >&2
+              exit 1
+            fi
+          done
+          echo "index.html, .htaccess and assets/ are all present."
